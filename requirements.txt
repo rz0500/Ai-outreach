@@ -1,0 +1,15 @@
+# ============================================================
+# Lead Generation & Outreach System - Python Dependencies
+# ============================================================
+# Install with:  pip install -r requirements.txt
+
+# Module 1 - Prospect Database
+# (SQLite is built into Python - no driver needed)
+
+# Pretty-print tables in the terminal
+tabulate==0.9.0
+
+# Module 2 - Lead Scorer (rule-based, no API key required)
+# TODO: When upgrading to AI scoring, add:
+#   anthropic>=0.49.0
+#   python-dotenv>=1.0.0
