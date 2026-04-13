@@ -23,7 +23,7 @@ from typing import Optional
 DB_PATH = "prospects.db"
 
 # All allowed values for the 'status' column.
-VALID_STATUSES = {"new", "qualified", "contacted", "replied", "booked", "rejected"}
+VALID_STATUSES = {"new", "qualified", "contacted", "replied", "booked", "rejected", "in_sequence"}
 
 
 # ---------------------------------------------------------------------------
@@ -59,20 +59,31 @@ def initialize_database(db_path: str = DB_PATH) -> None:
     with _get_connection(db_path) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prospects (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                name         TEXT    NOT NULL,
-                company      TEXT    NOT NULL,
-                email        TEXT    UNIQUE,
-                linkedin_url TEXT,
-                website      TEXT,
-                phone        TEXT,
-                lead_score   INTEGER DEFAULT 50
-                                     CHECK (lead_score BETWEEN 1 AND 100),
-                status       TEXT    DEFAULT 'new',
-                notes        TEXT,
-                date_added   TEXT    DEFAULT (datetime('now'))
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name                 TEXT    NOT NULL,
+                company              TEXT    NOT NULL,
+                email                TEXT    UNIQUE,
+                linkedin_url         TEXT,
+                website              TEXT,
+                phone                TEXT,
+                lead_score           INTEGER DEFAULT 50
+                                             CHECK (lead_score BETWEEN 1 AND 100),
+                status               TEXT    DEFAULT 'new',
+                notes                TEXT,
+                date_added           TEXT    DEFAULT (datetime('now')),
+                sequence_step        INTEGER DEFAULT 0,
+                last_contacted_date  TEXT
             )
         """)
+        # Migrate existing databases that pre-date the sequencer columns
+        for col, definition in [
+            ("sequence_step",       "INTEGER DEFAULT 0"),
+            ("last_contacted_date", "TEXT"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE prospects ADD COLUMN {col} {definition}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         conn.commit()
     print(f"[DB] Database ready: {db_path}")
 
@@ -285,6 +296,52 @@ def search_by_company(company_name: str, db_path: str = DB_PATH) -> list:
             (f"%{company_name}%",),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_prospects_in_sequence(db_path: str = DB_PATH) -> list:
+    """
+    Return all prospects currently enrolled in the follow-up sequence.
+
+    Returns:
+        A list of prospect dicts with status='in_sequence', ordered by
+        last_contacted_date ascending (longest-waiting first).
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute("""
+            SELECT * FROM prospects
+            WHERE status = 'in_sequence'
+            ORDER BY last_contacted_date ASC
+        """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_sequence_progress(
+    prospect_id: int,
+    sequence_step: int,
+    last_contacted_date: str,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Record that a sequence step was sent for a prospect.
+
+    Args:
+        prospect_id:         The prospect to update.
+        sequence_step:       The step number just completed (1, 2, 3, …).
+        last_contacted_date: ISO date string for when the step was sent (YYYY-MM-DD).
+        db_path:             Path to the database file.
+
+    Returns:
+        True if the record was found and updated, False otherwise.
+    """
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """UPDATE prospects
+               SET sequence_step = ?, last_contacted_date = ?
+               WHERE id = ?""",
+            (sequence_step, last_contacted_date, prospect_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
