@@ -73,6 +73,186 @@
         </table>
     </div>
 
+    <!-- ================================================================ -->
+    <!-- FULL PIPELINE: URL → Research → Email → PDF                    -->
+    <!-- ================================================================ -->
+    <div class="pipeline-section" id="full-pipeline">
+        <div class="pipeline-header">
+            <div>
+                <h2 style="font-weight: 700; margin: 0 0 0.3rem 0; font-size: 1.5rem;">
+                    Full Outreach Pipeline
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.88rem; margin: 0;">
+                    Paste any website URL. Claude researches the company, finds competitors, writes the email, and generates the PDF proposal — all at once.
+                </p>
+            </div>
+            <span class="pipeline-badge">One-Click</span>
+        </div>
+
+        <!-- Input row -->
+        <div class="pipeline-inputs">
+            <input
+                id="pl-url"
+                type="url"
+                placeholder="https://company-website.com"
+                class="pipeline-input"
+                onfocus="this.style.borderColor='rgba(99,102,241,0.6)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
+            />
+            <input
+                id="pl-company"
+                type="text"
+                placeholder="Company name (optional)"
+                class="pipeline-input"
+                style="max-width: 240px;"
+                onfocus="this.style.borderColor='rgba(99,102,241,0.6)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
+            />
+            <button id="pl-btn" class="pipeline-run-btn" onclick="runFullPipeline()">
+                Run Full Pipeline
+            </button>
+        </div>
+
+        <!-- Progress steps -->
+        <div id="pl-steps" style="display:none;" class="pipeline-steps">
+            <div class="pl-step" id="pl-step-research">
+                <div class="pl-step-dot"></div>
+                <span>Company Research</span>
+            </div>
+            <div class="pl-step-line"></div>
+            <div class="pl-step" id="pl-step-email">
+                <div class="pl-step-dot"></div>
+                <span>Email Draft</span>
+            </div>
+            <div class="pl-step-line"></div>
+            <div class="pl-step" id="pl-step-pdf">
+                <div class="pl-step-dot"></div>
+                <span>PDF Proposal</span>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="pl-error" style="display:none; margin-top:1rem; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:1rem; color:#fca5a5; font-size:0.85rem;"></div>
+
+        <!-- Results -->
+        <div id="pl-results" style="display:none; margin-top:1.5rem;">
+
+            <!-- Row: company name + mode badge -->
+            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.4rem;">
+                <h3 id="pl-company-name" style="margin:0; font-size:1.15rem; font-weight:700; color:#f8fafc;"></h3>
+                <span id="pl-mode-badge"></span>
+                <a id="pl-url-link" href="#" target="_blank" style="color:var(--text-muted); font-size:0.78rem; text-decoration:none; margin-left:auto;">
+                    View site →
+                </a>
+            </div>
+
+            <!-- Research grid -->
+            <div style="margin-bottom:1.5rem;">
+                <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:0.75rem;">
+                    Research
+                </div>
+                <div id="pl-research-grid" class="analysis-grid"></div>
+            </div>
+
+            <!-- Two-column: Email + PDF -->
+            <div class="pl-output-grid">
+
+                <!-- Email column -->
+                <div class="pl-email-card">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+                        <div style="display:flex; align-items:center; gap:0.6rem;">
+                            <span style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#a5b4fc;">Email Draft</span>
+                            <span id="pl-angle-pill" class="angle-pill" style="font-size:0.68rem;"></span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <span id="pl-qs-badge"></span>
+                            <button
+                                onclick="copyPipelineEmail()"
+                                class="pl-copy-btn"
+                                id="pl-copy-btn"
+                            >Copy</button>
+                        </div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.04); padding:0.6rem 0.9rem; border-radius:8px; margin-bottom:1rem; font-size:0.83rem;">
+                        <span style="color:var(--text-muted); font-weight:500;">Subject:</span>
+                        <span id="pl-subject" style="color:#e2e8f0; font-weight:600; margin-left:0.35rem;"></span>
+                    </div>
+                    <div id="pl-body" style="font-size:0.84rem; color:#cbd5e1; line-height:1.8; padding-left:0.5rem; border-left:2px solid rgba(99,102,241,0.3); white-space:pre-wrap;"></div>
+                    <div id="pl-warnings" style="display:none; margin-top:0.75rem;"></div>
+                </div>
+
+                <!-- PDF column -->
+                <div class="pl-pdf-card">
+                    <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#6ee7b7; margin-bottom:1rem;">PDF Proposal</div>
+                    <div id="pl-pdf-area">
+                        <div id="pl-pdf-loading" style="color:var(--text-muted); font-size:0.85rem;">Building PDF...</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- REPLY REVIEW -->
+    <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+            <h2 style="font-weight: 500; margin: 0;">Reply Review</h2>
+            {% if reply_drafts %}
+            <span id="reply-pending-badge" style="background: rgba(16,185,129,0.15); color: #6ee7b7; font-size: 0.73rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 99px; border: 1px solid rgba(16,185,129,0.3);">
+                {{ reply_drafts|length }} pending
+            </span>
+            {% else %}
+            <span id="reply-pending-badge" style="display:none;"></span>
+            {% endif %}
+            <span style="flex:1;"></span>
+            <button
+                onclick="seedDemoReply(this)"
+                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.04)'"
+                title="Inject a test reply to preview the review UI"
+            >+ Seed demo reply</button>
+        </div>
+
+        <div id="reply-draft-list">
+        {% if reply_drafts %}
+            {% for draft in reply_drafts %}
+            <div id="reply-draft-{{ draft.id }}" class="reply-draft-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div>
+                        <span style="font-weight: 600; color: #f1f5f9;">{{ draft.prospect_name }}</span>
+                        <span style="color: var(--text-muted); margin-left: 0.5rem; font-size: 0.875rem;">{{ draft.prospect_company }}</span>
+                    </div>
+                    <span class="status-pill status-replied" style="font-size: 0.7rem; letter-spacing: 0.04em;">INTERESTED</span>
+                </div>
+
+                <div style="margin-bottom: 0.9rem;">
+                    <div class="reply-label">Their reply</div>
+                    <div class="reply-inbound">{{ (draft.inbound_body or '(no body captured)')[:400] }}{% if (draft.inbound_body or '')|length > 400 %}…{% endif %}</div>
+                </div>
+
+                <div style="margin-bottom: 1.1rem;">
+                    <div class="reply-label" style="color: #6ee7b7;">Suggested reply</div>
+                    <div class="reply-draft-body">{{ draft.drafted_reply }}</div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <button class="btn-approve" data-draft-id="{{ draft.id }}" data-action="approve" onclick="replyDraftAction(this)">Approve</button>
+                    <button class="btn-dismiss" data-draft-id="{{ draft.id }}" data-action="dismiss" onclick="replyDraftAction(this)">Dismiss</button>
+                    <span style="flex:1;"></span>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);">{{ draft.created_at[:16] }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p id="reply-empty-state" style="color: var(--text-muted); font-size: 0.9rem;">
+                No replies awaiting review. When prospects reply and are classified as interested, their drafted responses appear here.
+                Use "Seed demo reply" above to preview the UI.
+            </p>
+        {% endif %}
+        </div>
+    </div>
+
     <!-- NEW SECTION: Sample Delivery Log & Proposals -->
     <div class="stats-grid" style="grid-template-columns: 2fr 1fr; margin-top: 2rem; margin-bottom: 2rem;">
         <div class="table-container">
@@ -480,6 +660,173 @@
         </div>
     </div>
     <script>
+    // ================================================================== //
+    // FULL PIPELINE                                                       //
+    // ================================================================== //
+
+    function plSetStep(stepId, state) {
+        // state: 'active' | 'done' | 'error' | 'idle'
+        const el = document.getElementById(stepId);
+        if (!el) return;
+        const dot = el.querySelector('.pl-step-dot');
+        const colors = {
+            idle:   { dot: 'rgba(255,255,255,0.1)',  text: 'var(--text-muted)', border: 'rgba(255,255,255,0.1)' },
+            active: { dot: '#6366f1',                 text: '#f8fafc',           border: 'rgba(99,102,241,0.5)' },
+            done:   { dot: '#10b981',                 text: '#6ee7b7',           border: 'rgba(16,185,129,0.4)' },
+            error:  { dot: '#ef4444',                 text: '#fca5a5',           border: 'rgba(239,68,68,0.4)'  },
+        };
+        const c = colors[state] || colors.idle;
+        dot.style.background  = c.dot;
+        dot.style.boxShadow   = state === 'active' ? '0 0 10px rgba(99,102,241,0.7)' : 'none';
+        el.style.color        = c.text;
+        el.style.borderColor  = c.border;
+    }
+
+    function plResetSteps() {
+        ['pl-step-research','pl-step-email','pl-step-pdf'].forEach(id => plSetStep(id, 'idle'));
+    }
+
+    async function runFullPipeline() {
+        const url     = document.getElementById('pl-url').value.trim();
+        const company = document.getElementById('pl-company').value.trim();
+
+        if (!url) { document.getElementById('pl-url').focus(); return; }
+
+        // Reset UI
+        document.getElementById('pl-error').style.display   = 'none';
+        document.getElementById('pl-results').style.display = 'none';
+        document.getElementById('pl-steps').style.display   = 'flex';
+        document.getElementById('pl-btn').disabled = true;
+        document.getElementById('pl-btn').textContent = 'Running...';
+        plResetSteps();
+
+        // Animate steps as server progresses
+        plSetStep('pl-step-research', 'active');
+        // (email + pdf steps activate after response comes back)
+
+        try {
+            const resp = await fetch('/api/full-pipeline', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ url, company }),
+            });
+            const d = await resp.json();
+
+            if (!resp.ok || d.error) {
+                const failed = d.step || 'research';
+                plSetStep('pl-step-' + failed, 'error');
+                document.getElementById('pl-error').style.display = 'block';
+                document.getElementById('pl-error').textContent = d.error || 'Pipeline failed.';
+                return;
+            }
+
+            // Mark steps done
+            plSetStep('pl-step-research', 'done');
+            plSetStep('pl-step-email',    d.email.subject ? 'done' : 'error');
+            plSetStep('pl-step-pdf',      d.pdf.url ? 'done' : (d.pdf.error ? 'error' : 'idle'));
+
+            // Show results panel
+            const results = document.getElementById('pl-results');
+            results.style.display = 'block';
+
+            // Company + mode
+            document.getElementById('pl-company-name').textContent = d.company || 'Company';
+            const link = document.getElementById('pl-url-link');
+            link.href = d.url;
+            link.textContent = 'View site →';
+
+            const modeBadge = document.getElementById('pl-mode-badge');
+            if (d.mode === 'ai') {
+                modeBadge.textContent = 'AI';
+                modeBadge.style.cssText = 'padding:0.2rem 0.75rem;border-radius:12px;font-size:0.7rem;font-weight:700;background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);';
+            } else {
+                modeBadge.textContent = 'Template';
+                modeBadge.style.cssText = 'padding:0.2rem 0.75rem;border-radius:12px;font-size:0.7rem;font-weight:700;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);';
+            }
+
+            // Research grid
+            const grid = document.getElementById('pl-research-grid');
+            grid.innerHTML = '';
+            const fields = [
+                ['Niche',           d.research.niche],
+                ['ICP',             d.research.icp],
+                ['Headline',        d.research.headline],
+                ['Key Feature',     d.research.product_feature],
+                ['Competitors',     d.research.competitors],
+                ['Pain Point',      d.research.pain_point],
+                ['Growth Signal',   d.research.growth_signal],
+                ['Opening Hook',    d.research.hook],
+            ];
+            fields.forEach(([label, value]) => {
+                if (!value) return;
+                const card = document.createElement('div');
+                card.className = 'analysis-item';
+                card.innerHTML = `<div class="analysis-label">${escHtml(label)}</div><div class="analysis-value">${escHtml(value)}</div>`;
+                grid.appendChild(card);
+            });
+
+            // Email
+            document.getElementById('pl-subject').textContent = d.email.subject;
+            document.getElementById('pl-body').textContent    = d.email.body;
+            document.getElementById('pl-angle-pill').textContent = d.angle || '';
+
+            const qsBadge = document.getElementById('pl-qs-badge');
+            const qs = d.email.quality_score || 0;
+            qsBadge.textContent = `QS ${qs}/100`;
+            qsBadge.style.cssText = 'padding:0.2rem 0.65rem;border-radius:10px;font-size:0.68rem;font-weight:700;' + (
+                qs >= 80 ? 'background:rgba(16,185,129,0.15);color:#6ee7b7;' :
+                qs >= 60 ? 'background:rgba(251,191,36,0.15);color:#fbbf24;' :
+                           'background:rgba(239,68,68,0.15);color:#f87171;'
+            );
+
+            if (d.email.warnings && d.email.warnings.length) {
+                const wEl = document.getElementById('pl-warnings');
+                wEl.style.display = 'block';
+                wEl.innerHTML = d.email.warnings.map(w =>
+                    `<div style="font-size:0.78rem;color:#fbbf24;margin-bottom:0.25rem;">⚠ ${escHtml(w)}</div>`
+                ).join('');
+            }
+
+            // PDF
+            const pdfArea = document.getElementById('pl-pdf-area');
+            if (d.pdf.url) {
+                pdfArea.innerHTML = `
+                    <a href="${escHtml(d.pdf.url)}" target="_blank" class="pl-pdf-link">
+                        <span style="font-size:2rem; display:block; margin-bottom:0.6rem;">📄</span>
+                        <span style="font-weight:700; color:#6ee7b7; font-size:0.9rem;">${escHtml(d.pdf.filename)}</span>
+                        <span style="display:block; font-size:0.75rem; color:var(--text-muted); margin-top:0.3rem;">Click to open PDF</span>
+                    </a>
+                `;
+            } else {
+                pdfArea.innerHTML = `<div style="color:#fca5a5;font-size:0.84rem;">PDF failed: ${escHtml(d.pdf.error || 'unknown error')}</div>`;
+            }
+
+            results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        } catch (err) {
+            document.getElementById('pl-error').style.display = 'block';
+            document.getElementById('pl-error').textContent = 'Network error — is the server running?';
+            plSetStep('pl-step-research', 'error');
+        } finally {
+            document.getElementById('pl-btn').disabled = false;
+            document.getElementById('pl-btn').textContent = 'Run Full Pipeline';
+        }
+    }
+
+    function copyPipelineEmail() {
+        const subject = document.getElementById('pl-subject').textContent;
+        const body    = document.getElementById('pl-body').textContent;
+        navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`).then(() => {
+            const btn = document.getElementById('pl-copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+        });
+    }
+
+    document.getElementById('pl-url').addEventListener('keydown', e => {
+        if (e.key === 'Enter') runFullPipeline();
+    });
+
     // ------------------------------------------------------------------ //
     // URL → Email Generator                                               //
     // ------------------------------------------------------------------ //
@@ -818,6 +1165,71 @@
     document.getElementById('url-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') generateEmailFromUrl();
     });
+
+    // ------------------------------------------------------------------ //
+    // Reply draft review                                                  //
+    // ------------------------------------------------------------------ //
+    async function replyDraftAction(btn) {
+        const draftId = btn.dataset.draftId;
+        const action  = btn.dataset.action;
+        const card    = document.getElementById('reply-draft-' + draftId);
+        const orig    = btn.textContent;
+
+        btn.disabled    = true;
+        btn.textContent = action === 'approve' ? 'Approving…' : 'Dismissing…';
+
+        try {
+            const resp = await fetch('/api/reply-drafts/' + draftId + '/action', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ action }),
+            });
+            const data = await resp.json();
+            if (data.error) {
+                alert(data.error);
+                btn.disabled    = false;
+                btn.textContent = orig;
+                return;
+            }
+            // Fade card out then remove
+            card.style.transition = 'opacity 0.3s';
+            card.style.opacity    = '0';
+            setTimeout(() => {
+                card.remove();
+                const remaining = document.querySelectorAll('[id^="reply-draft-"]').length;
+                const badge     = document.getElementById('reply-pending-badge');
+                if (remaining > 0) {
+                    if (badge) badge.textContent = remaining + ' pending';
+                } else {
+                    if (badge) badge.style.display = 'none';
+                    const list = document.getElementById('reply-draft-list');
+                    list.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">All caught up. No replies awaiting review.</p>';
+                }
+            }, 300);
+        } catch (err) {
+            alert('Network error.');
+            btn.disabled    = false;
+            btn.textContent = orig;
+        }
+    }
+
+    async function seedDemoReply(btn) {
+        const orig   = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Seeding…';
+        try {
+            const resp = await fetch('/api/seed-demo-reply', { method: 'POST' });
+            const data = await resp.json();
+            if (data.error) { alert(data.error); return; }
+            // Reload to show the new card
+            window.location.reload();
+        } catch (err) {
+            alert('Network error.');
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = orig;
+        }
+    }
     document.getElementById('deck-url-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') generateDeckFromUrl();
     });

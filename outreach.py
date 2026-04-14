@@ -65,9 +65,6 @@ SIGNAL_KEYWORDS = {
     "warm_intro": {"intro", "warm", "referred", "recommend", "recommended"},
 }
 
-OPT_OUT_LINE = (
-    "If not relevant, reply no thanks."
-)
 PRIMARY_ANGLES = (
     "positioning",
     "hiring signal",
@@ -120,14 +117,13 @@ def _operator_market_label(prospect: dict, analysis: dict) -> str:
     """Return a concise market label for operator-style outreach."""
     niche = _clean(prospect.get("niche")) or _clean(analysis.get("company_positioning"))
     icp = _clean(prospect.get("icp")) or _clean(analysis.get("target_customer"))
-    company = _clean(prospect.get("company")) or "this company"
     low = f"{niche} {icp}".lower()
 
     if any(word in low for word in ("studio", "photography", "photo booth", "wedding")):
         return "studios"
     if any(word in low for word in ("agency", "creative", "design", "branding")):
         return "agencies"
-    if any(word in low for word in ("saas", "software", "crm", "platform")):
+    if any(word in low for word in ("saas", "software", "crm", "platform", "analytics", "data", "ops", "tool")):
         return "SaaS teams"
     if any(word in low for word in ("cyber", "security vendor", "security vendors")):
         return "cybersecurity vendors"
@@ -141,9 +137,15 @@ def _operator_market_label(prospect: dict, analysis: dict) -> str:
         return "advisory firms"
     if any(word in low for word in ("coach", "coaching", "learning", "training", "education")):
         return "coaching businesses"
-    if any(word in low for word in ("consult", "advisor", "coach")):
+    if any(word in low for word in ("consult", "advisor")):
         return "consultancies"
-    return "teams in this market"
+    if any(word in low for word in ("ecommerce", "e-commerce", "retail", "shopify", "store")):
+        return "ecommerce brands"
+    if any(word in low for word in ("recruit", "hiring", "talent", "staffing")):
+        return "recruiting firms"
+    if any(word in low for word in ("real estate", "property", "realty")):
+        return "real estate teams"
+    return "B2B teams"
 
 
 def _possessive(name: str) -> str:
@@ -153,28 +155,103 @@ def _possessive(name: str) -> str:
     return f"{name}'" if name.endswith("s") else f"{name}'s"
 
 
-def _operator_truth(angle: str, market_label: str) -> str:
-    """Return a blunt market truth based on the chosen angle."""
-    truths = {
-        "hiring signal": "New hires do not fix demand. They expose the gap faster.",
-        "competitor": f"Most {market_label} do not lose on offer. They lose on who gets to buyers first.",
-        "outbound gap": f"Most {market_label} rely on referrals and inbound. That is not a pipeline, it is drift.",
-        "product feature": "A sharp offer still gets ignored if nobody is putting it in front of the right buyers.",
-        "ICP mismatch": "A defined buyer is wasted if the outreach still feels broad.",
-        "funnel weakness": "When one channel carries demand, growth gets fragile fast.",
-        "positioning": f"Clear positioning is useless if it never leaves the website.",
-    }
-    return truths.get(angle, f"Most {market_label} rely on inbound longer than they should.")
+def _market_truth_opener(market_label: str, angle: str, prospect: dict) -> str:
+    """
+    Open with how businesses in this space typically grow — empathetically,
+    not critically. Sets up the tension line that follows.
+    """
+    low = market_label.lower()
+    ad  = (prospect.get("ad_status") or "").lower()
+
+    if angle == "hiring signal":
+        return (
+            f"Most {market_label} scale the same way: bring on headcount and assume "
+            f"the pipeline will follow."
+        )
+    if angle == "funnel weakness" or ad == "running_ads":
+        return (
+            f"Most {market_label} build their pipeline through paid channels — "
+            f"which works well until the budget changes."
+        )
+    if "studio" in low or "photography" in low or "photo" in low:
+        return (
+            f"Most photography studios grow the same way: word of mouth, "
+            f"the occasional referral, waiting for the right inquiry to land."
+        )
+    if "agency" in low or "creative" in low or "design" in low:
+        return (
+            f"Most agencies fill their pipeline the same way: referrals, "
+            f"the occasional warm intro, and hoping the right project comes through."
+        )
+    if "saas" in low or "software" in low or "platform" in low:
+        return (
+            f"Most SaaS teams build early pipeline through content and inbound — "
+            f"which works until growth targets change."
+        )
+    if "clinic" in low or "health" in low or "dental" in low or "med" in low:
+        return (
+            f"Most healthcare practices grow through referrals, reviews, "
+            f"and hoping the right patient finds them."
+        )
+    if "law" in low or "legal" in low or "attorney" in low:
+        return (
+            f"Most law firms grow through referrals and reputation — "
+            f"which works until a competitor with a better pipeline shows up."
+        )
+    if "logistics" in low or "freight" in low or "shipping" in low:
+        return (
+            f"Most logistics companies grow through relationships and industry contacts — "
+            f"which works until the market tightens."
+        )
+    if "advisory" in low or "account" in low or "cpa" in low:
+        return (
+            f"Most advisory firms grow through referrals and word of mouth — "
+            f"which works until the referral network dries up."
+        )
+    if "coaching" in low or "coach" in low or "training" in low:
+        return (
+            f"Most coaching businesses grow through content, word of mouth, "
+            f"and the occasional launch — until they need a more predictable pipeline."
+        )
+    if "consult" in low:
+        return (
+            f"Most consultancies grow through relationships and referrals — "
+            f"which works until you want to grow faster than your network allows."
+        )
+    return (
+        f"Most {market_label} grow the same way: referrals, warm intros, "
+        f"and a few channels that work well — until they plateau."
+    )
 
 
-def _operator_offer(market_label: str) -> str:
-    """Return a blunt explanation of the service."""
-    return f"We build outbound pipelines for {market_label}. Custom emails, real prospects, booked calls."
+def _tension_line(angle: str, prospect: dict) -> str:
+    """Short isolated tension line. One sentence. Stands alone."""
+    ad   = (prospect.get("ad_status") or "").lower()
+    outb = (prospect.get("outbound_status") or "").lower()
+
+    if angle == "hiring signal":
+        return "That changes when you bring on headcount."
+    if angle == "funnel weakness" or (ad == "running_ads" and outb == "no_outbound"):
+        return "It works — until the budget pauses. Then so does the pipeline."
+    if angle == "competitor":
+        return "It works — until a competitor with a structured outbound motion shows up first."
+    return "It works — until it doesn't."
 
 
-def _operator_risk_reversal(company: str) -> str:
-    """Return a simple risk-reversal line."""
-    return f"I'm opening 5 pilot slots this month. {company} is on the shortlist."
+def _mechanism_line() -> str:
+    """Plain-English explanation of what the service actually does."""
+    return (
+        "That means researching real prospects, writing messages that don't sound like blasts, "
+        "and getting you on calls with people who are actually a fit."
+    )
+
+
+def _operator_risk_reversal(company: str, market_label: str) -> str:
+    """Risk-free pilot framing with personal selection."""
+    return (
+        f"We're opening this up to 5 {market_label} for free to prove it works. "
+        f"{company}\u2019s one of the ones I had in mind."
+    )
 
 
 def _detect_signals(notes: str) -> dict:
@@ -306,20 +383,29 @@ def choose_primary_angle(analysis: dict) -> str:
 
 
 def _weak_data_email(prospect: dict, analysis: dict) -> dict:
-    """Return a short operator-style email when evidence is thin."""
-    first = _first_name(prospect.get("name", "there"))
-    company = prospect.get("company", "your company")
+    """
+    Fallback email for thin-data prospects.
+    Uses the new conversational structure without data-specific claims.
+    """
+    first        = _first_name(prospect.get("name", "there"))
+    company      = prospect.get("company", "your company")
     market_label = _operator_market_label(prospect, analysis)
-    subject = f"{company} outbound"
+    truth        = _market_truth_opener(market_label, "outbound gap", prospect)
+    tension      = _tension_line("outbound gap", prospect)
+    mechanism    = _mechanism_line()
+    reversal     = _operator_risk_reversal(company, market_label)
+
+    subject = f"outbound for {company}"
     body = (
         f"Hi {first},\n\n"
-        f"{company} already looks specific enough to sell directly.\n"
-        f"Most {market_label} still lean on inbound. That is not a growth plan.\n"
-        f"{_operator_offer(market_label)}\n"
-        f"{_operator_risk_reversal(company)}\n"
-        f"If it sounds useful, grab a time here: {CALENDAR_LINK}\n\n"
-        f"{OPT_OUT_LINE}\n\n"
-        f"[Name]"
+        f"{truth}\n\n"
+        f"{tension}\n\n"
+        f"We build outbound pipelines specifically for {market_label} like {company}. "
+        f"{mechanism}\n\n"
+        f"{reversal}\n\n"
+        f"Worth a 15-minute call?\n\n"
+        f"{CALENDAR_LINK}\n\n"
+        f"\u2014 [Name]"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
 
@@ -331,61 +417,53 @@ def _build_data_driven_email(
     rewrite_pass: int = 0,
 ) -> dict:
     """
-    Build an email from structured analysis and a single primary angle.
-    """
-    first = _first_name(prospect.get("name", "there"))
-    company = prospect.get("company", "your company")
-    positioning = analysis.get("company_positioning") or company
-    icp = analysis.get("target_customer") or "their buyer"
-    feature = analysis.get("key_offer_or_feature") or positioning
-    recent_signal = analysis.get("recent_signal") or ""
-    competitor = analysis.get("relevant_competitor") or ""
-    possible_gap = analysis.get("possible_gap") or ""
+    Build a conversational cold email from structured analysis and one primary angle.
 
+    Structure:
+      1. Market truth opener   — describes their growth model empathetically
+      2. Tension line          — short, isolated, punchy
+      3. What we do + mechanism — names the company specifically
+      4. Risk reversal          — pilot framing + personal selection
+      5. CTA as soft question   — "Worth a 15-minute call?"
+      6. Calendar link on its own line
+      7. Sign-off — [Name]
+    """
+    first        = _first_name(prospect.get("name", "there"))
+    company      = prospect.get("company", "your company")
     market_label = _operator_market_label(prospect, analysis)
 
-    if angle == "hiring signal":
-        subject = f"{company} hiring"
-        opening = f"{company} is {recent_signal}."
-    elif angle == "competitor":
-        subject = f"{company} and {competitor}"
-        opening = f"{competitor} is already in the lane with {company}."
-    elif angle == "outbound gap":
-        subject = f"{company} outbound"
-        opening = f"{company} looks built for direct outbound."
-    elif angle == "product feature":
-        feature_words = " ".join(feature.split()[:4]).strip()
-        subject = f"{company} {feature_words}".strip()
-        opening = f"{_possessive(company)} {feature} is the kind of offer that should travel well in cold outreach."
-    elif angle == "funnel weakness":
-        subject = f"{company} funnel"
-        opening = f"{company} looks too dependent on paid demand."
-    elif angle == "ICP mismatch":
-        subject = f"{company} ICP"
-        opening = f"{company} already knows the buyer: {icp}."
-    else:
-        subject = f"{company} positioning"
-        opening = f"{company} is positioned around {positioning}."
+    # Subject — short, personal, angle-aware
+    recent_signal = analysis.get("recent_signal") or ""
+    competitor    = analysis.get("relevant_competitor") or ""
 
-    truth = _operator_truth(angle, market_label)
-    offer = _operator_offer(market_label)
-    risk_reversal = _operator_risk_reversal(company)
-    ctas = [
-        f"If it sounds useful, grab a time here: {CALENDAR_LINK}",
-        f"If it is worth 15 minutes, book here: {CALENDAR_LINK}",
-        f"If you want to see it, grab a slot here: {CALENDAR_LINK}",
-    ]
-    cta = ctas[min(rewrite_pass, len(ctas) - 1)]
+    if angle == "hiring signal" and recent_signal:
+        subject = f"outbound for {company}"
+    elif angle == "competitor" and competitor:
+        subject = f"{company}"
+    elif angle == "outbound gap":
+        subject = f"outbound for {company}"
+    elif angle == "product feature":
+        subject = f"{company}"
+    elif rewrite_pass > 0:
+        subject = f"quick question, {first}"
+    else:
+        subject = f"outbound for {company}"
+
+    truth     = _market_truth_opener(market_label, angle, prospect)
+    tension   = _tension_line(angle, prospect)
+    mechanism = _mechanism_line()
+    reversal  = _operator_risk_reversal(company, market_label)
 
     body = (
         f"Hi {first},\n\n"
-        f"{opening}\n"
-        f"{truth}\n"
-        f"{offer}\n"
-        f"{risk_reversal}\n"
-        f"{cta}\n\n"
-        f"{OPT_OUT_LINE}\n\n"
-        f"[Name]"
+        f"{truth}\n\n"
+        f"{tension}\n\n"
+        f"We build outbound pipelines specifically for {market_label} like {company}. "
+        f"{mechanism}\n\n"
+        f"{reversal}\n\n"
+        f"Worth a 15-minute call?\n\n"
+        f"{CALENDAR_LINK}\n\n"
+        f"\u2014 [Name]"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}
 

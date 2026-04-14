@@ -1,22 +1,18 @@
 """
-pdf_generator.py — Sharp Growth Breakdown PDF Generator
-========================================================
-Produces a sales document disguised as analysis.
+pdf_generator.py — Dark Deck-Style PDF Proposal Generator
+==========================================================
+Produces a 5-page dark-background sales document structured like a pitch deck:
 
-NOT a report. NOT a consultant deck. NOT agency fluff.
+  Page 1  Cover           — company, niche, 3 outcome metrics
+  Page 2  THE PROBLEM     — why current acquisition caps the pipeline
+  Page 3  MARKET REALITY  — competitor context, first-contact framing
+  Page 4  THE SYSTEM      — numbered approach steps
+  Page 5  PILOT + CTA     — risk-reversal metrics, booking CTA
 
-It must feel like: "They understand our business, they found the gap,
-and they know how to fix it."
-
-8-section structure:
-  Cover               Growth Breakdown for [Company]
-  01  Current Situation
-  02  The Ceiling
-  03  Market Reality
-  04  Our Approach
-  05  Expected Outcomes  (metrics panel)
-  06  Risk-Free 30-Day Pilot
-  CTA page            Standalone closer with styled button
+Content rules (unchanged):
+  - evidence-first, one angle per document
+  - tension language required in problem/market sections
+  - banned phrases block generic copy
 
 Required input fields:
   company, name, niche, icp, website_headline,
@@ -25,9 +21,6 @@ Required input fields:
 Optional (improve specificity):
   product_feature, competitors, hiring_signal,
   linkedin_activity, notable_result, notes (Research Hook)
-
-Validation: each section is checked for banned phrases,
-            mandatory tension, and at least one memorable line before rendering.
 """
 
 import os
@@ -36,59 +29,61 @@ from datetime import date
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.lib.colors import HexColor, white, black
+from reportlab.lib.colors import HexColor, white
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, PageBreak,
-    HRFlowable, Table, TableStyle,
+    Table, TableStyle,
 )
 
 from database import DB_PATH, get_all_prospects
 
 OUTPUT_DIR = "proposals"
 
-# ---------------------------------------------------------------------------
-# Palette
-# ---------------------------------------------------------------------------
-C_INK      = HexColor('#0f172a')
-C_BODY     = HexColor('#1e293b')
-C_MUTED    = HexColor('#64748b')
-C_ACCENT   = HexColor('#3b82f6')
-C_INDIGO   = HexColor('#6366f1')
-C_DANGER   = HexColor('#dc2626')
-C_RULE     = HexColor('#e2e8f0')
-C_COVER    = HexColor('#0f172a')
-C_COVER_HL = HexColor('#818cf8')
-C_PANEL    = HexColor('#f8fafc')
-C_METRIC   = HexColor('#0f172a')
+# ─── Palette ────────────────────────────────────────────────────────────────
+C_BG      = HexColor('#0f172a')   # page background (very dark navy)
+C_CARD    = HexColor('#1e293b')   # card / cell background
+C_CARD2   = HexColor('#162032')   # alt card (slightly darker)
+C_BORDER  = HexColor('#334155')   # card border
+C_TEXT    = HexColor('#f1f5f9')   # primary white text
+C_MUTED   = HexColor('#94a3b8')   # secondary muted text
+C_FOOTER  = HexColor('#475569')   # footer line text
+
+# Section accent colours (top bar + label + highlights)
+C_INDIGO  = HexColor('#6366f1')   # cover
+C_ORANGE  = HexColor('#f97316')   # the problem
+C_GREEN   = HexColor('#10b981')   # market reality
+C_PURPLE  = HexColor('#8b5cf6')   # the system
+C_RED     = HexColor('#ef4444')   # cta
+
+# Metric card number colours (one per metric slot)
+C_M1 = HexColor('#a78bfa')   # purple  — calls
+C_M2 = HexColor('#fb923c')   # orange  — days
+C_M3 = HexColor('#22d3ee')   # cyan    — cost
+
+# Per-page top bar colours (index = page number - 1)
+_PAGE_BAR = [C_INDIGO, C_ORANGE, C_GREEN, C_PURPLE, C_RED]
 
 SENDER_NAME    = "LeadGen AI"
 SENDER_EMAIL   = "hello@leadgenai.com"
 SENDER_WEBSITE = "www.leadgenai.com"
 CTA_LINK       = "calendly.com/leadgenai/30min"
 
-# ---------------------------------------------------------------------------
-# Banned phrases — any section containing these will fail validation
-# ---------------------------------------------------------------------------
+# ─── Banned / validation lists (unchanged) ──────────────────────────────────
 BANNED_PHRASES = [
-    # Hedging / consultant-speak
     "it appears", "based on available data", "may indicate",
     "could suggest", "this indicates", "this suggests",
     "likely dependent on", "appears to rely on",
     "likely could", "seemingly", "seems like", "might be",
     "could be", "it is worth noting",
-    # Passive openers
     "we noticed", "it looks like",
-    # Cliches
     "in today's competitive landscape", "current acquisition model",
     "worth exploring", "leverage", "synergies",
     "unlock growth opportunities", "holistic",
     "robust framework", "end-to-end",
     "this approach has a ceiling",
 ]
-
-# Tension markers — at least one must appear in sections that require tension
 TENSION_MARKERS = [
     "caps your", "caps growth", "this caps", "hard.",
     "pipeline stops", "invisible", "first contact",
@@ -102,8 +97,6 @@ TENSION_MARKERS = [
     "volume without precision", "immediately.",
     "before they start searching",
 ]
-
-# Memorable line markers — short, punchy phrases that prove the section is scannable
 MEMORABLE_MARKERS = [
     "hard.", "you do not.", "you do not exist", "this caps",
     "caps your", "not a system.", "no backup.", "rented growth.",
@@ -118,157 +111,97 @@ MEMORABLE_MARKERS = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Styles
-# ---------------------------------------------------------------------------
+# ─── Styles ─────────────────────────────────────────────────────────────────
 
 def _styles():
     b = getSampleStyleSheet()
+    def S(name, **kw):
+        return ParagraphStyle(name, parent=b['Normal'], **kw)
+
     return {
-        # --- COVER (dark bg) ---
-        'cv_eyebrow':   ParagraphStyle('cv_eyebrow', parent=b['Normal'],
-                            fontSize=9, textColor=C_INDIGO,
-                            fontName='Helvetica-Bold', spaceAfter=10),
-        'cv_h1':        ParagraphStyle('cv_h1', parent=b['Normal'],
-                            fontSize=36, textColor=white,
-                            fontName='Helvetica-Bold', leading=44, spaceAfter=14),
-        'cv_sub':       ParagraphStyle('cv_sub', parent=b['Normal'],
-                            fontSize=14, textColor=HexColor('#94a3b8'),
-                            fontName='Helvetica', leading=20, spaceAfter=28),
-        'cv_company':   ParagraphStyle('cv_company', parent=b['Normal'],
-                            fontSize=22, textColor=C_COVER_HL,
-                            fontName='Helvetica-Bold', spaceAfter=36),
-        'cv_meta':      ParagraphStyle('cv_meta', parent=b['Normal'],
-                            fontSize=10, textColor=HexColor('#94a3b8'),
-                            fontName='Helvetica', spaceAfter=5),
-        'cv_wi_head':   ParagraphStyle('cv_wi_head', parent=b['Normal'],
-                            fontSize=8, textColor=HexColor('#94a3b8'),
-                            fontName='Helvetica-Bold', spaceAfter=6),
-        'cv_wi_item':   ParagraphStyle('cv_wi_item', parent=b['Normal'],
-                            fontSize=10, textColor=white,
-                            fontName='Helvetica', leading=16, spaceAfter=4),
+        # Cover
+        'cv_badge':    S('cv_badge',  fontSize=8,  textColor=white, fontName='Helvetica-Bold',
+                          spaceBefore=0, spaceAfter=14),
+        'cv_h1':       S('cv_h1',    fontSize=30, textColor=C_TEXT, fontName='Helvetica-Bold',
+                          leading=38, spaceAfter=10),
+        'cv_sub':      S('cv_sub',   fontSize=12, textColor=C_MUTED, fontName='Helvetica',
+                          leading=18, spaceAfter=6),
+        'cv_meta':     S('cv_meta',  fontSize=9,  textColor=C_MUTED, fontName='Helvetica',
+                          spaceAfter=4),
 
-        # --- BODY SECTIONS ---
-        'sec_num':      ParagraphStyle('sec_num', parent=b['Normal'],
-                            fontSize=9, textColor=C_ACCENT,
-                            fontName='Helvetica-Bold', spaceBefore=24, spaceAfter=2),
-        'sec_title':    ParagraphStyle('sec_title', parent=b['Normal'],
-                            fontSize=20, textColor=C_INK,
-                            fontName='Helvetica-Bold', leading=26, spaceAfter=10),
-        'body':         ParagraphStyle('body', parent=b['Normal'],
-                            fontSize=11, textColor=C_BODY,
-                            fontName='Helvetica', leading=17, spaceAfter=8),
-        'label':        ParagraphStyle('label', parent=b['Normal'],
-                            fontSize=8, textColor=C_MUTED,
-                            fontName='Helvetica-Bold', spaceBefore=8, spaceAfter=3),
-        'bullet':       ParagraphStyle('bullet', parent=b['Normal'],
-                            fontSize=11, textColor=C_BODY,
-                            fontName='Helvetica', leading=17,
-                            leftIndent=12, spaceAfter=5),
-        'tension':      ParagraphStyle('tension', parent=b['Normal'],
-                            fontSize=13, textColor=C_DANGER,
-                            fontName='Helvetica-Bold', leading=19,
-                            spaceBefore=6, spaceAfter=8),
-        'takeaway':     ParagraphStyle('takeaway', parent=b['Normal'],
-                            fontSize=12, textColor=C_INDIGO,
-                            fontName='Helvetica-Bold', leading=18,
-                            spaceBefore=6, spaceAfter=10),
+        # Section labels / titles
+        'sec_label':   S('sec_label', fontSize=8,  textColor=C_MUTED, fontName='Helvetica-Bold',
+                          spaceBefore=0, spaceAfter=8, letterSpacing=1.4),
+        'sec_title':   S('sec_title', fontSize=22, textColor=C_TEXT, fontName='Helvetica-Bold',
+                          leading=28, spaceAfter=14),
 
-        # --- METRICS ---
-        'metric_num':   ParagraphStyle('metric_num', parent=b['Normal'],
-                            fontSize=28, textColor=C_ACCENT,
-                            fontName='Helvetica-Bold', leading=32,
-                            alignment=TA_CENTER, spaceAfter=2),
-        'metric_lbl':   ParagraphStyle('metric_lbl', parent=b['Normal'],
-                            fontSize=9, textColor=C_MUTED,
-                            fontName='Helvetica', leading=13,
-                            alignment=TA_CENTER),
+        # Card content
+        'card_head':   S('card_head', fontSize=10, textColor=C_TEXT, fontName='Helvetica-Bold',
+                          leading=14, spaceAfter=4),
+        'card_body':   S('card_body', fontSize=9,  textColor=C_MUTED, fontName='Helvetica',
+                          leading=14, spaceAfter=0),
+        'card_num':    S('card_num',  fontSize=10, textColor=C_MUTED, fontName='Helvetica-Bold',
+                          spaceAfter=6),
 
-        # --- CTA PAGE ---
-        'cta_h1':       ParagraphStyle('cta_h1', parent=b['Normal'],
-                            fontSize=22, textColor=C_INK,
-                            fontName='Helvetica-Bold', leading=30,
-                            alignment=TA_CENTER, spaceAfter=12),
-        'cta_body':     ParagraphStyle('cta_body', parent=b['Normal'],
-                            fontSize=11, textColor=C_MUTED,
-                            fontName='Helvetica', leading=18,
-                            alignment=TA_CENTER, spaceAfter=8),
-        'cta_btn':      ParagraphStyle('cta_btn', parent=b['Normal'],
-                            fontSize=12, textColor=white,
-                            fontName='Helvetica-Bold', alignment=TA_CENTER),
-        'cta_pricing':  ParagraphStyle('cta_pricing', parent=b['Normal'],
-                            fontSize=10, textColor=C_MUTED,
-                            fontName='Helvetica', alignment=TA_CENTER,
-                            spaceBefore=10, spaceAfter=4),
-        'contact':      ParagraphStyle('contact', parent=b['Normal'],
-                            fontSize=9, textColor=C_MUTED,
-                            fontName='Helvetica', alignment=TA_CENTER,
-                            spaceAfter=3),
+        # Tension / kicker lines
+        'tension':     S('tension',  fontSize=12, textColor=C_ORANGE, fontName='Helvetica-Bold',
+                          leading=17, spaceBefore=10, spaceAfter=4),
+        'takeaway':    S('takeaway', fontSize=12, textColor=C_RED, fontName='Helvetica-Bold',
+                          leading=17, spaceBefore=4, spaceAfter=4),
+        'takeaway_sub':S('takeaway_sub', fontSize=9, textColor=HexColor('#fca5a5'),
+                          fontName='Helvetica', leading=14, spaceAfter=0),
+
+        # Metrics
+        'met_num':     S('met_num',  fontSize=32, fontName='Helvetica-Bold',
+                          alignment=TA_LEFT, leading=36, spaceAfter=2),
+        'met_lbl':     S('met_lbl',  fontSize=9,  textColor=C_MUTED, fontName='Helvetica',
+                          leading=13, spaceAfter=0),
+
+        # CTA page
+        'cta_h1':      S('cta_h1',  fontSize=20, textColor=C_RED, fontName='Helvetica-Bold',
+                          leading=26, spaceAfter=14),
+        'cta_body':    S('cta_body', fontSize=10, textColor=C_MUTED, fontName='Helvetica',
+                          leading=16, spaceAfter=8),
+        'cta_btn':     S('cta_btn',  fontSize=11, textColor=white, fontName='Helvetica-Bold',
+                          alignment=TA_CENTER),
+        'cta_price':   S('cta_price', fontSize=9, textColor=C_MUTED, fontName='Helvetica',
+                          alignment=TA_CENTER, spaceBefore=8),
     }
 
 
-# ---------------------------------------------------------------------------
-# Content validators
-# ---------------------------------------------------------------------------
+# ─── Validation ─────────────────────────────────────────────────────────────
 
-def _check_banned(text: str) -> list:
-    """Return list of banned phrases found in text."""
+def _check_banned(text):
     low = text.lower()
     return [p for p in BANNED_PHRASES if p in low]
 
-
-def _has_tension(text: str) -> bool:
-    """Return True if at least one tension marker is present."""
+def _has_tension(text):
     low = text.lower()
     return any(m in low for m in TENSION_MARKERS)
 
-
-def _has_memorable_line(text: str) -> bool:
-    """
-    Return True if the section contains at least one line worth remembering.
-    Checks known markers first, then falls back to sentence-length heuristic
-    (any sentence between 10 and 55 chars is short enough to be punchy).
-    """
+def _has_memorable_line(text):
     low = text.lower()
     if any(m in low for m in MEMORABLE_MARKERS):
         return True
-    sentences = re.split(r'[.!?]', text)
-    return any(10 < len(s.strip()) < 55 for s in sentences)
+    return any(10 < len(s.strip()) < 55 for s in re.split(r'[.!?]', text))
 
-
-def _validate_section(
-    name: str,
-    content: str,
-    require_tension: bool = False,
-    require_memorable: bool = False,
-) -> list:
-    """Return list of validation errors for a section."""
+def _validate_section(name, content, require_tension=False, require_memorable=False):
     errors = []
     banned = _check_banned(content)
     if banned:
         errors.append(f"[{name}] Banned phrases: {', '.join(banned)}")
     if require_tension and not _has_tension(content):
-        errors.append(f"[{name}] No tension line found. Add consequence language.")
+        errors.append(f"[{name}] No tension line found.")
     if require_memorable and not _has_memorable_line(content):
-        errors.append(
-            f"[{name}] No memorable line found. "
-            "Every section needs one short, punchy sentence."
-        )
+        errors.append(f"[{name}] No memorable line found.")
     if len(content) < 80:
-        errors.append(f"[{name}] Content too short — may be generic or empty.")
+        errors.append(f"[{name}] Content too short.")
     return errors
 
-
-# ---------------------------------------------------------------------------
-# Input validation
-# ---------------------------------------------------------------------------
-
 REQUIRED_FIELDS = ['company', 'name']
-ENRICHMENT_ANY  = ['niche', 'website_headline', 'notes']   # at least one required
+ENRICHMENT_ANY  = ['niche', 'website_headline', 'notes']
 
-
-def _validate_input(p: dict) -> tuple:
-    """Returns (ok: bool, reason: str)."""
+def _validate_input(p):
     missing = [f for f in REQUIRED_FIELDS if not (p.get(f) or '').strip()]
     if missing:
         return False, f"Missing required fields: {missing}"
@@ -276,21 +209,18 @@ def _validate_input(p: dict) -> tuple:
                      '[Research Hook]' in (p.get('notes') or '')
     if not has_enrichment:
         return False, (
-            f"'{p.get('company')}' has no enrichment (niche, headline, or research hook). "
-            "Run research_agent first or the PDF will be generic and will not pass validation."
+            f"'{p.get('company')}' has no enrichment data. "
+            "Run research_agent first."
         )
     return True, ""
 
 
-# ---------------------------------------------------------------------------
-# Intelligence layer — build section content from enrichment data
-# ---------------------------------------------------------------------------
+# ─── Content generators (logic unchanged) ───────────────────────────────────
 
-def _infer_acquisition(p: dict) -> str:
+def _infer_acquisition(p):
     ad   = (p.get('ad_status') or '').lower()
     outb = (p.get('outbound_status') or '').lower()
     hire = (p.get('hiring_signal') or '').lower()
-
     if outb == 'active_outbound':
         return "some structured outbound"
     if 'sdr' in hire:
@@ -302,8 +232,7 @@ def _infer_acquisition(p: dict) -> str:
     return "inbound and referrals"
 
 
-def _situation_lines(p: dict) -> list:
-    """Return 3–5 short body lines for Current Situation, ending with a consequence line."""
+def _situation_lines(p):
     company  = p.get('company', '')
     niche    = p.get('niche', '')
     icp      = p.get('icp', '')
@@ -312,25 +241,19 @@ def _situation_lines(p: dict) -> list:
     acq      = _infer_acquisition(p)
     hire     = (p.get('hiring_signal') or '').lower()
     notes    = p.get('notes') or ''
-
     lines = []
     if niche:
-        lines.append(f"{company} operates in <b>{niche}</b>.")
+        lines.append(f"{company} operates in {niche}.")
     if icp:
         lines.append(f"Their buyers: {icp}.")
     if headline:
-        lines.append(f"Positioning: <i>\u201c{headline}\u201d</i>")
+        lines.append(f"Positioning: \u201c{headline}\u201d")
     if feature:
         lines.append(f"Core offer: {feature}.")
-
-    # Research hook opener if available
     hook_m = re.search(r"Opener:\s*(.*)", notes)
     if hook_m:
         lines.append(hook_m.group(1).strip())
-
-    lines.append(f"Current lead source: <b>{acq}</b>.")
-
-    # Consequence line — sets up The Ceiling
+    lines.append(f"Current lead source: {acq}.")
     if 'ads' in acq and 'no cold' in acq:
         lines.append("Growth that stops when the budget stops is rented growth.")
     elif 'sdr' in hire:
@@ -339,66 +262,69 @@ def _situation_lines(p: dict) -> list:
         lines.append("The outbound exists. The question is whether it is working.")
     else:
         lines.append("Right now, growth depends on someone else making the first move.")
-
     return lines
 
 
-def _ceiling_content(p: dict) -> tuple:
-    """Return (tension_line, bullets, kicker) for The Ceiling section."""
-    company = p.get('company', 'The company')
-    ad      = (p.get('ad_status') or '').lower()
-    outb    = (p.get('outbound_status') or '').lower()
-    hire    = (p.get('hiring_signal') or '').lower()
-    acq     = _infer_acquisition(p)
+def _ceiling_content(p):
+    ad   = (p.get('ad_status') or '').lower()
+    outb = (p.get('outbound_status') or '').lower()
+    hire = (p.get('hiring_signal') or '').lower()
+    acq  = _infer_acquisition(p)
+    icp  = p.get('icp') or ''
 
     if 'no outbound' in acq or (ad == 'running_ads' and outb == 'no_outbound'):
         tension = "This caps your pipeline. Hard."
         bullets = [
-            f"If they do not see your ad, they do not exist to you. "
-            f"There is no other way in.",
-            "CPAs compound as audiences saturate. "
-            "What works at \u00a330 per lead becomes \u00a390 within 18 months.",
-            f"Remove the spend and the pipeline stops. "
-            f"Not gradually \u2014 immediately.",
+            (f"{icp or 'Your buyers'} never see you" if icp else "Buyers who miss your ad never see you",
+             f"Without outbound, you only reach buyers who find you first. The rest of the market is untouched."),
+            ("Spend \u00a31 to acquire every lead",
+             "Remove the budget and the pipeline stops. Not gradually \u2014 immediately. You are renting your pipeline, not building it."),
+            ("CPAs compound as audiences saturate",
+             "What works at \u00a330 per lead becomes \u00a390 within 18 months. The ceiling drops as the audience shrinks."),
         ]
         kicker = "You are not building a pipeline. You are renting one."
 
     elif 'sdr' in hire:
         tension = "One hire is not a system."
         bullets = [
-            "Manual outreach is not repeatable. Results track who is having a good week.",
-            f"Without validated lists and sequences, the hire at {company} underperforms. "
-            f"Not their fault \u2014 the infrastructure is missing.",
-            "The bottleneck is not the person. It is what is underneath them.",
+            ("Manual outreach does not scale",
+             "Results track who is having a good week, not a repeatable system."),
+            ("No infrastructure means the hire underperforms",
+             "Not their fault \u2014 the infrastructure is missing."),
+            ("The bottleneck is not the person",
+             "It is what is underneath them."),
         ]
         kicker = "Hiring does not fix a missing system."
 
     elif 'active_outbound' in outb:
         tension = "Volume without precision is expensive noise."
         bullets = [
-            "Unstructured outreach burns contacts and produces flat response rates.",
-            "Without enrichment and reply handling, more sends just means more ignored messages.",
-            "More volume is not the fix. More precision is.",
+            ("Unstructured outreach burns contacts",
+             "Flat response rates with no enrichment or reply handling."),
+            ("More sends means more ignored messages",
+             "Without targeting precision, volume is just noise."),
+            ("The fix is precision, not volume",
+             "More sends does not mean more meetings."),
         ]
         kicker = "More sends does not mean more meetings."
 
     else:
-        # Inbound / referral
         tension = "Right now, your growth depends on being found."
+        company = p.get('company', 'You')
         bullets = [
-            f"{company}\u2019s pipeline arrives when someone decides to look. "
-            "Not when you decide to grow.",
-            "Referral volume is uncontrollable. It tracks relationships, not market opportunity.",
-            "Qualified buyers who do not know you exist are invisible. "
-            "You have no reach into that gap.",
+            ("Pipeline arrives when buyers decide to look",
+             f"{company}\u2019s growth depends on someone else making the first move."),
+            ("Referral volume is uncontrollable",
+             "It tracks relationships, not market opportunity."),
+            ("Qualified buyers who do not know you exist are invisible",
+             "There is no reach into that gap."),
         ]
         kicker = "If they do not find you, they do not find you. There is no backup."
 
     return tension, bullets, kicker
 
 
-def _market_reality_content(p: dict) -> tuple:
-    """Return (intro_line, bullets, takeaway) for Market Reality."""
+def _market_reality_content(p):
     company = p.get('company', 'The company')
     comps   = [c.strip() for c in (p.get('competitors') or '').split(',') if c.strip()]
     niche   = p.get('niche') or ''
@@ -408,213 +334,312 @@ def _market_reality_content(p: dict) -> tuple:
     if comps:
         named = comps[0] if len(comps) == 1 else ' and '.join(comps[:2])
         verb  = 'is' if len(comps) == 1 else 'are'
-        intro = f"{named} {verb} already in your buyers' inboxes."
-        bullets = [
-            f"That conversation happened without {company}. "
-            f"{named} reached out first and set the frame.",
-            "Not because they have a better product. Because they showed up before you did.",
-            "First contact sets the context. "
-            "The buyer already has a reference point. It is not you.",
-        ]
-        takeaway = "They get first contact. You do not. That is what matters."
+        intro = f"{named} {verb} already in your buyers\u2019 inboxes."
+        comp_cards = []
+        for comp in comps[:2]:
+            comp_cards.append((
+                comp,
+                f"Running structured cold outreach into {target}",
+                f"Booking first conversations before {company} enters the picture",
+            ))
+        takeaway = "They get first contact. You do not."
+        takeaway_sub = "First contact sets the frame. That matters more than having a better product."
     else:
-        intro = (
-            f"Operators in {target} with an outbound system "
-            f"are winning deals {company} never sees."
-        )
-        bullets = [
-            "They book 5\u201310 qualified conversations a month from cold traffic alone.",
-            f"Those buyers would have chosen {company} \u2014 "
-            f"if {company} had been in their inbox first.",
-            "First contact sets the frame. "
-            "Whoever gets there first controls the conversation.",
+        intro = f"Operators in {target} with an outbound system are winning deals {company} never sees."
+        comp_cards = [
+            ("The market is already in motion",
+             f"Companies in {target} with structured outbound book 5\u201310 qualified conversations per month from cold traffic alone.",
+             f"Those buyers would have chosen {company} \u2014 if {company} had been in their inbox first."),
+            ("First contact wins the frame",
+             "Whoever reaches the buyer first sets the context for every conversation that follows.",
+             "The pipeline exists. You are just not in it."),
         ]
         takeaway = "The pipeline exists. You are just not in it."
+        takeaway_sub = "First contact sets the frame. Whoever gets there first controls the conversation."
 
-    return intro, bullets, takeaway
+    return intro, comp_cards, takeaway, takeaway_sub
 
 
-def _approach_bullets(p: dict) -> list:
-    """Outcome-and-mechanism framing — not a process list."""
-    company = p.get('company', 'your company')
-    notes   = p.get('notes') or ''
-    # Pull pain point from research hook if available
-    pain_m = re.search(r"Pain Point:\s*(.*)", notes)
+def _approach_bullets(p):
+    notes    = p.get('notes') or ''
+    pain_m   = re.search(r"Pain Point:\s*(.*)", notes)
     if pain_m:
-        # Strip "Subject verb…" down to the core problem noun phrase.
-        # "Construction PMs spend 6+ hours per week on manual status updates"
-        # → "manual status updates"
-        raw = pain_m.group(1).strip().rstrip('.')
-        # Pull everything after " on ", " with ", " around ", or fall back to full phrase
+        raw    = pain_m.group(1).strip().rstrip('.')
         core_m = re.search(r'\b(?:on|with|around|from)\s+(.+)$', raw, re.IGNORECASE)
-        core = core_m.group(1).lower() if core_m else raw.lower()
+        core   = core_m.group(1).lower() if core_m else raw.lower()
         pain_clause = f"already dealing with {core}"
     else:
+        company = p.get('company', 'your company')
         pain_clause = f"already dealing with the problem {company} solves"
 
     return [
         f"We find the companies {pain_clause} \u2014 before they go looking for a solution.",
         "We reach them directly. Every message is grounded in something real about their business.",
-        "Replies are classified the same day. "
-        "Interested leads move to a booked call. Nothing is missed.",
+        "Replies are classified the same day. Interested leads move to a booked call. Nothing is missed.",
         "You see everything: what went out, who replied, what moved forward.",
     ]
 
 
-def _metrics(_p: dict) -> list:
-    """Return list of (number, label) tuples for the metrics panel."""
+def _metrics(_p):
     return [
-        ("4\u20138",   "qualified conversations\nper month"),
-        ("1\u20132",   "new clients per month\nat a realistic close rate"),
-        ("30",         "days to\nfirst results"),
-        ("\u00a30",    "cost if no\nqualified conversations"),
+        (C_M1, "4\u20138",  "qualified calls/month"),
+        (C_M2, "30",        "days to first results"),
+        (C_M3, "\u00a30",   "cost if no qualified conversations"),
     ]
 
 
-def _extract_hook(notes: str) -> str:
+def _extract_hook(notes):
     if not notes:
         return ""
     m = re.search(r"Opener:\s*(.*)", notes)
     return m.group(1).strip() if m else ""
 
 
-# ---------------------------------------------------------------------------
-# Canvas callbacks
-# ---------------------------------------------------------------------------
+# ─── Canvas callbacks ────────────────────────────────────────────────────────
 
-def _on_cover(canvas, doc):  # noqa: ARG001
+def _page_callback(canvas, doc):
+    """Dark background + colored top bar + footer on every page."""
     w, h = letter
+    margin = 0.75 * inch
     canvas.saveState()
+
     # Full dark background
-    canvas.setFillColor(C_COVER)
+    canvas.setFillColor(C_BG)
     canvas.rect(0, 0, w, h, fill=1, stroke=0)
-    # Top indigo bar
-    canvas.setFillColor(C_INDIGO)
+
+    # Per-section colored top bar (5px)
+    bar_color = _PAGE_BAR[min(doc.page - 1, len(_PAGE_BAR) - 1)]
+    canvas.setFillColor(bar_color)
     canvas.rect(0, h - 5, w, 5, fill=1, stroke=0)
-    # Bottom accent line
-    canvas.setFillColor(HexColor('#1e293b'))
-    canvas.rect(0, 0, w, 0.6 * inch, fill=1, stroke=0)
+
+    # Footer separator line
+    canvas.setFillColor(C_BORDER)
+    canvas.rect(margin, 0.55 * inch, w - 2 * margin, 0.5, fill=1, stroke=0)
+
+    # Footer text
+    canvas.setFont('Helvetica', 7.5)
+    canvas.setFillColor(C_FOOTER)
+    canvas.drawString(margin, 0.35 * inch, f"{SENDER_NAME} \u00b7 Confidential")
+    canvas.drawRightString(w - margin, 0.35 * inch, str(doc.page))
+
     canvas.restoreState()
 
 
-def _on_body_pages(canvas, doc):
-    w, h = letter
-    canvas.saveState()
-    # Subtle top rule
-    canvas.setFillColor(C_RULE)
-    canvas.rect(0.85 * inch, h - 0.55 * inch, w - 1.7 * inch, 0.5, fill=1, stroke=0)
-    # Footer
-    canvas.setFillColor(C_RULE)
-    canvas.rect(0.85 * inch, 0.5 * inch, w - 1.7 * inch, 0.5, fill=1, stroke=0)
-    canvas.setFont('Helvetica', 8)
-    canvas.setFillColor(C_MUTED)
-    canvas.drawString(0.85 * inch, 0.33 * inch, SENDER_NAME)
-    canvas.drawRightString(w - 0.85 * inch, 0.33 * inch, f"Page {doc.page}")
-    canvas.restoreState()
+# ─── Layout helpers ──────────────────────────────────────────────────────────
+
+_PAGE_W, _PAGE_H = letter
+_MARGIN = 0.75 * inch
+_CONTENT_W = _PAGE_W - 2 * _MARGIN
 
 
-# ---------------------------------------------------------------------------
-# Layout helpers
-# ---------------------------------------------------------------------------
-
-def _rule(story, color=C_RULE, thickness=0.5):
-    story.append(HRFlowable(width="100%", thickness=thickness,
-                             color=color, spaceBefore=4, spaceAfter=14))
-
-
-def _section(story, S, num: int, title: str):
-    story.append(Paragraph(f"{num:02d}", S['sec_num']))
-    story.append(Paragraph(title, S['sec_title']))
-
-
-def _bullets(story, S, items: list):
-    for item in items:
-        story.append(Paragraph(f"\u2014\u2002{item}", S['bullet']))
-
-
-def _metrics_table(story, S, metrics: list):
-    """Render a 4-cell horizontal metrics panel."""
-    cells = []
-    for _i, (num, lbl) in enumerate(metrics):
-        cell = [
-            Paragraph(num, S['metric_num']),
-            Paragraph(lbl, S['metric_lbl']),
-        ]
-        cells.append(cell)
-
-    col_w = (letter[0] - 1.7 * inch) / 4
-    tbl = Table([cells], colWidths=[col_w] * 4, rowHeights=[0.95 * inch])
-    tbl.setStyle(TableStyle([
-        ('BACKGROUND',  (0, 0), (-1, -1), C_PANEL),
-        ('BOX',         (0, 0), (-1, -1), 0.5, C_RULE),
-        ('LINEAFTER',   (0, 0), (2,  0),  0.5, C_RULE),
-        ('TOPPADDING',  (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING',(0,0), (-1, -1), 12),
-        ('VALIGN',      (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN',       (0, 0), (-1, -1), 'CENTER'),
-        ('ROUNDEDCORNERS', [6]),
-    ]))
-    story.append(tbl)
-    story.append(Spacer(1, 0.15 * inch))
-
-
-def _cta_button(story, S, text: str):
-    """Render a styled CTA button using a 1-cell table."""
-    btn = Table(
-        [[Paragraph(text, S['cta_btn'])]],
-        colWidths=[3.2 * inch],
-        rowHeights=[0.52 * inch],
+def _section_label(label_text, color, S):
+    """Small all-caps section label (e.g. 'THE PROBLEM')."""
+    return Paragraph(
+        f'<font color="#{color.hexval()}">{label_text.upper()}</font>',
+        S['sec_label'],
     )
-    btn.setStyle(TableStyle([
-        ('BACKGROUND',   (0, 0), (-1, -1), C_INDIGO),
-        ('TOPPADDING',   (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING',(0, 0), (-1, -1), 10),
-        ('ALIGN',        (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN',       (0, 0), (-1, -1), 'MIDDLE'),
-        ('ROUNDEDCORNERS', [6]),
-    ]))
-    # Centre the button
-    outer = Table([[btn]], colWidths=[letter[0] - 1.7 * inch])
-    outer.setStyle(TableStyle([
-        ('ALIGN',  (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(outer)
 
 
-def _whats_inside_table(company: str, S) -> Table:  # noqa: ARG001
-    """Render the 'What's Inside' panel for the cover page."""
-    items = [
-        "\u2192  What is capping your pipeline right now",
-        "\u2192  Where competitors are already winning",
-        "\u2192  The outbound system and what it delivers",
-        "\u2192  Risk-free 30-day pilot",
-    ]
-    rows = [[Paragraph("WHAT\u2019S INSIDE", S['cv_wi_head'])]]
-    for item in items:
-        rows.append([Paragraph(item, S['cv_wi_item'])])
-
-    tbl = Table(rows, colWidths=[4.5 * inch])
+def _card2(head, body, S, bg=None, border=None):
+    """Single card: bold heading + muted body text."""
+    bg     = bg or C_CARD
+    border = border or C_BORDER
+    tbl = Table(
+        [[Paragraph(head, S['card_head'])],
+         [Paragraph(body, S['card_body'])]],
+        colWidths=[_CONTENT_W],
+    )
     tbl.setStyle(TableStyle([
-        ('BACKGROUND',   (0, 0), (-1, -1), HexColor('#1e293b')),
-        ('BOX',          (0, 0), (-1, -1), 0.5, HexColor('#334155')),
-        ('TOPPADDING',   (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING',(0, 0), (-1, -1), 8),
-        ('LEFTPADDING',  (0, 0), (-1, -1), 14),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 14),
-        ('LINEBELOW',    (0, 0), (0,  0),  0.5, HexColor('#334155')),
+        ('BACKGROUND',    (0, 0), (-1, -1), bg),
+        ('BOX',           (0, 0), (-1, -1), 1, border),
+        ('TOPPADDING',    (0, 0), (-1, -1), 13),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 13),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 16),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 16),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
     ]))
     return tbl
 
 
-# ---------------------------------------------------------------------------
-# Main generator
-# ---------------------------------------------------------------------------
+def _grid2x2(cards, S):
+    """
+    4-card 2×2 grid.
+    cards: list of (heading, body) tuples — exactly 4 items.
+    Pads to 4 if fewer provided.
+    """
+    while len(cards) < 4:
+        cards.append(("", ""))
+
+    col_w = (_CONTENT_W - 0.12 * inch) / 2
+
+    def _cell(head, body):
+        return [Paragraph(head, S['card_head']),
+                Spacer(1, 4),
+                Paragraph(body, S['card_body'])]
+
+    data = [
+        [_cell(*cards[0]), _cell(*cards[1])],
+        [_cell(*cards[2]), _cell(*cards[3])],
+    ]
+    tbl = Table(data, colWidths=[col_w, col_w], rowHeights=[1.6 * inch, 1.6 * inch])
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_CARD),
+        ('BOX',           (0, 0), (0, 0), 1, C_BORDER),
+        ('BOX',           (1, 0), (1, 0), 1, C_BORDER),
+        ('BOX',           (0, 1), (0, 1), 1, C_BORDER),
+        ('BOX',           (1, 1), (1, 1), 1, C_BORDER),
+        ('INNERGRID',     (0, 0), (-1, -1), 0, C_BG),
+        ('TOPPADDING',    (0, 0), (-1, -1), 13),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 13),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 14),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+        ('COLPADDING',    (0, 0), (-1, -1), 6),
+    ]))
+    return tbl
+
+
+def _metrics_row(metrics, S):
+    """Horizontal row of 3 metric cards with large colored numbers."""
+    col_w = (_CONTENT_W - 0.24 * inch) / 3
+
+    def _mcell(color, num, lbl):
+        return [
+            Paragraph(f'<font color="#{color.hexval()}">{num}</font>', S['met_num']),
+            Paragraph(lbl, S['met_lbl']),
+        ]
+
+    data = [[_mcell(*m) for m in metrics]]
+    tbl = Table(data, colWidths=[col_w] * 3, rowHeights=[1.3 * inch])
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_CARD),
+        ('BOX',           (0, 0), (0, 0), 1, C_BORDER),
+        ('BOX',           (1, 0), (1, 0), 1, C_BORDER),
+        ('BOX',           (2, 0), (2, 0), 1, C_BORDER),
+        ('INNERGRID',     (0, 0), (-1, -1), 0, C_BG),
+        ('TOPPADDING',    (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 18),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 18),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+    ]))
+    return tbl
+
+
+def _comp_cards(comp_cards_data, S):
+    """Two competitor cards side by side."""
+    col_w = (_CONTENT_W - 0.12 * inch) / 2
+
+    def _ccell(name, line1, line2):
+        # Colored top accent bar per competitor
+        return [
+            Paragraph(f'<b>{name}</b>', S['card_head']),
+            Spacer(1, 6),
+            Paragraph(line1, S['card_body']),
+            Spacer(1, 4),
+            Paragraph(line2, S['card_body']),
+        ]
+
+    data = [[_ccell(*comp_cards_data[0]), _ccell(*comp_cards_data[1])]]
+    tbl = Table(data, colWidths=[col_w, col_w], rowHeights=[2.0 * inch])
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (0, 0), C_CARD),
+        ('BACKGROUND',    (1, 0), (1, 0), C_CARD2),
+        ('BOX',           (0, 0), (0, 0), 1, C_BORDER),
+        ('BOX',           (1, 0), (1, 0), 1, C_BORDER),
+        ('LINEABOVE',     (0, 0), (0, 0), 3, C_PURPLE),
+        ('LINEABOVE',     (1, 0), (1, 0), 3, C_ORANGE),
+        ('INNERGRID',     (0, 0), (-1, -1), 0, C_BG),
+        ('TOPPADDING',    (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 14),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+    ]))
+    return tbl
+
+
+def _takeaway_box(text, sub, S):
+    """Full-width red-bordered takeaway box."""
+    tbl = Table(
+        [[Paragraph(text, S['takeaway'])],
+         [Paragraph(sub,  S['takeaway_sub'])]],
+        colWidths=[_CONTENT_W],
+    )
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), HexColor('#1a0f0f')),
+        ('BOX',           (0, 0), (-1, -1), 1, HexColor('#7f1d1d')),
+        ('LINEABOVE',     (0, 0), (-1, 0), 3, C_RED),
+        ('TOPPADDING',    (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 16),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 16),
+    ]))
+    return tbl
+
+
+def _numbered_step(num, text, S, num_color=C_PURPLE):
+    """Single numbered step card."""
+    hex_col = num_color.hexval()
+    num_cell = [Paragraph(
+        f'<font color="#{hex_col}" size="14"><b>0{num}</b></font>',
+        S['card_num'],
+    )]
+    body_cell = [Paragraph(text, S['card_body'])]
+    tbl = Table(
+        [[num_cell, body_cell]],
+        colWidths=[0.55 * inch, _CONTENT_W - 0.55 * inch],
+        rowHeights=[0.9 * inch],
+    )
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_CARD),
+        ('BOX',           (0, 0), (-1, -1), 1, C_BORDER),
+        ('LINEABOVE',     (0, 0), (-1, 0), 3, num_color),
+        ('TOPPADDING',    (0, 0), (-1, -1), 13),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 13),
+        ('LEFTPADDING',   (0, 0), (0, 0), 14),
+        ('LEFTPADDING',   (1, 0), (1, 0), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 14),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    return tbl
+
+
+def _step_colors():
+    return [C_INDIGO, C_ORANGE, C_GREEN, C_PURPLE]
+
+
+def _cta_button(text, S):
+    btn = Table(
+        [[Paragraph(text, S['cta_btn'])]],
+        colWidths=[3.4 * inch],
+        rowHeights=[0.55 * inch],
+    )
+    btn.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_INDIGO),
+        ('TOPPADDING',    (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('ROUNDEDCORNERS', [6]),
+    ]))
+    outer = Table([[btn]], colWidths=[_CONTENT_W])
+    outer.setStyle(TableStyle([
+        ('ALIGN',  (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+    ]))
+    return outer
+
+
+# ─── Main generator ──────────────────────────────────────────────────────────
 
 def generate_proposal(prospect: dict) -> str:
     """
-    Build a sharp, data-driven growth breakdown PDF.
-
+    Build a dark deck-style growth breakdown PDF.
     Raises ValueError if input fails validation.
     Returns filepath of the generated PDF.
     """
@@ -622,169 +647,217 @@ def generate_proposal(prospect: dict) -> str:
     if not ok:
         raise ValueError(reason)
 
-    # Pull fields
-    company    = (prospect.get('company') or 'Your Company').strip()
-    name       = (prospect.get('name') or 'Founder').strip()
-    first      = name.split()[0]
-    today      = date.today().strftime('%d %B %Y')
+    company = (prospect.get('company') or 'Your Company').strip()
+    name    = (prospect.get('name')    or 'Founder').strip()
+    first   = name.split()[0]
+    niche   = (prospect.get('niche')   or '').strip()
+    today   = date.today().strftime('%B %Y')
 
-    # Build section content
-    sit_lines                                = _situation_lines(prospect)
-    ceil_tension, ceil_bullets, ceil_kicker  = _ceiling_content(prospect)
-    mkt_intro, mkt_bullets, mkt_takeaway     = _market_reality_content(prospect)
-    approach_bullets                         = _approach_bullets(prospect)
-    metric_data                              = _metrics(prospect)
+    # Build content
+    sit_lines                              = _situation_lines(prospect)
+    ceil_tension, ceil_bullets, ceil_kicker = _ceiling_content(prospect)
+    mkt_intro, comp_cards_data, mkt_tw, mkt_tw_sub = _market_reality_content(prospect)
+    appr_bullets                           = _approach_bullets(prospect)
+    metric_data                            = _metrics(prospect)
 
-    # ---- Content validation ----
+    # Validate content
     all_errors = []
     all_errors += _validate_section(
-        "Current Situation",
-        " ".join(sit_lines),
-        require_tension=False,
-        require_memorable=True,
+        "Current Situation", " ".join(sit_lines),
+        require_tension=False, require_memorable=True,
     )
-    ceil_text = ceil_tension + " " + " ".join(ceil_bullets) + " " + ceil_kicker
+    ceil_text = ceil_tension + " " + " ".join(h + " " + b for h, b in ceil_bullets) + " " + ceil_kicker
     all_errors += _validate_section(
         "The Ceiling", ceil_text,
         require_tension=True, require_memorable=True,
     )
-    mkt_text = mkt_intro + " " + " ".join(mkt_bullets) + " " + mkt_takeaway
+    mkt_text = mkt_intro + " " + " ".join(n + " " + l1 + " " + l2 for n, l1, l2 in comp_cards_data) + " " + mkt_tw
     all_errors += _validate_section(
         "Market Reality", mkt_text,
         require_tension=True, require_memorable=True,
     )
-    appr_text = " ".join(approach_bullets)
     all_errors += _validate_section(
-        "Our Approach", appr_text,
+        "Our Approach", " ".join(appr_bullets),
         require_tension=False, require_memorable=True,
     )
     if all_errors:
         raise ValueError("Content validation failed:\n" + "\n".join(all_errors))
 
-    # ---- Output path ----
-    safe = "".join(c if c.isalnum() else "_" for c in company).lower()
+    # Output path
+    safe     = "".join(c if c.isalnum() else "_" for c in company).lower()
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     filepath = os.path.join(OUTPUT_DIR, f"breakdown_{safe}.pdf")
 
     doc = SimpleDocTemplate(
         filepath, pagesize=letter,
-        rightMargin=0.85 * inch, leftMargin=0.85 * inch,
-        topMargin=0.85 * inch, bottomMargin=0.72 * inch,
+        rightMargin=_MARGIN, leftMargin=_MARGIN,
+        topMargin=0.72 * inch, bottomMargin=0.72 * inch,
     )
     S = _styles()
     story = []
 
-    # ==========================================================
-    # COVER
-    # ==========================================================
-    story.append(Spacer(1, 1.2 * inch))
-    story.append(Paragraph("GROWTH BREAKDOWN", S['cv_eyebrow']))
-    story.append(Paragraph("What is capping your\npipeline\u2014and the fix for it.", S['cv_h1']))
-    story.append(Paragraph(
-        "A personalised pipeline analysis prepared exclusively for:", S['cv_sub']
-    ))
-    story.append(Paragraph(company, S['cv_company']))
-    story.append(_whats_inside_table(company, S))
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 1 — COVER
+    # ══════════════════════════════════════════════════════════════════════
+
+    # Badge
+    badge = Table(
+        [[Paragraph("Built on Claude Code", S['cv_badge'])]],
+        colWidths=[1.6 * inch],
+        rowHeights=[0.26 * inch],
+    )
+    badge.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_INDIGO),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+        ('ALIGN',         (0, 0), (-1, -1), 'LEFT'),
+        ('ROUNDEDCORNERS', [4]),
+    ]))
+
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(badge)
+    story.append(Spacer(1, 0.3 * inch))
+
+    # Title
+    title_text = f"Why {company}\u2019s pipeline stops\nwhen the budget does"
+    story.append(Paragraph(title_text, S['cv_h1']))
+
+    # Subtitle (niche | analysis type)
+    sub_parts = []
+    if niche:
+        sub_parts.append(niche)
+    sub_parts.append("Outbound Pipeline Analysis")
+    story.append(Paragraph(" \u00b7 ".join(sub_parts), S['cv_sub']))
+
+    story.append(Spacer(1, 0.55 * inch))
+
+    # Metric cards row
+    story.append(_metrics_row(metric_data, S))
     story.append(Spacer(1, 0.35 * inch))
-    story.append(Paragraph(f"Prepared by {SENDER_NAME}  \u00b7  {today}", S['cv_meta']))
-    if first.lower() not in ('founder', 'there', 'n/a', ''):
-        story.append(Paragraph(f"For the attention of {first}", S['cv_meta']))
-    story.append(PageBreak())
 
-    # ==========================================================
-    # PAGE 2 — 01 CURRENT SITUATION  +  02 THE CEILING
-    # ==========================================================
-
-    _section(story, S, 1, "Current Situation")
-    for line in sit_lines:
-        story.append(Paragraph(line, S['body']))
-
-    _rule(story)
-
-    _section(story, S, 2, "The Ceiling")
-    story.append(Paragraph(ceil_tension, S['tension']))
-    _bullets(story, S, ceil_bullets)
-    story.append(Paragraph(ceil_kicker, S['tension']))
-    story.append(PageBreak())
-
-    # ==========================================================
-    # PAGE 3 — 03 MARKET REALITY  +  04 OUR APPROACH
-    # ==========================================================
-
-    _section(story, S, 3, "Market Reality")
-    story.append(Paragraph(mkt_intro, S['body']))
-    _bullets(story, S, mkt_bullets)
-    story.append(Paragraph(mkt_takeaway, S['takeaway']))
-
-    _rule(story)
-
-    _section(story, S, 4, "Our Approach")
-    story.append(Paragraph("We build the system. You take the calls.", S['tension']))
-    _bullets(story, S, approach_bullets)
-    story.append(PageBreak())
-
-    # ==========================================================
-    # PAGE 4 — 05 EXPECTED OUTCOMES  +  06 RISK-FREE PILOT
-    # ==========================================================
-
-    _section(story, S, 5, "Expected Outcomes")
+    # Prepared for
     story.append(Paragraph(
-        f"A working outbound system for {company} delivers:", S['body']
+        f"Prepared for {first} at {company} \u00b7 {today}", S['cv_meta']
+    ))
+    story.append(PageBreak())
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 2 — THE PROBLEM
+    # ══════════════════════════════════════════════════════════════════════
+
+    story.append(_section_label("The Problem", C_ORANGE, S))
+    story.append(Paragraph(
+        f"Paid traffic alone cannot build {company}\u2019s pipeline", S['sec_title']
     ))
     story.append(Spacer(1, 0.1 * inch))
-    _metrics_table(story, S, metric_data)
-    _bullets(story, S, [
-        "Pipeline that does not stop when ads pause or referrals dry up.",
-        "A repeatable system \u2014 not a one-time campaign.",
-        "Full tracking from day one: what went out, who replied, what moved.",
-    ])
 
-    _rule(story)
+    # 4-card 2×2 grid — sit_lines + ceiling bullets blended
+    grid_cards = []
+    # Card 1 & 2: first two situation lines
+    if len(sit_lines) >= 1:
+        grid_cards.append((
+            (prospect.get('icp') or "Your buyers") + " never see " + company,
+            sit_lines[0] if sit_lines else "",
+        ))
+    # Card 2 from ceiling
+    if ceil_bullets:
+        grid_cards.append(ceil_bullets[0])
+    # Card 3
+    if len(ceil_bullets) > 1:
+        grid_cards.append(ceil_bullets[1])
+    # Card 4
+    if len(ceil_bullets) > 2:
+        grid_cards.append(ceil_bullets[2])
 
-    _section(story, S, 6, "Risk-Free 30-Day Pilot")
-    story.append(Paragraph("No results. No charge.", S['tension']))
-    _bullets(story, S, [
-        "We run a full 30-day pilot before any ongoing commitment.",
-        "No long-term contract. Cancel with 30 days notice after the pilot.",
-        "You own the prospect list we build \u2014 regardless of outcome.",
-        "Results are measurable and tracked from day one.",
-    ])
+    story.append(_grid2x2(grid_cards, S))
+    story.append(Spacer(1, 0.15 * inch))
+
+    # Tension kicker
+    story.append(Paragraph(ceil_tension, S['tension']))
     story.append(PageBreak())
 
-    # ==========================================================
-    # CTA PAGE — standalone closer
-    # ==========================================================
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 3 — MARKET REALITY
+    # ══════════════════════════════════════════════════════════════════════
 
-    story.append(Spacer(1, 0.8 * inch))
-    story.append(Paragraph(
-        f"Ready to see if it works for {company}?", S['cta_h1']
-    ))
-    story.append(Paragraph(
-        f"Book a 20-minute call. We will walk through the target list, "
-        f"the sequence, and the expected volume \u2014 specific to {company}.\n\n"
-        f"No pitch. No deck. Just the plan.",
-        S['cta_body']
-    ))
+    story.append(_section_label("Market Reality", C_GREEN, S))
+    story.append(Paragraph(mkt_intro, S['sec_title']))
+    story.append(Spacer(1, 0.1 * inch))
+
+    # Competitor cards
+    if len(comp_cards_data) >= 2:
+        story.append(_comp_cards(comp_cards_data[:2], S))
+    elif comp_cards_data:
+        h, l1, l2 = comp_cards_data[0]
+        story.append(_card2(h, l1 + " " + l2, S))
+
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(_takeaway_box(mkt_tw, mkt_tw_sub, S))
+    story.append(PageBreak())
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 4 — THE SYSTEM
+    # ══════════════════════════════════════════════════════════════════════
+
+    story.append(_section_label("The System", C_PURPLE, S))
+    story.append(Paragraph("The System", S['sec_title']))
+    story.append(Spacer(1, 0.1 * inch))
+
+    colors = _step_colors()
+    for i, bullet in enumerate(appr_bullets[:4]):
+        c = colors[i % len(colors)]
+        story.append(_numbered_step(i + 1, bullet, S, num_color=c))
+        story.append(Spacer(1, 0.12 * inch))
+
+    story.append(PageBreak())
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 5 — PILOT + CTA
+    # ══════════════════════════════════════════════════════════════════════
+
+    story.append(_section_label("Pilot + CTA", C_RED, S))
+    story.append(Paragraph("No results. No charge.", S['cta_h1']))
+    story.append(Spacer(1, 0.1 * inch))
+    story.append(_metrics_row(metric_data, S))
     story.append(Spacer(1, 0.3 * inch))
-    _cta_button(story, S, f"Book a Call  \u2192  {CTA_LINK}")
-    story.append(Spacer(1, 0.25 * inch))
-    _rule(story, color=C_RULE, thickness=0.5)
-    story.append(Paragraph(
-        "No pitch. No hard sell. If the fit is not there, we will tell you.",
-        S['cta_pricing']
-    ))
-    story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(SENDER_NAME, S['contact']))
-    story.append(Paragraph(SENDER_EMAIL, S['contact']))
-    story.append(Paragraph(SENDER_WEBSITE, S['contact']))
 
-    doc.build(story, onFirstPage=_on_cover, onLaterPages=_on_body_pages)
+    # CTA body block
+    cta_block = Table(
+        [[Paragraph(
+            f"Book a 20-minute call. We will walk through the target list, "
+            f"the sequence, and expected volume \u2014 specific to {company}.",
+            S['cta_body'],
+        )],
+         [Spacer(1, 0.15 * inch)],
+         [_cta_button(f"Book a Call \u2192  {CTA_LINK}", S)],
+         [Spacer(1, 0.1 * inch)],
+         [Paragraph(
+            f"Pilot: Free  \u00b7  Ongoing: from \u00a31,500/month  \u00b7  No long-term contract",
+            S['cta_price'],
+         )],
+        ],
+        colWidths=[_CONTENT_W],
+    )
+    cta_block.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), C_CARD),
+        ('BOX',           (0, 0), (-1, -1), 1, C_BORDER),
+        ('TOPPADDING',    (0, 0), (-1, -1), 16),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 16),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 20),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 20),
+        ('ALIGN',         (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(cta_block)
+
+    # Build
+    doc.build(story, onFirstPage=_page_callback, onLaterPages=_page_callback)
     return filepath
 
 
-# ---------------------------------------------------------------------------
-# Batch runner
-# ---------------------------------------------------------------------------
+# ─── Batch runner ────────────────────────────────────────────────────────────
 
 def run_proposal_batch(db_path: str = DB_PATH) -> int:
     """Generate PDFs for all qualified/in-sequence prospects with enrichment data."""
@@ -796,7 +869,6 @@ def run_proposal_batch(db_path: str = DB_PATH) -> int:
     if not prospects:
         print("  No qualified/in_sequence prospects found.")
         return 0
-
     count = skipped = 0
     for p in prospects:
         try:
@@ -806,41 +878,25 @@ def run_proposal_batch(db_path: str = DB_PATH) -> int:
         except ValueError as e:
             print(f"  SKIP  {p.get('company')}: {e}")
             skipped += 1
-
     print(f"\nGenerated: {count}  |  Skipped: {skipped}")
     return count
 
 
-# ---------------------------------------------------------------------------
-# __main__ — before/after demonstration fixture
-# ---------------------------------------------------------------------------
+# ─── __main__ ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
-
-    # --- BEFORE: thin data, no enrichment (should be rejected) ---
-    thin = {
-        "name": "James Cole",
-        "company": "Apex Digital",
-        "email": "james@apexdigital.io",
-        "status": "qualified",
-        "notes": "",
-    }
-
-    # --- AFTER: full enrichment fixture ---
     rich = {
         "name": "James Cole",
         "company": "Apex Digital",
         "email": "james@apexdigital.io",
         "status": "qualified",
         "niche": "B2B SaaS for construction project managers",
-        "icp": "mid-sized UK construction firms running 5+ concurrent projects",
+        "icp": "mid-sized UK construction firms managing 5+ concurrent projects",
         "website_headline": "Stop losing projects to miscommunication",
         "product_feature": "real-time site-to-office sync with automated progress reporting",
         "competitors": "Buildertrend, CoConstruct",
         "ad_status": "running_ads",
         "outbound_status": "no_outbound",
-        "notable_result": "Cut project overruns by 40% for Morrison Construction",
         "notes": (
             "[Research Hook]\n"
             "Pain Point: Construction PMs spend 6+ hours per week on manual status updates.\n"
@@ -850,116 +906,17 @@ if __name__ == "__main__":
         ),
     }
 
-    print("=" * 60)
-    print("BEFORE -- thin data (should be rejected)")
-    print("=" * 60)
+    thin = {"name": "James Cole", "company": "Apex Digital", "notes": ""}
+
+    print("Testing thin data rejection...")
     try:
         generate_proposal(thin)
     except ValueError as e:
-        print(f"  [OK] Correctly rejected:\n  {e}")
+        print(f"  [OK] Rejected: {e}")
 
-    print()
-    print("=" * 60)
-    print("AFTER -- full enrichment")
-    print("=" * 60)
-
-    # ---------- BEFORE/AFTER COPY COMPARISON ----------
-
-    # PROBLEM (Current Situation + The Ceiling)
-    OLD_CEILING_TENSION = "Paid ads alone will cap your growth."
-    OLD_CEILING_BULLETS = [
-        "Every lead Apex Digital gets requires someone to click an ad. Remove the spend and the pipeline stops.",
-        "CPAs compound as audiences saturate. What works at £30 per lead costs £90 within 18 months.",
-        "Qualified buyers who are not served your ad do not exist in your pipeline. There is no proactive reach.",
-        "You are not growing your pipeline. You are renting it.",
-    ]
-    OLD_CEILING_KICKER = "Remove the spend. The pipeline stops. Hard."
-
-    # OUR APPROACH — old process-heavy version
-    OLD_APPROACH = [
-        "Identify the right companies — mid-sized UK construction firms running 5+ concurrent projects — before they start searching for a solution.",
-        "Research and enrich every contact. No message goes out without a real data point behind it.",
-        "Reach them with sequences that sound like a peer sent them, not a sales tool.",
-        "Every reply is monitored, classified, and routed. Interested prospects are flagged the same day.",
-        "Full reporting: what went out, who responded, what moved forward.",
-    ]
-
-    # MARKET REALITY / COMPETITORS — old version
-    OLD_MKT_INTRO  = "Buildertrend and CoConstruct are already in those inboxes."
-    OLD_MKT_BULLETS = [
-        "Buildertrend and CoConstruct are running structured cold outreach into mid-sized UK construction firms running 5+ concurrent projects — the same buyers Apex Digital is trying to reach.",
-        "Those conversations go to them by default. Not because they have a better product. Because they showed up first.",
-        "Cold outbound is not volume. It is showing up in the right inbox before the buyer starts searching.",
-    ]
-    OLD_MKT_TAKEAWAY = "They get first contact. You don't."
-
-    print()
-    print("-" * 60)
-    print("SECTION: The Ceiling")
-    print("-" * 60)
-    print("  BEFORE:")
-    print(f"  TENSION: {OLD_CEILING_TENSION}")
-    for b in OLD_CEILING_BULLETS:
-        print(f"    -- {b}")
-    print(f"  KICKER:  {OLD_CEILING_KICKER}")
-    print()
-    t, b_new, k = _ceiling_content(rich)
-    print("  AFTER:")
-    print(f"  TENSION: {t}")
-    for b in b_new:
-        print(f"    -- {b}")
-    print(f"  KICKER:  {k}")
-
-    print()
-    print("-" * 60)
-    print("SECTION: Market Reality (Competitors)")
-    print("-" * 60)
-    print("  BEFORE:")
-    print(f"  INTRO:    {OLD_MKT_INTRO}")
-    for b in OLD_MKT_BULLETS:
-        print(f"    -- {b}")
-    print(f"  TAKEAWAY: {OLD_MKT_TAKEAWAY}")
-    print()
-    mi, mb, mt = _market_reality_content(rich)
-    print("  AFTER:")
-    print(f"  INTRO:    {mi}")
-    for b in mb:
-        print(f"    -- {b}")
-    print(f"  TAKEAWAY: {mt}")
-
-    print()
-    print("-" * 60)
-    print("SECTION: Our Approach")
-    print("-" * 60)
-    print("  BEFORE:")
-    for b in OLD_APPROACH:
-        print(f"    -- {b}")
-    print()
-    new_appr = _approach_bullets(rich)
-    print("  AFTER:")
-    for b in new_appr:
-        print(f"    -- {b}")
-
-    # ---------- TENSION LINES SUMMARY ----------
-    print()
-    print("=" * 60)
-    print("TENSION LINES CHOSEN FOR EACH SECTION")
-    print("=" * 60)
-    sit = _situation_lines(rich)
-    print(f"  01 Current Situation : {sit[-1]}")  # consequence line is last
-    print(f"  02 The Ceiling       : {t}")
-    print(f"  02 Kicker            : {k}")
-    print(f"  03 Market Reality    : {mt}")
-    print(f"  04 Our Approach      : We build the system. You take the calls.")
-
-    # ---------- GENERATE PDF ----------
-    print()
-    print("=" * 60)
-    print("GENERATING FULL SAMPLE PDF")
-    print("=" * 60)
+    print("\nGenerating dark deck PDF...")
     try:
         path = generate_proposal(rich)
-        print(f"  [OK] Generated: {path}")
-    except ValueError as e:
-        print(f"  ERROR: {e}")
-        sys.exit(1)
+        print(f"  [OK] {path}")
+    except Exception as e:
+        print(f"  [FAIL] {e}")

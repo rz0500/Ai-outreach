@@ -1,130 +1,111 @@
 # CLAUDE.md
 
-This file gives Claude Code the current working context for this repository. It should match the real codebase, not the original module-by-module plan. Keep this file aligned with `agent.md` and `memory.md`.
+This file gives Claude Code the current working context for this repository. It should match the real codebase. Keep it aligned with `agent.md` and `memory.md`.
 
 ## Project Overview
 
-`leadgen` is a Python-based AI lead generation and outreach system. It is no longer just a database/scoring prototype. The repo now includes:
+`leadgen` is a Python-based AI lead generation and outreach system. It includes:
 
-- prospect storage and orchestration in SQLite
-- evidence-first outbound email generation
-- enrichment and website analysis
-- multi-channel sequence foundations
-- inbox/reply handling foundations
-- a Flask testing dashboard
-- PDF-first sales deck generation from website/company inputs
+- Prospect storage and orchestration in SQLite
+- Evidence-first outbound email generation (conversational style)
+- Company research and website enrichment
+- Full pipeline: URL → research → email → PDF in one click
+- Multi-channel sequence foundations (email, LinkedIn, Instagram, SMS)
+- Inbox/reply monitoring with classification and review queue
+- Flask web dashboard with URL-based testing
+- Dark deck-style PDF proposals
+- Bespoke PPTX pitch deck generation
 
-The system is still in build mode. It is modular, testable, and expanding toward the larger original automation vision, but it is not “finished”.
+The system is in active build mode — modular, testable, and expanding.
 
 ## Priority Context Files
 
 Read these first before making major changes:
 
-- `agent.md` for the immediate working objective
-- `memory.md` for the latest architecture and project memory
+- `agent.md` — immediate working objective and what was just completed
+- `memory.md` — architecture decisions, module list, DB schema
 
-If a meaningful change is made, update:
+If a meaningful change is made, update all three files.
 
-- `agent.md`
-- `memory.md`
-- `CLAUDE.md` when the repo-level workflow or architecture meaningfully changes
+## Module Reference
 
-## Current Important Modules
+### Core Data
+- **`database.py`** — SQLite persistence. Tables: `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`.
 
-- `database.py`
-  SQLite persistence for prospects plus compliance/orchestration tables such as `suppression_list`, `communication_events`, and `sequence_enrollments`.
+### Outreach
+- **`outreach.py`** — Main email writer. Runs `COMPANY ANALYSIS`, picks one angle, generates conversational email using the new 5-part structure. Template path (no API key needed).
+- **`email_validator.py`** — Quality gate. Bans phrases, checks generic openers, enforces company name in body. Word limit: 140 max (90–130 target).
+- **`ai_engine.py`** — Claude-backed prompt engine. Functions: `generate_hyper_personalized_email`, `analyze_prospect_score`, `analyze_website`, `classify_reply`. Model: `claude-haiku-4-5` (configurable).
 
-- `outreach.py`
-  Main outbound writer. Uses a mandatory internal `COMPANY ANALYSIS`, chooses one primary angle, applies controlled inference, and generates operator-style emails.
+### Research
+- **`research_agent.py`** — Website enrichment. Checks `prospect_research` table first to skip re-research. Writes structured results back to DB.
 
-- `email_validator.py`
-  Quality gate for outbound email copy. Rejects banned phrases, generic openers, overlong drafts, and weak/passive AI language.
+### Sequencing
+- **`sequencer.py`** — Legacy single-channel email sequencer (still used internally).
+- **`sequence_engine.py`** — Channel-aware multi-day sequence model.
+- **`sequence_dispatcher.py`** — Routes due touchpoints to email/LinkedIn/Instagram/SMS handlers.
+- **`main.py`** — Entry point. Wired to `run_multichannel_sequence()`.
 
-- `ai_engine.py`
-  Anthropic-backed prompt engine for:
-  - hyper-personalized email generation
-  - AI prospect scoring
-  - website analysis
-  - reply classification
+### Delivery
+- **`mailer.py`** — SMTP delivery.
+- **`sendgrid_mailer.py`** — SendGrid delivery with sending-domain support.
 
-- `research_agent.py`
-  Website/data enrichment support.
+### Inbox
+- **`inbox_monitor.py`** — IMAP reply monitor. Classifies replies with Claude. Saves interested replies to `reply_drafts` table.
 
-- `sequencer.py`
-  Legacy email sequence runner still used in the main path.
+### Web
+- **`web_app.py`** — Flask dashboard. Key endpoints:
+  - `GET /` — main dashboard
+  - `POST /api/full-pipeline` — URL → research + email + PDF in one call
+  - `POST /api/generate-from-url` — email only from URL
+  - `POST /api/generate-deck-from-url` — deck PDF from URL
+  - `POST /api/sample-pdf` — demo PDF proposal
+  - `POST /api/sample-deck` — demo deck PDF
+  - `GET /api/reply-drafts` — pending reply drafts
+  - `POST /api/reply-drafts/<id>/action` — approve or dismiss a draft
+  - `POST /api/seed-demo-reply` — inject test reply for UI testing
 
-- `sequence_engine.py`
-  Channel-aware future sequence model for scheduled touchpoints.
+### Documents
+- **`pdf_generator.py`** — Dark deck-style 5-page PDF proposal (ReportLab). Used by the full-pipeline and web tester. Pages: Cover / THE PROBLEM / MARKET REALITY / THE SYSTEM / PILOT + CTA. Full dark background, coloured section bars, card-based content.
+- **`deck_generator.py`** — Bespoke 6-slide pitch deck (python-pptx → PDF). Windows fallback: PowerPoint COM. Used for richer per-company decks.
+- **`pdf_generator.py`** vs **`deck_generator.py`**: Use `pdf_generator` for the automated pipeline proposal. Use `deck_generator` for a full bespoke sales deck.
 
-- `sequence_dispatcher.py`
-  Dispatcher foundation for email, LinkedIn, Instagram, and SMS touchpoints.
+### Discovery
+- **`google_maps_finder.py`** — Local business discovery via Google Maps API.
 
-- `sendgrid_mailer.py`
-  SendGrid delivery and sending-domain groundwork.
+### Other channels
+- **`social_agent.py`** — LinkedIn/Instagram outreach foundations.
+- **`sms_agent.py`** — SMS outreach foundations.
 
-- `inbox_monitor.py`
-  Reply monitoring and classification support.
+## Email Voice Rules (current)
 
-- `web_app.py`
-  Flask dashboard and testing interface.
-  Current UI supports:
-  - email generation from a website URL
-  - sample PDF generation
-  - sample deck PDF generation
-  - URL-to-deck PDF generation
+The email engine uses a conversational human structure — not blunt-operator style.
 
-- `deck_generator.py`
-  Bespoke pitch deck generator. Stores a prompt template for per-company deck generation, renders a PPTX internally, then exports PDF as the primary output. On Windows it can fall back to PowerPoint COM for PDF export.
+**5-part structure:**
+1. **Market truth opener** — describes how their type of business grows (industry-specific, empathetic, not critical)
+2. **Tension line** — short, isolated, one sentence ("It works — until it doesn't.")
+3. **What we do + mechanism** — names the company, "That means researching real prospects..."
+4. **Risk reversal + personal selection** — "5 slots free to prove it works. [Company]'s one I had in mind."
+5. **CTA as soft question** — "Worth a 15-minute call?" then calendar link on its own line, then `— [Name]`
 
-- `pdf_generator.py`
-  Older ReportLab-based PDF proposal path. Still present, but the newer deck path is the stronger “sales deck” system.
+**Hard rules:**
+- No opt-out line ("If not relevant, reply no thanks")
+- No "companies like yours", "in your space", "AI-powered"
+- No exclamation marks
+- Company name must appear in the body
+- 90–130 words target, 140 max
 
-## Current Output Style Rules
+## PDF Proposal Style Rules (current)
 
-### Email system
-
-The email engine should feel like a sharp operator, not a polite AI assistant.
-
-Important rules:
-
-- evidence first
-- one primary angle per email
-- no fake specificity
-- controlled inference is allowed when grounded
-- no passive phrasing like:
-  - `might be`
-  - `could be`
-  - `if there is`
-  - `I only have a limited read`
-- fast rhythm
-- short lines
-- calm, confident CTA
-
-### Deck system
-
-The deck generator currently targets a bespoke dark deck style with:
-
-- dark background throughout
-- card-based layout
-- named competitor references when available
-- market-specific tension lines
-- PDF as the final deliverable
-
-The deck flow should feel like:
-
-- specific
-- commercially sharp
-- tailored to the prospect’s market
-
-Not:
-
-- generic agency deck
-- consultant fluff
-- soft “AI nice” copy
+Dark deck aesthetic throughout:
+- Background: `#0f172a` on every page
+- Per-section coloured top bar (indigo / orange / green / purple / red)
+- Card-based content blocks
+- Large coloured metric numbers
+- Content validation: tension markers required, banned phrases blocked
+- 5 pages always (cover + 4 sections)
 
 ## Running
-
-Common commands:
 
 ```bash
 pip install -r requirements.txt
@@ -132,16 +113,16 @@ python -m unittest discover
 python web_app.py
 ```
 
-Useful direct checks:
-
+Quick checks:
 ```bash
-python -m compileall .
-python -c "import web_app, deck_generator, outreach; print('imports ok')"
+python -c "import web_app, deck_generator, outreach, pdf_generator; print('imports ok')"
+python pdf_generator.py   # generates proposals/breakdown_apex_digital.pdf
 ```
 
 ## Notes For Future Sessions
 
-- `main.py` has not been fully switched to the newer multi-channel dispatcher path yet.
-- `agent.md` and `memory.md` are more current than old assumptions from earlier sessions.
-- Prefer improving existing modular systems rather than creating parallel duplicate paths.
-- For deck work, prefer `deck_generator.py` over `pdf_generator.py` unless the user explicitly wants the older proposal format.
+- `main.py` is wired to `run_multichannel_sequence()`. The old `sequencer.run_sequence()` still exists but is the legacy path.
+- `_operator_market_label()` in `outreach.py` maps niche/ICP text to a short market noun used in emails. Extend it when encountering new niches that fall through to the generic fallback.
+- Calendar link is currently hardcoded as `calendly.com/leadgenai/30min` in `outreach.py` (`CALENDAR_LINK`) and `pdf_generator.py` (`CTA_LINK`). Move to `.env` when going live.
+- `pdf_generator.py` and `deck_generator.py` serve different purposes — do not conflate them.
+- The full-pipeline endpoint does not yet persist results to the DB. That is the next task.

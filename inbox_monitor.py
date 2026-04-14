@@ -24,6 +24,7 @@ import logging
 from dotenv import load_dotenv
 
 import database
+from database import save_reply_draft
 from ai_engine import classify_reply
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -96,6 +97,7 @@ def _handle_classified_reply(
     reasoning: str,
     drafted_reply: str,
     sender_email: str,
+    inbound_body: str = "",
 ) -> None:
     """
     Act on a classified reply: update DB, pause sequence, log events.
@@ -136,12 +138,20 @@ def _handle_classified_reply(
 
     elif classification == "interested":
         logging.info(f"  INTERESTED reply from {sender_email} — pausing sequence, drafting response.")
-        # Keep status as 'replied' (set by check_for_replies before this is called)
         database.update_sequence_enrollment_status(
             prospect_id, "paused", paused_reason="interested_reply_awaiting_response"
         )
         if drafted_reply:
-            # Append drafted reply to the prospect's notes for manual review
+            # Save to structured reply_drafts table (queryable, reviewable in UI)
+            save_reply_draft(
+                prospect_id=prospect_id,
+                inbound_from=sender_email,
+                inbound_body=inbound_body,
+                classification=classification,
+                classification_reasoning=reasoning,
+                drafted_reply=drafted_reply,
+            )
+            # Also append to notes for backward-compat
             existing_notes = prospect.get("notes") or ""
             draft_note = f"\n\n[DRAFTED REPLY — review before sending]\n{drafted_reply}"
             database.update_notes(prospect_id, (existing_notes + draft_note).strip())
@@ -150,7 +160,7 @@ def _handle_classified_reply(
                 content_excerpt=drafted_reply[:120],
                 metadata="source=inbox_monitor;status=awaiting_review",
             )
-            logging.info(f"  Drafted reply saved to prospect notes.")
+            logging.info(f"  Drafted reply saved to reply_drafts table.")
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +254,8 @@ def check_for_replies(mark_as_read: bool = True) -> int:
                     updated_count += 1
 
                 _handle_classified_reply(
-                    prospect, classification, reasoning, drafted_reply, sender_email
+                    prospect, classification, reasoning, drafted_reply,
+                    sender_email, inbound_body=body,
                 )
 
             if mark_as_read:

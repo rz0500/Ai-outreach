@@ -116,6 +116,38 @@ def initialize_database(db_path: str = DB_PATH) -> None:
                 updated_at      TEXT    DEFAULT (datetime('now'))
             )
         """)
+        # Structured research results — one row per research run
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prospect_research (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id      INTEGER NOT NULL REFERENCES prospects(id),
+                researched_at    TEXT    DEFAULT (datetime('now')),
+                url              TEXT,
+                niche            TEXT,
+                icp              TEXT,
+                website_headline TEXT,
+                product_feature  TEXT,
+                competitors      TEXT,
+                pain_point       TEXT,
+                growth_signal    TEXT,
+                hook             TEXT,
+                raw_analysis     TEXT
+            )
+        """)
+        # Reply drafts — one row per classified inbound reply
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reply_drafts (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id              INTEGER NOT NULL REFERENCES prospects(id),
+                created_at               TEXT    DEFAULT (datetime('now')),
+                inbound_from             TEXT,
+                inbound_body             TEXT,
+                classification           TEXT,
+                classification_reasoning TEXT,
+                drafted_reply            TEXT,
+                status                   TEXT    DEFAULT 'pending_review'
+            )
+        """)
         # Migrate existing databases — add any missing columns safely
         enrichment_columns = [
             ("sequence_step",       "INTEGER DEFAULT 0"),
@@ -812,6 +844,200 @@ def update_outreach_status(
         cursor = conn.execute(
             "UPDATE outreach SET status = ? WHERE id = ?",
             (new_status, outreach_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Research persistence
+# ---------------------------------------------------------------------------
+
+def save_research_result(
+    prospect_id: int,
+    analysis: dict,
+    url: str = "",
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Persist a structured research result for a prospect.
+
+    Stores every field from Claude's analysis individually so they can be
+    queried without parsing notes text. Also keeps the full analysis JSON
+    as raw_analysis for auditing.
+
+    Returns:
+        The ID of the newly created research record.
+    """
+    import json as _json
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO prospect_research
+                (prospect_id, url, niche, icp, website_headline,
+                 product_feature, competitors, pain_point, growth_signal, hook, raw_analysis)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                prospect_id,
+                url or "",
+                analysis.get("niche", ""),
+                analysis.get("icp", ""),
+                analysis.get("website_headline", ""),
+                analysis.get("product_feature", ""),
+                analysis.get("competitors", ""),
+                analysis.get("pain_point", ""),
+                analysis.get("growth_signal", ""),
+                analysis.get("hook", ""),
+                _json.dumps(analysis),
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_latest_research(
+    prospect_id: int,
+    db_path: str = DB_PATH,
+) -> Optional[dict]:
+    """Return the most recent research record for a prospect, or None."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM prospect_research
+            WHERE prospect_id = ?
+            ORDER BY researched_at DESC, id DESC
+            LIMIT 1
+            """,
+            (prospect_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_research_history(
+    prospect_id: int,
+    db_path: str = DB_PATH,
+) -> list:
+    """Return all research records for a prospect, newest first."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM prospect_research
+            WHERE prospect_id = ?
+            ORDER BY researched_at DESC, id DESC
+            """,
+            (prospect_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Reply drafts
+# ---------------------------------------------------------------------------
+
+VALID_REPLY_DRAFT_STATUSES = {"pending_review", "approved", "sent", "dismissed"}
+
+
+def save_reply_draft(
+    prospect_id: int,
+    inbound_from: str,
+    inbound_body: str,
+    classification: str,
+    classification_reasoning: str,
+    drafted_reply: str,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Persist a classified inbound reply and its AI-drafted response.
+
+    Stores the original reply body, the classification, the reasoning, and
+    the suggested reply so they can be reviewed and approved in the UI.
+
+    Returns:
+        The ID of the newly created reply_draft record.
+    """
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO reply_drafts
+                (prospect_id, inbound_from, inbound_body,
+                 classification, classification_reasoning, drafted_reply)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                prospect_id,
+                inbound_from or "",
+                inbound_body or "",
+                classification or "",
+                classification_reasoning or "",
+                drafted_reply or "",
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_pending_reply_drafts(db_path: str = DB_PATH) -> list:
+    """
+    Return all reply drafts with status='pending_review', joined with prospect data.
+
+    Sorted by created_at ascending so oldest replies surface first.
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                rd.*,
+                p.name    AS prospect_name,
+                p.company AS prospect_company,
+                p.email   AS prospect_email,
+                p.lead_score
+            FROM reply_drafts rd
+            JOIN prospects p ON p.id = rd.prospect_id
+            WHERE rd.status = 'pending_review'
+              AND rd.drafted_reply != ''
+            ORDER BY rd.created_at ASC
+            """,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_reply_drafts_for_prospect(
+    prospect_id: int,
+    db_path: str = DB_PATH,
+) -> list:
+    """Return all reply drafts for a specific prospect, newest first."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM reply_drafts
+            WHERE prospect_id = ?
+            ORDER BY created_at DESC
+            """,
+            (prospect_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_reply_draft_status(
+    draft_id: int,
+    new_status: str,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Update the review status of a reply draft.
+
+    Valid statuses: pending_review → approved → sent  (or dismissed at any point).
+    """
+    if new_status not in VALID_REPLY_DRAFT_STATUSES:
+        raise ValueError(
+            f"Invalid reply draft status '{new_status}'. "
+            f"Choose from: {sorted(VALID_REPLY_DRAFT_STATUSES)}"
+        )
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "UPDATE reply_drafts SET status = ? WHERE id = ?",
+            (new_status, draft_id),
         )
         conn.commit()
         return cursor.rowcount > 0

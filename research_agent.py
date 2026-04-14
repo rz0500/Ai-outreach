@@ -24,7 +24,10 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 
-from database import DB_PATH, get_all_prospects, update_enrichment_fields, update_notes
+from database import (
+    DB_PATH, get_all_prospects, update_enrichment_fields, update_notes,
+    save_research_result, get_latest_research,
+)
 from ai_engine import analyze_website
 
 logger = logging.getLogger(__name__)
@@ -81,10 +84,12 @@ def research_prospect(prospect_id: int, db_path: str = DB_PATH) -> dict:
     if not url:
         return {"error": "No website URL"}
 
-    # Skip if already researched
+    # Skip if already researched (prefer structured table; fall back to notes marker)
+    if get_latest_research(prospect_id, db_path):
+        return {"error": "Already researched — skipping."}
     existing_notes = prospect.get("notes") or ""
     if "[Research Hook]" in existing_notes:
-        return {"error": "Already researched — skipping."}
+        return {"error": "Already researched (legacy notes marker) — skipping."}
 
     logger.info(f"    Crawling {url}...")
     website_text = scrape_website_text(url)
@@ -95,7 +100,10 @@ def research_prospect(prospect_id: int, db_path: str = DB_PATH) -> dict:
     logger.info("    Analyzing with Claude...")
     analysis = analyze_website(prospect.get("company", "the company"), website_text)
 
-    # --- Persist enrichment fields directly to the DB ---
+    # --- Persist structured research record (queryable, timestamped) ---
+    save_research_result(prospect_id, analysis, url=url, db_path=db_path)
+
+    # --- Persist enrichment fields directly to the prospects table ---
     enrichment_fields = {
         "niche":            analysis.get("niche", ""),
         "icp":              analysis.get("icp", ""),
@@ -105,7 +113,7 @@ def research_prospect(prospect_id: int, db_path: str = DB_PATH) -> dict:
     }
     update_enrichment_fields(prospect_id, enrichment_fields, db_path)
 
-    # --- Append the research hook to notes for email generation ---
+    # --- Append research hook to notes (backward-compat for email engine) ---
     hook_note = (
         f"[Research Hook]\n"
         f"Pain Point: {analysis['pain_point']}\n"
@@ -132,6 +140,7 @@ def run_research_batch(db_path: str = DB_PATH) -> int:
     prospects = [
         p for p in get_all_prospects(db_path)
         if p["status"] == "qualified"
+        and not get_latest_research(p["id"], db_path)
         and "[Research Hook]" not in (p.get("notes") or "")
     ]
 

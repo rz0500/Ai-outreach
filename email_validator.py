@@ -204,11 +204,11 @@ def validate_email(subject: str, body: str, prospect: dict) -> ValidationResult:
             result.quality_score -= 25
             break
 
-    # 4. Body word count
+    # 4. Body word count (new conversational structure runs 90-130 words)
     word_count = len(body.split())
-    if word_count > 90:
+    if word_count > 140:
         result.errors.append(
-            f"Email body is {word_count} words. Maximum is 90. Cut the fluff."
+            f"Email body is {word_count} words. Maximum is 140. Tighten it."
         )
         result.quality_score -= 10
 

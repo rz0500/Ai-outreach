@@ -311,6 +311,265 @@ tbody tr:hover {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* ================================================================
+   Full Pipeline Section
+   ================================================================ */
+
+.pipeline-section {
+    background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(139,92,246,0.06) 100%);
+    border: 1px solid rgba(99,102,241,0.22);
+    border-radius: 20px;
+    padding: 2.2rem 2.5rem;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+.pipeline-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1.6rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.pipeline-badge {
+    background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.25));
+    border: 1px solid rgba(139,92,246,0.4);
+    color: #c4b5fd;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 0.3rem 0.85rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.pipeline-inputs {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.4rem;
+}
+
+.pipeline-input {
+    flex: 1;
+    min-width: 240px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: 'Outfit', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.pipeline-run-btn {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border: none;
+    border-radius: 10px;
+    padding: 0.8rem 1.8rem;
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+.pipeline-run-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.pipeline-run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* Progress steps */
+.pipeline-steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 1.4rem;
+}
+
+.pl-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+    padding: 0.35rem 0.9rem 0.35rem 0.45rem;
+    transition: color 0.3s, border-color 0.3s;
+}
+
+.pl-step-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    flex-shrink: 0;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.pl-step-line {
+    flex: 1;
+    max-width: 60px;
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 0 0.4rem;
+}
+
+/* Output grid: email left, PDF right */
+.pl-output-grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.2rem;
+    align-items: start;
+    margin-top: 1.4rem;
+}
+
+.pl-email-card {
+    background: rgba(99,102,241,0.04);
+    border: 1px solid rgba(99,102,241,0.18);
+    border-radius: 14px;
+    padding: 1.4rem;
+}
+
+.pl-pdf-card {
+    background: rgba(16,185,129,0.04);
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 14px;
+    padding: 1.4rem;
+}
+
+.pl-pdf-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 1.5rem 1rem;
+    border: 1px dashed rgba(16,185,129,0.35);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.pl-pdf-link:hover {
+    background: rgba(16,185,129,0.08);
+    border-color: rgba(16,185,129,0.55);
+}
+
+.pl-copy-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 0.3rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.pl-copy-btn:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+
+@media (max-width: 800px) {
+    .pl-output-grid { grid-template-columns: 1fr; }
+    .pipeline-section { padding: 1.4rem; }
+}
+
+/* Reply Review UI */
+.reply-draft-card {
+    background: rgba(16, 185, 129, 0.04);
+    border: 1px solid rgba(16, 185, 129, 0.18);
+    border-radius: 14px;
+    padding: 1.4rem;
+    margin-bottom: 1rem;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.reply-draft-card:last-child {
+    margin-bottom: 0;
+}
+
+.reply-label {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    margin-bottom: 0.45rem;
+}
+
+.reply-inbound {
+    color: var(--text-primary);
+    font-size: 0.84rem;
+    line-height: 1.6;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+}
+
+.reply-draft-body {
+    color: #d1fae5;
+    font-size: 0.84rem;
+    line-height: 1.6;
+    background: rgba(16, 185, 129, 0.06);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 1.1rem;
+    white-space: pre-wrap;
+}
+
+.btn-approve,
+.btn-dismiss {
+    padding: 0.5rem 1.1rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+    margin-right: 0.6rem;
+}
+
+.btn-approve {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.btn-approve:hover {
+    background: rgba(16, 185, 129, 0.32);
+    transform: translateY(-1px);
+}
+
+.btn-dismiss {
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.btn-dismiss:hover {
+    background: rgba(239, 68, 68, 0.22);
+    transform: translateY(-1px);
+}
+
+.btn-approve:disabled,
+.btn-dismiss:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
 @media (max-width: 900px) {
     .reasoning-grid {
         grid-template-columns: 1fr;

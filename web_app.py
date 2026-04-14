@@ -210,9 +210,15 @@ def index():
     if os.path.exists("decks"):
         decks = [f for f in os.listdir("decks") if f.endswith(".pdf")]
 
+    # Reply drafts awaiting review
+    try:
+        reply_drafts = database.get_pending_reply_drafts()
+    except Exception:
+        reply_drafts = []
+
     # Generate sample emails to showcase on dashboard
     sample_emails = _generate_sample_emails()
-        
+
     return render_template(
         "index.html",
         summary=summary,
@@ -220,6 +226,7 @@ def index():
         outreach=outreach_data,
         pdfs=pdfs,
         decks=decks,
+        reply_drafts=reply_drafts,
         sample_emails=sample_emails,
     )
 
@@ -538,6 +545,253 @@ def api_generate_from_url():
             },
             "enrichment":    enrichment,
         })
+
+
+@app.route("/api/full-pipeline", methods=["POST"])
+def api_full_pipeline():
+    """
+    URL → Research → Email → PDF Proposal in one shot.
+
+    Steps (all run server-side, result returned in one JSON blob):
+      1. Fetch website + AI enrichment (company analysis, competitor detection,
+         pain point, growth signal, ICP, hook)
+      2. Generate outbound email (AI or template)
+      3. Generate PDF proposal (pdf_generator)
+
+    Body: { "url": "https://...", "company": "(optional override)" }
+    """
+    from pdf_generator import generate_proposal
+
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    company_override = (data.get("company") or "").strip()
+
+    if not url:
+        return jsonify({"error": "No URL provided."}), 400
+
+    # ------------------------------------------------------------------ #
+    # Step 1: Research / enrichment                                        #
+    # ------------------------------------------------------------------ #
+    prospect, error = _fetch_url_enrichment(url, company_override)
+    if error:
+        return jsonify({"error": error, "step": "research"}), 400
+
+    has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+
+    # Pull structured fields out of the notes block written by _fetch_url_enrichment
+    research_data = {
+        "niche":           prospect.get("niche", ""),
+        "icp":             prospect.get("icp", ""),
+        "headline":        prospect.get("website_headline", ""),
+        "product_feature": prospect.get("product_feature", ""),
+        "competitors":     prospect.get("competitors", ""),
+        "pain_point":      "",
+        "growth_signal":   "",
+        "hook":            "",
+    }
+    for line in (prospect.get("notes") or "").split("\n"):
+        if line.startswith("Pain Point:"):
+            research_data["pain_point"] = line[11:].strip()
+        elif line.startswith("Growth Signal:"):
+            research_data["growth_signal"] = line[14:].strip()
+        elif line.startswith("Opener:"):
+            research_data["hook"] = line[7:].strip()
+
+    # ------------------------------------------------------------------ #
+    # Persist prospect + research to DB                                   #
+    # ------------------------------------------------------------------ #
+    company_name = prospect.get("company", "")
+    prospect_url = prospect.get("website", url)
+
+    # Find or create a prospect record for this company/URL
+    existing = database.search_by_company(company_name)
+    matched = [p for p in existing if p.get("website") == prospect_url]
+    if matched:
+        prospect_id = matched[0]["id"]
+    else:
+        try:
+            prospect_id = database.add_prospect(
+                name="Founder",
+                company=company_name,
+                website=prospect_url,
+                status="qualified",
+            )
+        except Exception:
+            # Company may already exist with a different URL — just use first match
+            if existing:
+                prospect_id = existing[0]["id"]
+            else:
+                prospect_id = None
+
+    if prospect_id:
+        database.update_enrichment_fields(prospect_id, {
+            "niche":            research_data["niche"],
+            "icp":              research_data["icp"],
+            "website_headline": research_data["headline"],
+            "product_feature":  research_data["product_feature"],
+            "competitors":      research_data["competitors"],
+        })
+        research_record_id = database.save_research_result(
+            prospect_id=prospect_id,
+            analysis={
+                "niche":            research_data["niche"],
+                "icp":              research_data["icp"],
+                "website_headline": research_data["headline"],
+                "product_feature":  research_data["product_feature"],
+                "competitors":      research_data["competitors"],
+                "pain_point":       research_data["pain_point"],
+                "growth_signal":    research_data["growth_signal"],
+                "hook":             research_data["hook"],
+            },
+            url=prospect_url,
+        )
+    else:
+        research_record_id = None
+
+    # ------------------------------------------------------------------ #
+    # Step 2: Generate outbound email                                      #
+    # ------------------------------------------------------------------ #
+    email_result = {}
+    angle = ""
+    analysis_data = {}
+    internal_quality = {}
+
+    try:
+        debug = debug_email_reasoning(prospect)
+        angle = debug.get("angle", "")
+        analysis_data = debug.get("analysis", {})
+        iq = debug.get("internal_quality")
+        if iq:
+            internal_quality = {
+                "specificity":   getattr(iq, "specificity", None),
+                "credibility":   getattr(iq, "credibility", None),
+                "generic_risk":  getattr(iq, "generic_risk", None),
+            }
+    except Exception:
+        pass
+
+    if has_api_key:
+        from ai_engine import generate_hyper_personalized_email
+        try:
+            email_result = generate_hyper_personalized_email(prospect)
+        except ValueError as exc:
+            # Quality gate rejected — return the debug draft anyway
+            email_result = {
+                "subject":       debug.get("email", {}).get("subject", ""),
+                "body":          debug.get("email", {}).get("body", ""),
+                "quality_score": 0,
+                "warnings":      [str(exc)],
+            }
+        except Exception as exc:
+            email_result = {
+                "subject": "", "body": "",
+                "quality_score": 0, "warnings": [f"Email generation failed: {exc}"],
+            }
+    else:
+        email_result = generate_email(prospect)
+
+    # Save email draft to outreach table
+    outreach_record_id = None
+    if prospect_id and email_result.get("subject") and email_result.get("body"):
+        try:
+            outreach_record_id = database.save_outreach(
+                prospect_id=prospect_id,
+                subject=email_result["subject"],
+                body=email_result["body"],
+            )
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------ #
+    # Step 3: Generate PDF proposal                                        #
+    # ------------------------------------------------------------------ #
+    pdf_url      = ""
+    pdf_filename = ""
+    pdf_error    = ""
+    try:
+        filepath     = generate_proposal(prospect)
+        pdf_filename = os.path.basename(filepath)
+        pdf_url      = f"/proposals/{pdf_filename}"
+    except Exception as exc:
+        pdf_error = str(exc)
+
+    return jsonify({
+        "mode":    "ai" if has_api_key else "template",
+        "company": prospect.get("company", ""),
+        "url":     url,
+        "prospect_id":   prospect_id,
+        "research_id":   research_record_id,
+        "outreach_id":   outreach_record_id,
+        "research": research_data,
+        "analysis": analysis_data,
+        "angle":    angle,
+        "internal_quality": internal_quality,
+        "email": {
+            "subject":       email_result.get("subject", ""),
+            "body":          email_result.get("body", ""),
+            "quality_score": email_result.get("quality_score", 0),
+            "warnings":      email_result.get("warnings", []),
+        },
+        "pdf": {
+            "url":      pdf_url,
+            "filename": pdf_filename,
+            "error":    pdf_error,
+        },
+    })
+
+
+@app.route("/api/reply-drafts")
+def api_reply_drafts():
+    """Return all reply drafts with status=pending_review."""
+    return jsonify(database.get_pending_reply_drafts())
+
+
+@app.route("/api/reply-drafts/<int:draft_id>/action", methods=["POST"])
+def api_reply_draft_action(draft_id):
+    """
+    Approve or dismiss a reply draft.
+    Body: { "action": "approve" | "dismiss" }
+    """
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip()
+    if action not in ("approve", "dismiss"):
+        return jsonify({"error": "action must be 'approve' or 'dismiss'"}), 400
+    new_status = "approved" if action == "approve" else "dismissed"
+    ok = database.update_reply_draft_status(draft_id, new_status)
+    if not ok:
+        return jsonify({"error": "Draft not found"}), 404
+    return jsonify({"ok": True, "status": new_status})
+
+
+@app.route("/api/seed-demo-reply", methods=["POST"])
+def api_seed_demo_reply():
+    """
+    Inject a fake interested reply into reply_drafts so the review UI
+    can be tested without a live inbox connection.
+    """
+    prospects = database.get_all_prospects()
+    if not prospects:
+        return jsonify({"error": "No prospects in DB to attach demo reply to."}), 400
+    p = prospects[0]
+    draft_id = database.save_reply_draft(
+        prospect_id=p["id"],
+        inbound_from=p.get("email") or "demo@example.com",
+        inbound_body=(
+            "Hey, thanks for reaching out — this actually caught me at a good time. "
+            "We have been thinking about outbound for a while but haven't pulled the trigger. "
+            "Happy to jump on a call. What does your availability look like next week?"
+        ),
+        classification="interested",
+        classification_reasoning="Prospect explicitly expressed interest and requested a call.",
+        drafted_reply=(
+            f"Hi {p.get('name', 'there').split()[0]},\n\n"
+            "Great timing — really glad it landed well.\n\n"
+            "I have Thursday 2pm or Friday 10am free. Either work for you? "
+            "If easier, grab a slot directly: calendly.com/leadgenai/30min\n\n"
+            "Talk soon."
+        ),
+    )
+    return jsonify({"ok": True, "draft_id": draft_id, "prospect": p.get("name")})
 
 
 if __name__ == "__main__":
