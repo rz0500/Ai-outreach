@@ -32,11 +32,12 @@ from datetime import date, timedelta
 from database import (
     DB_PATH,
     get_prospects_in_sequence,
+    log_communication_event,
     update_sequence_progress,
     update_status,
 )
-from outreach import generate_email
-from mailer import send_email
+from outreach import OPT_OUT_LINE, generate_email
+from sendgrid_mailer import send_email
 
 # ---------------------------------------------------------------------------
 # Sequence configuration
@@ -81,6 +82,7 @@ def _build_message(prospect: dict, step: int) -> dict:
             f"Hi {first},\n\n"
             f"Just wanted to bump this up in case it got buried.\n\n"
             f"Would a quick 15-minute call this week make sense?\n\n"
+            f"{OPT_OUT_LINE}\n\n"
             f"Best,\n"
             f"[Your name]"
         )
@@ -94,6 +96,7 @@ def _build_message(prospect: dict, step: int) -> dict:
         f"If building a more predictable outbound pipeline is a priority "
         f"for {company} right now, I'd love to show you what we're doing "
         f"for similar teams. If the timing isn't right, no worries at all.\n\n"
+        f"{OPT_OUT_LINE}\n\n"
         f"Either way, thanks for your time.\n\n"
         f"Best,\n"
         f"[Your name]"
@@ -224,11 +227,19 @@ def run_sequence(dry_run: bool = True, db_path: str = DB_PATH) -> list:
             print(f"\n  {mode_label} Would send to {email} — no action taken.")
         elif not email:
             error = "No email address on file — skipped."
+            log_communication_event(
+                prospect["id"], "email", "outbound", "sequence_step", "skipped",
+                content_excerpt=subject, metadata=error, db_path=db_path
+            )
             print(f"\n  SKIPPED: {error}")
         else:
             sent, error = send_email(email, subject, body)
             if sent:
                 update_sequence_progress(prospect["id"], step, today_str, db_path)
+                log_communication_event(
+                    prospect["id"], "email", "outbound", "sequence_step", "sent",
+                    content_excerpt=subject, metadata=f"step={step}", db_path=db_path
+                )
                 # After the final step, move the prospect out of the sequence
                 if step == SEQUENCE[-1]["step"]:
                     update_status(prospect["id"], SEQUENCE_COMPLETE_STATUS, db_path)
@@ -236,6 +247,10 @@ def run_sequence(dry_run: bool = True, db_path: str = DB_PATH) -> list:
                 else:
                     print(f"\n  Sent. Next step due in {SEQUENCE[step]['day']} day(s).")
             else:
+                log_communication_event(
+                    prospect["id"], "email", "outbound", "sequence_step", "failed",
+                    content_excerpt=subject, metadata=error, db_path=db_path
+                )
                 print(f"\n  FAILED: {error}")
 
         results.append({

@@ -35,6 +35,10 @@ Usage:
     results = generate_batch(min_score=60)
 """
 
+from __future__ import annotations
+
+from copy import deepcopy
+
 from database import (
     DB_PATH,
     get_all_prospects,
@@ -42,6 +46,11 @@ from database import (
     initialize_outreach_table,
     save_outreach,
     update_outreach_status,
+)
+from email_validator import (
+    check_enrichment_sufficiency,
+    score_internal_quality,
+    validate_email,
 )
 
 # ---------------------------------------------------------------------------
@@ -56,6 +65,20 @@ SIGNAL_KEYWORDS = {
     "warm_intro": {"intro", "warm", "referred", "recommend", "recommended"},
 }
 
+OPT_OUT_LINE = (
+    "If not relevant, reply no thanks."
+)
+PRIMARY_ANGLES = (
+    "positioning",
+    "hiring signal",
+    "competitor",
+    "outbound gap",
+    "product feature",
+    "ICP mismatch",
+    "funnel weakness",
+)
+CALENDAR_LINK = "[Calendar link]"
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -64,6 +87,94 @@ SIGNAL_KEYWORDS = {
 def _first_name(full_name: str) -> str:
     """Return just the first word of a name."""
     return full_name.strip().split()[0] if full_name.strip() else "there"
+
+
+def _clean(value: str | None) -> str:
+    """Normalize optional text fields."""
+    return (value or "").strip()
+
+
+def _extract_competitors(raw: str | None) -> list[str]:
+    """Return a clean list of competitor names."""
+    if not raw:
+        return []
+    parts = [p.strip() for p in raw.split(",")]
+    return [p for p in parts if p and len(p) > 1]
+
+
+def _evidence_count(analysis: dict) -> int:
+    """Count how many structured evidence slots contain real data."""
+    keys = (
+        "company_positioning",
+        "target_customer",
+        "key_offer_or_feature",
+        "recent_signal",
+        "outbound_evidence",
+        "possible_gap",
+        "relevant_competitor",
+    )
+    return sum(1 for key in keys if _clean(analysis.get(key)))
+
+
+def _operator_market_label(prospect: dict, analysis: dict) -> str:
+    """Return a concise market label for operator-style outreach."""
+    niche = _clean(prospect.get("niche")) or _clean(analysis.get("company_positioning"))
+    icp = _clean(prospect.get("icp")) or _clean(analysis.get("target_customer"))
+    company = _clean(prospect.get("company")) or "this company"
+    low = f"{niche} {icp}".lower()
+
+    if any(word in low for word in ("studio", "photography", "photo booth", "wedding")):
+        return "studios"
+    if any(word in low for word in ("agency", "creative", "design", "branding")):
+        return "agencies"
+    if any(word in low for word in ("saas", "software", "crm", "platform")):
+        return "SaaS teams"
+    if any(word in low for word in ("cyber", "security vendor", "security vendors")):
+        return "cybersecurity vendors"
+    if any(word in low for word in ("clinic", "health", "dental", "med")):
+        return "healthcare teams"
+    if any(word in low for word in ("law", "legal", "firm", "attorney")):
+        return "law firms"
+    if any(word in low for word in ("freight", "logistics", "shipping", "supply chain")):
+        return "logistics teams"
+    if any(word in low for word in ("tax", "account", "finance", "cpa")):
+        return "advisory firms"
+    if any(word in low for word in ("coach", "coaching", "learning", "training", "education")):
+        return "coaching businesses"
+    if any(word in low for word in ("consult", "advisor", "coach")):
+        return "consultancies"
+    return "teams in this market"
+
+
+def _possessive(name: str) -> str:
+    """Return a readable possessive form for a company name."""
+    if not name:
+        return "This company's"
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+def _operator_truth(angle: str, market_label: str) -> str:
+    """Return a blunt market truth based on the chosen angle."""
+    truths = {
+        "hiring signal": "New hires do not fix demand. They expose the gap faster.",
+        "competitor": f"Most {market_label} do not lose on offer. They lose on who gets to buyers first.",
+        "outbound gap": f"Most {market_label} rely on referrals and inbound. That is not a pipeline, it is drift.",
+        "product feature": "A sharp offer still gets ignored if nobody is putting it in front of the right buyers.",
+        "ICP mismatch": "A defined buyer is wasted if the outreach still feels broad.",
+        "funnel weakness": "When one channel carries demand, growth gets fragile fast.",
+        "positioning": f"Clear positioning is useless if it never leaves the website.",
+    }
+    return truths.get(angle, f"Most {market_label} rely on inbound longer than they should.")
+
+
+def _operator_offer(market_label: str) -> str:
+    """Return a blunt explanation of the service."""
+    return f"We build outbound pipelines for {market_label}. Custom emails, real prospects, booked calls."
+
+
+def _operator_risk_reversal(company: str) -> str:
+    """Return a simple risk-reversal line."""
+    return f"I'm opening 5 pilot slots this month. {company} is on the shortlist."
 
 
 def _detect_signals(notes: str) -> dict:
@@ -79,19 +190,257 @@ def _detect_signals(notes: str) -> dict:
     }
 
 
+def analyze_company(prospect: dict) -> dict:
+    """
+    === COMPANY ANALYSIS ===
+
+    Extract only evidence-backed observations from the provided prospect data.
+    No guessing, no hallucination.
+    """
+    notes = _clean(prospect.get("notes"))
+    headline = _clean(prospect.get("website_headline"))
+    niche = _clean(prospect.get("niche"))
+    icp = _clean(prospect.get("icp"))
+    product_feature = _clean(prospect.get("product_feature"))
+    hiring_signal = _clean(prospect.get("hiring_signal"))
+    linkedin_activity = _clean(prospect.get("linkedin_activity"))
+    outbound_status = _clean(prospect.get("outbound_status"))
+    ad_status = _clean(prospect.get("ad_status"))
+    competitors = _extract_competitors(prospect.get("competitors"))
+    company = _clean(prospect.get("company"))
+
+    company_positioning = headline or niche
+    recent_signal = hiring_signal or linkedin_activity
+    inferred_icp = ""
+    inferred_motion = ""
+
+    if not icp and company_positioning:
+        inferred_icp = "Clear positioning usually means the team knows exactly which buyer it wants."
+    if niche and "saas" in niche.lower():
+        inferred_motion = "SaaS teams usually grow through inbound, sales-led motion, or both."
+
+    if outbound_status == "no_outbound":
+        outbound_evidence = f"{company} is marked as no_outbound"
+    elif outbound_status:
+        outbound_evidence = f"{company} outbound status is {outbound_status}"
+    elif ad_status == "running_ads":
+        outbound_evidence = f"{company} is running_ads"
+    elif inferred_motion:
+        outbound_evidence = inferred_motion
+    else:
+        outbound_evidence = ""
+
+    possible_gap = ""
+    logical_inference = ""
+    if hiring_signal:
+        possible_gap = "New hiring usually exposes whether the pipeline is already strong enough to feed the team."
+        logical_inference = "Derived from the provided hiring signal."
+    elif competitors and outbound_status == "no_outbound":
+        possible_gap = "Named competitors are present while outbound activity is marked as absent."
+        logical_inference = "Derived from explicit competitor and outbound-status fields."
+    elif outbound_status == "no_outbound":
+        possible_gap = "When no outbound motion is visible, high-intent buyers are usually left to inbound alone."
+        logical_inference = "Derived from the explicit outbound_status field."
+    elif ad_status == "running_ads":
+        possible_gap = "When paid acquisition carries demand, the funnel usually gets fragile."
+        logical_inference = "Derived from the explicit ad_status field."
+    elif product_feature and icp:
+        possible_gap = "A specific offer and buyer usually means there is room for sharper outbound."
+        logical_inference = "Derived from the product feature and ICP fields."
+    elif company_positioning:
+        possible_gap = "Clear positioning usually means the buyer is defined well enough to support direct outbound."
+        logical_inference = "Derived from the provided positioning data."
+
+    sufficient, missing_mandatory, missing_optional = check_enrichment_sufficiency(prospect)
+    weak_data_mode = _evidence_count({
+        "company_positioning": company_positioning,
+        "target_customer": icp or inferred_icp,
+        "key_offer_or_feature": product_feature,
+        "recent_signal": recent_signal,
+        "outbound_evidence": outbound_evidence,
+        "possible_gap": possible_gap,
+        "relevant_competitor": competitors[0] if competitors else "",
+    }) < 2
+
+    return {
+        "company_positioning": company_positioning,
+        "target_customer": icp or inferred_icp,
+        "key_offer_or_feature": product_feature,
+        "recent_signal": recent_signal,
+        "outbound_evidence": outbound_evidence,
+        "possible_gap": possible_gap,
+        "relevant_competitor": competitors[0] if competitors else "",
+        "all_competitors": competitors,
+        "logical_inference": logical_inference,
+        "notes": notes,
+        "weak_data_mode": weak_data_mode,
+        "needs_enrichment": (not sufficient) or weak_data_mode,
+        "missing_mandatory": missing_mandatory,
+        "missing_optional": missing_optional,
+    }
+
+
+def choose_primary_angle(analysis: dict) -> str:
+    """
+    Pick one strongest angle and build the email around it.
+    """
+    if _clean(analysis.get("recent_signal")) and "hiring" in analysis["recent_signal"].lower():
+        return "hiring signal"
+    if _clean(analysis.get("relevant_competitor")) and (
+        "absent" in analysis.get("possible_gap", "").lower()
+        or "no_outbound" in analysis.get("outbound_evidence", "").lower()
+        or "no outbound" in analysis.get("possible_gap", "").lower()
+    ):
+        return "competitor"
+    if "no outbound" in analysis.get("possible_gap", "").lower():
+        return "outbound gap"
+    if _clean(analysis.get("key_offer_or_feature")):
+        return "product feature"
+    if _clean(analysis.get("company_positioning")) and _clean(analysis.get("target_customer")):
+        return "positioning"
+    if _clean(analysis.get("target_customer")) and not _clean(analysis.get("company_positioning")):
+        return "ICP mismatch"
+    if "paid acquisition" in analysis.get("possible_gap", "").lower():
+        return "funnel weakness"
+    return "positioning"
+
+
+def _weak_data_email(prospect: dict, analysis: dict) -> dict:
+    """Return a short operator-style email when evidence is thin."""
+    first = _first_name(prospect.get("name", "there"))
+    company = prospect.get("company", "your company")
+    market_label = _operator_market_label(prospect, analysis)
+    subject = f"{company} outbound"
+    body = (
+        f"Hi {first},\n\n"
+        f"{company} already looks specific enough to sell directly.\n"
+        f"Most {market_label} still lean on inbound. That is not a growth plan.\n"
+        f"{_operator_offer(market_label)}\n"
+        f"{_operator_risk_reversal(company)}\n"
+        f"If it sounds useful, grab a time here: {CALENDAR_LINK}\n\n"
+        f"{OPT_OUT_LINE}\n\n"
+        f"[Name]"
+    )
+    return {"subject": subject, "body": body, "needs_enrichment": True}
+
+
+def _build_data_driven_email(
+    prospect: dict,
+    analysis: dict,
+    angle: str,
+    rewrite_pass: int = 0,
+) -> dict:
+    """
+    Build an email from structured analysis and a single primary angle.
+    """
+    first = _first_name(prospect.get("name", "there"))
+    company = prospect.get("company", "your company")
+    positioning = analysis.get("company_positioning") or company
+    icp = analysis.get("target_customer") or "their buyer"
+    feature = analysis.get("key_offer_or_feature") or positioning
+    recent_signal = analysis.get("recent_signal") or ""
+    competitor = analysis.get("relevant_competitor") or ""
+    possible_gap = analysis.get("possible_gap") or ""
+
+    market_label = _operator_market_label(prospect, analysis)
+
+    if angle == "hiring signal":
+        subject = f"{company} hiring"
+        opening = f"{company} is {recent_signal}."
+    elif angle == "competitor":
+        subject = f"{company} and {competitor}"
+        opening = f"{competitor} is already in the lane with {company}."
+    elif angle == "outbound gap":
+        subject = f"{company} outbound"
+        opening = f"{company} looks built for direct outbound."
+    elif angle == "product feature":
+        feature_words = " ".join(feature.split()[:4]).strip()
+        subject = f"{company} {feature_words}".strip()
+        opening = f"{_possessive(company)} {feature} is the kind of offer that should travel well in cold outreach."
+    elif angle == "funnel weakness":
+        subject = f"{company} funnel"
+        opening = f"{company} looks too dependent on paid demand."
+    elif angle == "ICP mismatch":
+        subject = f"{company} ICP"
+        opening = f"{company} already knows the buyer: {icp}."
+    else:
+        subject = f"{company} positioning"
+        opening = f"{company} is positioned around {positioning}."
+
+    truth = _operator_truth(angle, market_label)
+    offer = _operator_offer(market_label)
+    risk_reversal = _operator_risk_reversal(company)
+    ctas = [
+        f"If it sounds useful, grab a time here: {CALENDAR_LINK}",
+        f"If it is worth 15 minutes, book here: {CALENDAR_LINK}",
+        f"If you want to see it, grab a slot here: {CALENDAR_LINK}",
+    ]
+    cta = ctas[min(rewrite_pass, len(ctas) - 1)]
+
+    body = (
+        f"Hi {first},\n\n"
+        f"{opening}\n"
+        f"{truth}\n"
+        f"{offer}\n"
+        f"{risk_reversal}\n"
+        f"{cta}\n\n"
+        f"{OPT_OUT_LINE}\n\n"
+        f"[Name]"
+    )
+    return {"subject": subject, "body": body, "needs_enrichment": False}
+
+
+def debug_email_reasoning(prospect: dict) -> dict:
+    """
+    Return analysis, chosen angle, quality score, and final email for debugging.
+    """
+    analysis = analyze_company(prospect)
+    angle = choose_primary_angle(analysis)
+    draft = _weak_data_email(prospect, analysis) if analysis["weak_data_mode"] else None
+
+    if not draft:
+        for rewrite_pass in range(2):
+            candidate = _build_data_driven_email(prospect, analysis, angle, rewrite_pass=rewrite_pass)
+            validation = validate_email(candidate["subject"], candidate["body"], prospect)
+            quality = score_internal_quality(candidate["subject"], candidate["body"], prospect, analysis, validation)
+            if not quality.rewrite_required:
+                draft = {**candidate, "validation": validation, "internal_quality": quality}
+                break
+        if not draft:
+            candidate = _weak_data_email(prospect, analysis)
+            validation = validate_email(candidate["subject"], candidate["body"], prospect)
+            quality = score_internal_quality(candidate["subject"], candidate["body"], prospect, analysis, validation)
+            draft = {**candidate, "validation": validation, "internal_quality": quality}
+    else:
+        validation = validate_email(draft["subject"], draft["body"], prospect)
+        quality = score_internal_quality(draft["subject"], draft["body"], prospect, analysis, validation)
+        draft = {**draft, "validation": validation, "internal_quality": quality}
+
+    return {
+        "analysis": analysis,
+        "angle": angle,
+        "email": {
+            "subject": draft["subject"],
+            "body": draft["body"],
+        },
+        "validation": draft["validation"],
+        "internal_quality": draft["internal_quality"],
+    }
+
+
 def _build_subject(first_name: str, company: str, signals: dict) -> str:
-    """Pick a subject line based on the strongest detected signal."""
+    """Pick a specific subject line based on available signals."""
     if signals["warm_intro"]:
-        return f"Introduction - quick note for {first_name}"
+        return f"Introduction for {first_name}"
     if signals["funding"]:
-        return f"Congrats on the raise, {first_name} - idea for {company}"
+        return f"{company} post-raise"
     if signals["growth"]:
-        return f"{first_name}, quick thought on scaling {company}'s pipeline"
+        return f"{company} growth"
     if signals["pain"]:
-        return f"Re: the challenge at {company}"
+        return f"{company} outbound gap"
     if signals["content"]:
-        return f"Your recent content + a thought for {company}"
-    return f"Quick idea for {company}"
+        return f"Your post + a thought for {company}"
+    return f"{company} outbound"
 
 
 def _build_hook(first_name: str, company: str, signals: dict) -> str:
@@ -128,40 +477,29 @@ def _build_hook(first_name: str, company: str, signals: dict) -> str:
 
 def generate_email(prospect: dict) -> dict:
     """
-    Generate a personalised cold email draft for a prospect.
+    Generate a cold email from structured evidence, not loose text generation.
 
-    Does NOT save to the database. Use generate_and_save() for that.
+    Internally this runs:
+      1. COMPANY ANALYSIS
+      2. primary-angle decision
+      3. email generation
+      4. validation and internal quality scoring
+      5. one rewrite if needed, then weak-data fallback
 
-    Args:
-        prospect: A prospect dict (as returned by database.get_all_prospects).
-
-    Returns:
-        A dict with "subject" and "body" strings.
+    Final output remains clean: subject + body, plus internal scores for callers.
     """
-    first  = _first_name(prospect.get("name", "there"))
-    company = prospect.get("company", "your company")
-    notes   = prospect.get("notes") or ""
-    signals = _detect_signals(notes)
-
-    subject = _build_subject(first, company, signals)
-    hook    = _build_hook(first, company, signals)
-
-    body = (
-        f"Hi {first},\n\n"
-        f"{hook}\n\n"
-        f"I help B2B teams build a predictable outbound pipeline - "
-        f"fewer hours on manual prospecting, more time closing. "
-        f"Most teams we work with book 3-5 extra meetings per week "
-        f"within their first month.\n\n"
-        f"Would a 15-minute call this week make sense to see if "
-        f"there's a fit?\n\n"
-        f"Best,\n"
-        f"[Your name]\n"
-        f"[Your title] | [Your company]\n"
-        f"[Your phone]  | [Your email]"
-    )
-
-    return {"subject": subject, "body": body}
+    debug = debug_email_reasoning(prospect)
+    quality = debug["internal_quality"]
+    return {
+        "subject": debug["email"]["subject"],
+        "body": debug["email"]["body"],
+        "quality_score": (quality.specificity * 10 + quality.credibility * 10) // 2,
+        "specificity": quality.specificity,
+        "credibility": quality.credibility,
+        "generic_risk": quality.generic_risk,
+        "angle": debug["angle"],
+        "needs_enrichment": debug["analysis"]["needs_enrichment"],
+    }
 
 
 def generate_and_save(

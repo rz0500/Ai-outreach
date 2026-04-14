@@ -130,7 +130,7 @@ class TestGenerateEmail(unittest.TestCase):
         from ai_engine import generate_hyper_personalized_email
         mock_client.messages.create.return_value = _mock_response({
             "subject": "Quick thought for Acme",
-            "body":    "Hi Jane,\n\nSaw you raised Series B...\n\nBest,\n[Your name]",
+            "body":    "Hi Jane,\n\nAcme Corp raised Series B, which changes the pressure on pipeline.\n\nBest,\n[Your name]",
         })
 
         result = generate_hyper_personalized_email(_make_prospect())
@@ -144,7 +144,7 @@ class TestGenerateEmail(unittest.TestCase):
         from ai_engine import generate_hyper_personalized_email
         mock_client.messages.create.return_value = _mock_response({
             "subject": "Hey",
-            "body":    "Hi Jane,\n\nBest,\n[Your name]",
+            "body":    "Hi Jane,\n\nAcme Corp has a clear offer.\n\nBest,\n[Your name]",
         })
 
         generate_hyper_personalized_email(_make_prospect())
@@ -158,7 +158,7 @@ class TestGenerateEmail(unittest.TestCase):
     def test_uses_cache_control_on_system_prompt(self, mock_client):
         from ai_engine import generate_hyper_personalized_email
         mock_client.messages.create.return_value = _mock_response({
-            "subject": "Hey", "body": "Body",
+            "subject": "Hey", "body": "Acme Corp has a clear offer.",
         })
 
         generate_hyper_personalized_email(_make_prospect())

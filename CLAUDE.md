@@ -70,3 +70,9 @@ Uses `claude-haiku-4-5-20251001` by default (cheap for bulk runs). Change `MODEL
 ### Lead score convention
 
 1-40 = cold, 41-70 = warm, 71-100 = hot. Scores are set by the AI scorer or overridden manually.
+
+## Context Files
+
+To help prevent hitting context window limits and losing the thread over multiple sessions, this repository uses two state files:
+- `memory.md`: Serves as your long-term memory. Read this to understand the current state, what modules have been built, roadmap goals, and architectural decisions. Please update it when major milestones are hit.
+- `agent.md`: Serves as your short-term task tracker. Read this to understand what the very next immediate task is. When you finish a task, update `agent.md` with the new objective so the next session can pick up where you left off.

@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeadGen AI Dashboard</title>
+    <!-- Use modern typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+<body>
+    <header>
+        <h1>LeadGen AI</h1>
+        <div class="user-profile">
+            <span class="status-pill status-in_sequence">System Active</span>
+        </div>
+    </header>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-title">Total Leads</div>
+            <div class="stat-value">{{ summary.prospects.total }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">In Sequence</div>
+            <!-- In sequence count -> using DB status -->
+            <div class="stat-value">{{ summary.funnel.counts.in_sequence | default(0) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Replies</div>
+            <div class="stat-value" style="color: #6ee7b7;">{{ summary.funnel.counts.replied }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Conversion Rate</div>
+            <div class="stat-value">{{ summary.funnel.conversion_rate }}%</div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <h2 style="margin-bottom: 1.5rem; font-weight: 500;">Active Pipeline</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Lead Name</th>
+                    <th>Company</th>
+                    <th>Email</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in prospects %}
+                <tr>
+                    <td style="font-weight: 500;">{{ p.name }}</td>
+                    <td style="color: var(--text-muted);">{{ p.company }}</td>
+                    <td style="color: var(--text-muted);">{{ p.email or 'N/A' }}</td>
+                    <td>
+                        <span class="score-badge 
+                            {% if p.lead_score >= 71 %}score-hot
+                            {% elif p.lead_score >= 41 %}score-warm
+                            {% else %}score-cold{% endif %}">
+                            {{ p.lead_score }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status-pill status-{{ p.status }}">
+                            {{ p.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- NEW SECTION: Sample Delivery Log & Proposals -->
+    <div class="stats-grid" style="grid-template-columns: 2fr 1fr; margin-top: 2rem; margin-bottom: 2rem;">
+        <div class="table-container">
+            <h2 style="margin-bottom: 1.5rem; font-weight: 500;">Recent AI Outreach Drafts</h2>
+            {% if outreach %}
+                {% for msg in outreach[:3] %}
+                <div style="background: rgba(255,255,255,0.03); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <strong style="color: #60a5fa;">To: {{ msg.prospect_name }} ({{ msg.prospect_company }})</strong>
+                        <span class="status-pill status-{{ msg.status }}">{{ msg.status }}</span>
+                    </div>
+                    <div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.8rem; color: #f8fafc;">Subject: {{ msg.subject }}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+                        {{ msg.body | replace('\n', '<br>') | safe }}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p style="color: var(--text-muted); font-size: 0.9rem;">No AI drafts found in the database. Run the outreach sequencer with live API keys to populate.</p>
+            {% endif %}
+        </div>
+
+        <div class="table-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="font-weight: 500; margin: 0;">Generated Proposals (PDF)</h2>
+                <button
+                    onclick="generateSamplePdf(this)"
+                    style="
+                        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                        border: none; border-radius: 8px;
+                        padding: 0.5rem 1.1rem;
+                        color: #fff; font-size: 0.8rem; font-weight: 600;
+                        font-family: 'Outfit', sans-serif;
+                        cursor: pointer; transition: opacity 0.2s;
+                        white-space: nowrap;
+                    "
+                    onmouseover="this.style.opacity='0.85'"
+                    onmouseout="this.style.opacity='1'"
+                >Generate Sample</button>
+            </div>
+
+            <div id="pdf-list">
+            {% if pdfs %}
+                {% for pdf in pdfs %}
+                <a href="/proposals/{{ pdf }}" target="_blank" style="display: flex; align-items: center; gap: 0.6rem; padding: 0.9rem 1rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; color: #93c5fd; text-decoration: none; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.7rem; transition: all 0.2s;"
+                   onmouseover="this.style.background='rgba(59,130,246,0.16)'"
+                   onmouseout="this.style.background='rgba(59,130,246,0.08)'">
+                    <span style="font-size:1.1rem;">📄</span> {{ pdf }}
+                </a>
+                {% endfor %}
+            {% else %}
+                <p id="pdf-empty" style="color: var(--text-muted); font-size: 0.9rem;">No proposals yet. Hit "Generate Sample" to see one.</p>
+            {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container" style="margin-top: 0; margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;">
+            <div>
+                <h2 style="font-weight: 600; margin: 0 0 0.25rem 0;">Generated Decks</h2>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                    Generate the Apex Digital sample deck as a finished PDF in the darker pitch style.
+                </p>
+            </div>
+            <button
+                onclick="generateSampleDeck(this)"
+                style="
+                    background: linear-gradient(135deg, #0ea5e9, #6366f1);
+                    border: none; border-radius: 10px;
+                    padding: 0.65rem 1.2rem;
+                    color: #fff; font-size: 0.82rem; font-weight: 700;
+                    font-family: 'Outfit', sans-serif;
+                    cursor: pointer; transition: opacity 0.2s;
+                    white-space: nowrap;
+                "
+                onmouseover="this.style.opacity='0.85'"
+                onmouseout="this.style.opacity='1'"
+            >Generate Sample PDF Deck</button>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <input
+                id="deck-url-input"
+                type="url"
+                placeholder="https://company-site.com"
+                style="
+                    flex: 1;
+                    min-width: 260px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 10px;
+                    padding: 0.75rem 1rem;
+                    color: var(--text-primary);
+                    font-size: 0.9rem;
+                    font-family: 'Outfit', sans-serif;
+                    outline: none;
+                "
+            />
+            <input
+                id="deck-company-input"
+                type="text"
+                placeholder="Company name (optional)"
+                style="
+                    width: 220px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 10px;
+                    padding: 0.75rem 1rem;
+                    color: var(--text-primary);
+                    font-size: 0.9rem;
+                    font-family: 'Outfit', sans-serif;
+                    outline: none;
+                "
+            />
+            <button
+                id="deck-generate-btn"
+                onclick="generateDeckFromUrl()"
+                style="
+                    background: linear-gradient(135deg, #0f766e, #0891b2);
+                    border: none;
+                    border-radius: 10px;
+                    padding: 0.75rem 1.4rem;
+                    color: #fff;
+                    font-size: 0.88rem;
+                    font-weight: 700;
+                    font-family: 'Outfit', sans-serif;
+                    cursor: pointer;
+                    white-space: nowrap;
+                "
+            >Generate PDF From URL</button>
+        </div>
+
+        <div id="deck-status" style="display:none; color: var(--text-muted); font-size: 0.84rem; margin-bottom: 1rem;"></div>
+        <div id="deck-error" style="display:none; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; padding: 1rem; color: #fca5a5; font-size: 0.84rem; margin-bottom: 1rem;"></div>
+
+        <div id="deck-list">
+        {% if decks %}
+            {% for deck in decks %}
+            <a href="/decks/{{ deck }}" target="_blank" class="asset-link">
+                <span class="asset-icon">PDF</span>
+                <span>{{ deck }}</span>
+            </a>
+            {% endfor %}
+        {% else %}
+            <p id="deck-empty" style="color: var(--text-muted); font-size: 0.9rem;">No deck PDFs yet. Generate one to test the new deck system.</p>
+        {% endif %}
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- URL → EMAIL GENERATOR                                            -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-bottom: 2.5rem;" id="url-generator">
+        <div style="margin-bottom: 1.8rem;">
+            <h2 style="font-weight: 600; margin: 0 0 0.4rem 0;">Generate Email from Website</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">
+                Paste any company URL. The app will extract signals, run company analysis, choose one angle, and show the final draft.
+            </p>
+        </div>
+
+        <!-- Input row -->
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+            <input
+                id="url-input"
+                type="url"
+                placeholder="https://example.com"
+                style="
+                    flex: 1;
+                    min-width: 260px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 10px;
+                    padding: 0.75rem 1rem;
+                    color: var(--text-primary);
+                    font-size: 0.9rem;
+                    font-family: 'Outfit', sans-serif;
+                    outline: none;
+                    transition: border-color 0.2s;
+                "
+                onfocus="this.style.borderColor='rgba(99,102,241,0.5)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
+            />
+            <input
+                id="company-input"
+                type="text"
+                placeholder="Company name (optional)"
+                style="
+                    width: 220px;
+                    background: rgba(255,255,255,0.04);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 10px;
+                    padding: 0.75rem 1rem;
+                    color: var(--text-primary);
+                    font-size: 0.9rem;
+                    font-family: 'Outfit', sans-serif;
+                    outline: none;
+                    transition: border-color 0.2s;
+                "
+                onfocus="this.style.borderColor='rgba(99,102,241,0.5)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
+            />
+            <button
+                id="generate-btn"
+                onclick="generateEmailFromUrl()"
+                style="
+                    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                    border: none;
+                    border-radius: 10px;
+                    padding: 0.75rem 1.6rem;
+                    color: #fff;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    font-family: 'Outfit', sans-serif;
+                    cursor: pointer;
+                    transition: opacity 0.2s, transform 0.15s;
+                    white-space: nowrap;
+                "
+                onmouseover="this.style.opacity='0.85'"
+                onmouseout="this.style.opacity='1'"
+            >
+                Analyze &amp; Generate
+            </button>
+        </div>
+
+        <!-- Status / loader -->
+        <div id="url-status" style="display:none; color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0; display: flex; align-items: center; gap: 0.6rem;">
+            <span id="url-status-text"></span>
+        </div>
+
+        <!-- Result panel (hidden until response arrives) -->
+        <div id="url-result" style="display:none; margin-top: 1.5rem;">
+
+            <!-- Enrichment tags -->
+            <div id="enrichment-tags" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.2rem;"></div>
+
+            <div class="reasoning-grid">
+                <div class="reasoning-card">
+                    <div class="reasoning-title">Company Analysis</div>
+                    <div id="analysis-grid" class="analysis-grid"></div>
+                </div>
+                <div class="reasoning-card">
+                    <div class="reasoning-title">Decision</div>
+                    <div id="angle-pill" class="angle-pill">No angle chosen</div>
+                    <div class="reasoning-title" style="margin-top: 1.2rem;">Internal Quality</div>
+                    <div id="quality-grid" class="quality-grid"></div>
+                </div>
+            </div>
+
+            <!-- Email card -->
+            <div style="
+                background: rgba(99, 102, 241, 0.04);
+                border: 1px solid rgba(99, 102, 241, 0.2);
+                border-radius: 14px;
+                padding: 1.6rem;
+                position: relative;
+            ">
+                <!-- Header row -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <span id="result-company" style="font-weight: 600; color: #f8fafc;"></span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <span id="result-mode" style="padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600;"></span>
+                        <span id="result-qs" style="padding: 0.2rem 0.75rem; border-radius: 12px; font-size: 0.75rem; font-weight: 700;"></span>
+                        <button
+                            onclick="copyEmail()"
+                            style="
+                                background: rgba(255,255,255,0.07);
+                                border: 1px solid rgba(255,255,255,0.12);
+                                border-radius: 8px;
+                                padding: 0.3rem 0.8rem;
+                                color: var(--text-muted);
+                                font-size: 0.75rem;
+                                font-family: 'Outfit', sans-serif;
+                                cursor: pointer;
+                                transition: background 0.2s;
+                            "
+                            onmouseover="this.style.background='rgba(255,255,255,0.12)'"
+                            onmouseout="this.style.background='rgba(255,255,255,0.07)'"
+                            id="copy-btn"
+                        >Copy</button>
+                    </div>
+                </div>
+
+                <!-- Subject -->
+                <div style="
+                    background: rgba(255,255,255,0.04);
+                    padding: 0.65rem 1rem;
+                    border-radius: 8px;
+                    margin-bottom: 1.2rem;
+                    font-size: 0.85rem;
+                ">
+                    <span style="color: var(--text-muted); font-weight: 500;">Subject:</span>
+                    <span id="result-subject" style="color: #e2e8f0; font-weight: 600; margin-left: 0.4rem;"></span>
+                </div>
+
+                <!-- Body -->
+                <div id="result-body" style="
+                    font-size: 0.85rem;
+                    color: #cbd5e1;
+                    line-height: 1.8;
+                    padding-left: 0.5rem;
+                    border-left: 2px solid rgba(99, 102, 241, 0.3);
+                    white-space: pre-wrap;
+                "></div>
+            </div>
+
+            <!-- Warnings (if any) -->
+            <div id="result-warnings" style="margin-top: 0.8rem; display: none;"></div>
+
+            <!-- Error panel -->
+            <div id="url-error" style="display:none; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; padding: 1.2rem; color: #fca5a5; font-size: 0.85rem;"></div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SAMPLE EMAIL ENGINE SHOWCASE                                      -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-bottom: 4rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem;">
+            <div>
+                <h2 style="font-weight: 600; margin: 0;">AI Email Engine Showcase</h2>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.4rem 0 0 0;">
+                    Live output from the outbound engine. Each email uses a different angle and data signal.
+                </p>
+            </div>
+            <span style="
+                background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.15));
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                color: #6ee7b7;
+                padding: 0.4rem 1rem;
+                border-radius: 20px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+            ">{{ sample_emails | length }} Samples</span>
+        </div>
+
+        <div style="display: grid; gap: 1.5rem;">
+            {% for email in sample_emails %}
+            <div style="
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 16px;
+                padding: 1.8rem;
+                transition: all 0.3s ease;
+                position: relative;
+                overflow: hidden;
+            " onmouseover="this.style.borderColor='rgba(99, 102, 241, 0.3)'; this.style.background='rgba(99, 102, 241, 0.04)'"
+               onmouseout="this.style.borderColor='rgba(255,255,255,0.06)'; this.style.background='rgba(255,255,255,0.02)'">
+
+                <!-- Header row: name, angle badge, quality score -->
+                <div style="display: flex; align-items: center; gap: 0.8rem; margin-bottom: 1.2rem; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #f8fafc; font-size: 0.95rem;">
+                        {{ email.prospect_name }}
+                    </span>
+                    <span style="color: var(--text-muted); font-size: 0.85rem;">
+                        @ {{ email.prospect_company }}
+                    </span>
+                    <span style="
+                        background: rgba(99, 102, 241, 0.15);
+                        border: 1px solid rgba(99, 102, 241, 0.3);
+                        color: #a5b4fc;
+                        padding: 0.2rem 0.7rem;
+                        border-radius: 12px;
+                        font-size: 0.7rem;
+                        font-weight: 600;
+                        letter-spacing: 0.3px;
+                    ">{{ email.angle }}</span>
+                    <span style="
+                        margin-left: auto;
+                        background: {% if email.quality_score >= 80 %}rgba(16, 185, 129, 0.15){% elif email.quality_score >= 60 %}rgba(251, 191, 36, 0.15){% else %}rgba(239, 68, 68, 0.15){% endif %};
+                        color: {% if email.quality_score >= 80 %}#6ee7b7{% elif email.quality_score >= 60 %}#fbbf24{% else %}#f87171{% endif %};
+                        padding: 0.2rem 0.7rem;
+                        border-radius: 12px;
+                        font-size: 0.7rem;
+                        font-weight: 700;
+                    ">QS: {{ email.quality_score }}/100</span>
+                </div>
+
+                <!-- Subject line -->
+                <div style="
+                    background: rgba(255, 255, 255, 0.04);
+                    padding: 0.7rem 1rem;
+                    border-radius: 8px;
+                    margin-bottom: 1.2rem;
+                    font-size: 0.85rem;
+                ">
+                    <span style="color: var(--text-muted); font-weight: 500;">Subject:</span>
+                    <span style="color: #e2e8f0; font-weight: 600; margin-left: 0.4rem;">{{ email.subject }}</span>
+                </div>
+
+                <!-- Email body -->
+                <div style="
+                    font-size: 0.85rem;
+                    color: #cbd5e1;
+                    line-height: 1.75;
+                    padding-left: 0.5rem;
+                    border-left: 2px solid rgba(99, 102, 241, 0.2);
+                ">
+                    {{ email.body | replace('\n', '<br>') | safe }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+    // ------------------------------------------------------------------ //
+    // URL → Email Generator                                               //
+    // ------------------------------------------------------------------ //
+
+    function setStatus(msg, show = true) {
+        const el = document.getElementById('url-status');
+        document.getElementById('url-status-text').textContent = msg;
+        el.style.display = show ? 'flex' : 'none';
+    }
+
+    function qsBadgeStyle(score) {
+        if (score >= 80) return 'background:rgba(16,185,129,0.15);color:#6ee7b7;';
+        if (score >= 60) return 'background:rgba(251,191,36,0.15);color:#fbbf24;';
+        return 'background:rgba(239,68,68,0.15);color:#f87171;';
+    }
+
+    function renderEnrichmentTags(enrichment) {
+        const container = document.getElementById('enrichment-tags');
+        container.innerHTML = '';
+        const fields = [
+            ['Niche',    enrichment.niche],
+            ['ICP',      enrichment.icp],
+            ['Headline', enrichment.headline],
+            ['Feature',  enrichment.product_feature],
+        ];
+        fields.forEach(([label, value]) => {
+            if (!value) return;
+            const tag = document.createElement('div');
+            tag.style.cssText = `
+                background: rgba(99,102,241,0.1);
+                border: 1px solid rgba(99,102,241,0.25);
+                border-radius: 8px;
+                padding: 0.4rem 0.8rem;
+                font-size: 0.75rem;
+                color: #a5b4fc;
+                max-width: 340px;
+            `;
+            tag.innerHTML = `<span style="font-weight:600;color:#818cf8;">${label}:</span> ${escHtml(value)}`;
+            container.appendChild(tag);
+        });
+    }
+
+    function renderAnalysis(analysis) {
+        const grid = document.getElementById('analysis-grid');
+        grid.innerHTML = '';
+        const fields = [
+            ['Positioning', analysis.company_positioning],
+            ['Target Customer', analysis.target_customer],
+            ['Offer / Feature', analysis.key_offer_or_feature],
+            ['Recent Signal', analysis.recent_signal],
+            ['Outbound Evidence', analysis.outbound_evidence],
+            ['Possible Gap', analysis.possible_gap],
+            ['Competitor', analysis.relevant_competitor],
+        ];
+        fields.forEach(([label, value]) => {
+            const card = document.createElement('div');
+            card.className = 'analysis-item';
+            card.innerHTML = `
+                <div class="analysis-label">${escHtml(label)}</div>
+                <div class="analysis-value">${escHtml(value || 'None found from provided data')}</div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function renderInternalQuality(internalQuality) {
+        const grid = document.getElementById('quality-grid');
+        grid.innerHTML = '';
+        const fields = [
+            ['Specificity', internalQuality.specificity],
+            ['Credibility', internalQuality.credibility],
+            ['Generic Risk', internalQuality.generic_risk],
+        ];
+        fields.forEach(([label, value]) => {
+            const item = document.createElement('div');
+            item.className = 'quality-item';
+            item.innerHTML = `
+                <span class="quality-label">${escHtml(label)}</span>
+                <span class="quality-value">${escHtml(String(value ?? '-'))}</span>
+            `;
+            grid.appendChild(item);
+        });
+    }
+
+    function escHtml(str) {
+        return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function generateEmailFromUrl() {
+        const url     = document.getElementById('url-input').value.trim();
+        const company = document.getElementById('company-input').value.trim();
+
+        if (!url) {
+            document.getElementById('url-input').focus();
+            return;
+        }
+
+        // Reset UI
+        document.getElementById('url-result').style.display = 'none';
+        document.getElementById('url-error').style.display  = 'none';
+        document.getElementById('result-warnings').style.display = 'none';
+        document.getElementById('generate-btn').disabled = true;
+        setStatus('Scraping website...');
+
+        try {
+            const resp = await fetch('/api/generate-from-url', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ url, company }),
+            });
+
+            const data = await resp.json();
+
+            // Always show the result panel so errors/enrichment are visible
+            document.getElementById('url-result').style.display = 'block';
+
+            if (!resp.ok || data.error) {
+                // Show enrichment even on 422 (quality gate fail)
+                if (data.enrichment) renderEnrichmentTags(data.enrichment);
+                if (data.analysis) renderAnalysis(data.analysis);
+                if (data.internal_quality) renderInternalQuality(data.internal_quality);
+                document.getElementById('angle-pill').textContent = data.angle || 'No angle chosen';
+                const errEl = document.getElementById('url-error');
+                errEl.style.display = 'block';
+                errEl.textContent   = data.error || 'Something went wrong.';
+                if (data.debug_email) {
+                    document.getElementById('result-company').textContent = (data.enrichment && data.enrichment.company) || '';
+                    document.getElementById('result-subject').textContent = data.debug_email.subject || '';
+                    document.getElementById('result-body').textContent = data.debug_email.body || '';
+                }
+                setStatus('', false);
+                return;
+            }
+
+            // Populate enrichment tags
+            renderEnrichmentTags(data.enrichment);
+            renderAnalysis(data.analysis || {});
+            renderInternalQuality(data.internal_quality || {});
+            document.getElementById('angle-pill').textContent = data.angle || 'No angle chosen';
+
+            // Populate email card
+            document.getElementById('result-company').textContent = data.enrichment.company;
+
+            const modeEl = document.getElementById('result-mode');
+            if (data.mode === 'ai') {
+                modeEl.textContent = 'AI';
+                modeEl.style.cssText = 'padding:0.2rem 0.75rem;border-radius:12px;font-size:0.7rem;font-weight:600;background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);';
+            } else {
+                modeEl.textContent = 'Template';
+                modeEl.style.cssText = 'padding:0.2rem 0.75rem;border-radius:12px;font-size:0.7rem;font-weight:600;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);';
+            }
+
+            const qsEl = document.getElementById('result-qs');
+            qsEl.textContent   = `QS: ${data.quality_score}/100`;
+            qsEl.style.cssText += qsBadgeStyle(data.quality_score);
+
+            document.getElementById('result-subject').textContent = data.subject;
+            document.getElementById('result-body').textContent    = data.body;
+
+            // Warnings
+            if (data.warnings && data.warnings.length) {
+                const warnEl = document.getElementById('result-warnings');
+                warnEl.style.display = 'block';
+                warnEl.innerHTML = data.warnings.map(w =>
+                    `<div style="font-size:0.8rem;color:#fbbf24;margin-bottom:0.3rem;">Warning: ${escHtml(w)}</div>`
+                ).join('');
+            }
+
+            setStatus('', false);
+            document.getElementById('url-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        } catch (err) {
+            setStatus('', false);
+            document.getElementById('url-result').style.display = 'block';
+            const errEl = document.getElementById('url-error');
+            errEl.style.display = 'block';
+            errEl.textContent   = 'Network error. Is the server running?';
+        } finally {
+            document.getElementById('generate-btn').disabled = false;
+        }
+    }
+
+    function copyEmail() {
+        const subject = document.getElementById('result-subject').textContent;
+        const body    = document.getElementById('result-body').textContent;
+        const full    = `Subject: ${subject}\n\n${body}`;
+        navigator.clipboard.writeText(full).then(() => {
+            const btn = document.getElementById('copy-btn');
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+        });
+    }
+
+    // ------------------------------------------------------------------ //
+    // Sample PDF generator                                               //
+    // ------------------------------------------------------------------ //
+    async function generateSamplePdf(btn) {
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        try {
+            const resp = await fetch('/api/sample-pdf', { method: 'POST' });
+            const data = await resp.json();
+
+            if (data.error) {
+                alert('PDF error: ' + data.error);
+                return;
+            }
+
+            // Remove empty-state message if present
+            const empty = document.getElementById('pdf-empty');
+            if (empty) empty.remove();
+
+            // Add link to list if not already there
+            const list = document.getElementById('pdf-list');
+            const exists = list.querySelector(`a[href="${data.url}"]`);
+            if (!exists) {
+                const a = document.createElement('a');
+                a.href = data.url;
+                a.target = '_blank';
+                a.style.cssText = 'display:flex;align-items:center;gap:0.6rem;padding:0.9rem 1rem;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:8px;color:#93c5fd;text-decoration:none;font-size:0.85rem;font-weight:500;margin-bottom:0.7rem;transition:all 0.2s;';
+                a.onmouseover = () => a.style.background = 'rgba(59,130,246,0.16)';
+                a.onmouseout  = () => a.style.background = 'rgba(59,130,246,0.08)';
+                a.innerHTML = `<span style="font-size:1.1rem;">📄</span> ${escHtml(data.filename)}`;
+                list.prepend(a);
+            }
+
+            // Open it immediately
+            window.open(data.url, '_blank');
+
+        } catch (err) {
+            alert('Network error — is the server running?');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = orig;
+        }
+    }
+
+    async function generateSampleDeck(btn) {
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        try {
+            const resp = await fetch('/api/sample-deck', { method: 'POST' });
+            const data = await resp.json();
+
+            if (data.error) {
+                alert('Deck error: ' + data.error);
+                return;
+            }
+
+            const empty = document.getElementById('deck-empty');
+            if (empty) empty.remove();
+
+            const list = document.getElementById('deck-list');
+            if (data.pdf_url) {
+                const exists = list.querySelector(`a[href="${data.pdf_url}"]`);
+                if (!exists) {
+                    const a = document.createElement('a');
+                    a.href = data.pdf_url;
+                    a.target = '_blank';
+                    a.className = 'asset-link';
+                    a.innerHTML = `<span class="asset-icon">PDF</span><span>${escHtml(data.pdf_filename)}</span>`;
+                    list.prepend(a);
+                }
+                window.open(data.pdf_url, '_blank');
+            }
+        } catch (err) {
+            alert('Network error — is the server running?');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = orig;
+        }
+    }
+
+    async function generateDeckFromUrl() {
+        const url = document.getElementById('deck-url-input').value.trim();
+        const company = document.getElementById('deck-company-input').value.trim();
+        const btn = document.getElementById('deck-generate-btn');
+        const status = document.getElementById('deck-status');
+        const error = document.getElementById('deck-error');
+
+        if (!url) {
+            document.getElementById('deck-url-input').focus();
+            return;
+        }
+
+        error.style.display = 'none';
+        status.style.display = 'block';
+        status.textContent = 'Scraping site and building PDF deck...';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch('/api/generate-deck-from-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url, company }),
+            });
+            const data = await resp.json();
+
+            if (!resp.ok || data.error) {
+                error.style.display = 'block';
+                error.textContent = data.error || 'Deck generation failed.';
+                status.style.display = 'none';
+                return;
+            }
+
+            const empty = document.getElementById('deck-empty');
+            if (empty) empty.remove();
+
+            const list = document.getElementById('deck-list');
+            const exists = list.querySelector(`a[href="${data.pdf_url}"]`);
+            if (!exists) {
+                const a = document.createElement('a');
+                a.href = data.pdf_url;
+                a.target = '_blank';
+                a.className = 'asset-link';
+                a.innerHTML = `<span class="asset-icon">PDF</span><span>${escHtml(data.pdf_filename)}</span>`;
+                list.prepend(a);
+            }
+
+            status.textContent = `PDF ready for ${data.company || 'company'}.`;
+            window.open(data.pdf_url, '_blank');
+        } catch (err) {
+            error.style.display = 'block';
+            error.textContent = 'Network error — is the server running?';
+            status.style.display = 'none';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // Allow Enter key in URL field to trigger generation
+    document.getElementById('url-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') generateEmailFromUrl();
+    });
+    document.getElementById('deck-url-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') generateDeckFromUrl();
+    });
+    </script>
+</body>
+</html>

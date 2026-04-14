@@ -13,7 +13,8 @@ Usage:
 """
 
 import sqlite3
-from typing import Optional
+from contextlib import contextmanager
+from typing import Iterator, Optional
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -24,22 +25,29 @@ DB_PATH = "prospects.db"
 
 # All allowed values for the 'status' column.
 VALID_STATUSES = {"new", "qualified", "contacted", "replied", "booked", "rejected", "in_sequence"}
+VALID_CHANNELS = {"email", "linkedin", "instagram", "x", "sms", "call", "system"}
+VALID_DIRECTIONS = {"outbound", "inbound", "internal"}
+VALID_SEQUENCE_ENROLLMENT_STATUSES = {"active", "paused", "completed", "cancelled"}
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+@contextmanager
+def _get_connection(db_path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
     """
-    Open a connection to the SQLite database.
+    Open a connection to the SQLite database and always close it.
 
     row_factory=sqlite3.Row means each returned row behaves like a dict,
     so you can access columns by name: row["email"] instead of row[2].
     """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -75,11 +83,56 @@ def initialize_database(db_path: str = DB_PATH) -> None:
                 last_contacted_date  TEXT
             )
         """)
-        # Migrate existing databases that pre-date the sequencer columns
-        for col, definition in [
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS suppression_list (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                email         TEXT    NOT NULL UNIQUE,
+                reason        TEXT    NOT NULL,
+                source        TEXT    DEFAULT 'manual',
+                date_added    TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS communication_events (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id       INTEGER REFERENCES prospects(id),
+                channel          TEXT    NOT NULL,
+                direction        TEXT    NOT NULL,
+                event_type       TEXT    NOT NULL,
+                status           TEXT    NOT NULL,
+                content_excerpt  TEXT,
+                metadata         TEXT,
+                created_at       TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sequence_enrollments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                prospect_id      INTEGER NOT NULL UNIQUE REFERENCES prospects(id),
+                sequence_name   TEXT    NOT NULL,
+                status          TEXT    DEFAULT 'active',
+                enrolled_at     TEXT    DEFAULT (date('now')),
+                paused_reason   TEXT,
+                updated_at      TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        # Migrate existing databases — add any missing columns safely
+        enrichment_columns = [
             ("sequence_step",       "INTEGER DEFAULT 0"),
             ("last_contacted_date", "TEXT"),
-        ]:
+            # Enrichment fields for hyper-personalized email generation
+            ("niche",               "TEXT"),   # What they actually do, specifically
+            ("icp",                 "TEXT"),   # Their ideal customer profile
+            ("website_headline",    "TEXT"),   # Hero copy / H1 from their homepage
+            ("competitors",         "TEXT"),   # Real named competitors (comma-separated)
+            ("hiring_signal",       "TEXT"),   # e.g. "Hiring SDR on LinkedIn Apr 2024"
+            ("linkedin_activity",   "TEXT"),   # Summary of their most recent post
+            ("ad_status",           "TEXT"),   # "running_ads" | "no_ads" | "unknown"
+            ("outbound_status",     "TEXT"),   # "active_outbound" | "no_outbound" | "unknown"
+            ("notable_result",      "TEXT"),   # Case study / result we can reference in outreach
+            ("product_feature",     "TEXT"),   # Specific feature or product angle
+        ]
+        for col, definition in enrichment_columns:
             try:
                 conn.execute(f"ALTER TABLE prospects ADD COLUMN {col} {definition}")
             except sqlite3.OperationalError:
@@ -212,6 +265,45 @@ def update_status(
         return cursor.rowcount > 0
 
 
+def update_enrichment_fields(
+    prospect_id: int,
+    fields: dict,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Update any subset of the enrichment columns for a prospect.
+
+    Only non-empty string values are written. Fields not in the allowed set
+    are silently ignored so callers can pass a raw AI result dict safely.
+
+    Allowed keys: niche, icp, website_headline, competitors, hiring_signal,
+                  linkedin_activity, ad_status, outbound_status,
+                  notable_result, product_feature.
+
+    Returns:
+        True if the prospect was found and at least one column updated.
+    """
+    ALLOWED = {
+        "niche", "icp", "website_headline", "competitors", "hiring_signal",
+        "linkedin_activity", "ad_status", "outbound_status",
+        "notable_result", "product_feature",
+    }
+    to_update = {k: v for k, v in fields.items() if k in ALLOWED and v}
+    if not to_update:
+        return False
+
+    set_clause = ", ".join(f"{col} = ?" for col in to_update)
+    values = list(to_update.values()) + [prospect_id]
+
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            f"UPDATE prospects SET {set_clause} WHERE id = ?",
+            values,
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 def update_notes(
     prospect_id: int,
     notes: str,
@@ -310,6 +402,9 @@ def get_prospects_in_sequence(db_path: str = DB_PATH) -> list:
         rows = conn.execute("""
             SELECT * FROM prospects
             WHERE status = 'in_sequence'
+              AND (email IS NULL OR lower(email) NOT IN (
+                    SELECT lower(email) FROM suppression_list
+              ))
             ORDER BY last_contacted_date ASC
         """).fetchall()
         return [dict(row) for row in rows]
@@ -339,6 +434,263 @@ def update_sequence_progress(
                SET sequence_step = ?, last_contacted_date = ?
                WHERE id = ?""",
             (sequence_step, last_contacted_date, prospect_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Outreach table
+# ---------------------------------------------------------------------------
+
+def get_prospect_by_email(email: str, db_path: str = DB_PATH) -> Optional[dict]:
+    """
+    Retrieve a single prospect by their exact email address.
+
+    Args:
+        email:   The email address to search for.
+        db_path: Path to the database file.
+
+    Returns:
+        A dict containing the prospect's data, or None if not found.
+    """
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM prospects WHERE email = ?", (email,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def is_suppressed(email: str, db_path: str = DB_PATH) -> bool:
+    """Return True if the given email exists in the suppression list."""
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return False
+
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM suppression_list WHERE lower(email) = ?",
+            (normalized,),
+        ).fetchone()
+        return row is not None
+
+
+def suppress_contact(
+    email: str,
+    reason: str,
+    source: str = "manual",
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Add an email address to the suppression list.
+
+    Returns:
+        True if a new suppression record was created, False if it already existed.
+    """
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        raise ValueError("email is required to suppress a contact")
+    if not reason.strip():
+        raise ValueError("reason is required to suppress a contact")
+
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO suppression_list (email, reason, source)
+            VALUES (?, ?, ?)
+            """,
+            (normalized, reason.strip(), source.strip() or "manual"),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def suppress_prospect(
+    prospect_id: int,
+    reason: str,
+    source: str = "manual",
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Suppress a prospect by email and move them to rejected status.
+
+    Returns:
+        True if the prospect had an email and was newly added to the suppression list.
+    """
+    prospect = next((p for p in get_all_prospects(db_path) if p["id"] == prospect_id), None)
+    if not prospect:
+        raise ValueError(f"No prospect found with id={prospect_id}")
+
+    email = prospect.get("email")
+    if not email:
+        return False
+
+    created = suppress_contact(email, reason, source=source, db_path=db_path)
+    update_status(prospect_id, "rejected", db_path)
+    return created
+
+
+def get_suppressed_contacts(db_path: str = DB_PATH) -> list:
+    """Return all suppressed contacts, newest first."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM suppression_list ORDER BY date_added DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def log_communication_event(
+    prospect_id: Optional[int],
+    channel: str,
+    direction: str,
+    event_type: str,
+    status: str,
+    content_excerpt: Optional[str] = None,
+    metadata: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Log an outbound or inbound communication event for auditing/reporting.
+    """
+    if channel not in VALID_CHANNELS:
+        raise ValueError(f"Invalid channel '{channel}'. Choose from: {sorted(VALID_CHANNELS)}")
+    if direction not in VALID_DIRECTIONS:
+        raise ValueError(f"Invalid direction '{direction}'. Choose from: {sorted(VALID_DIRECTIONS)}")
+
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO communication_events
+                (prospect_id, channel, direction, event_type, status, content_excerpt, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (prospect_id, channel, direction, event_type, status, content_excerpt, metadata),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_communication_events(
+    prospect_id: Optional[int] = None,
+    db_path: str = DB_PATH,
+) -> list:
+    """Return communication events, optionally filtered to one prospect."""
+    with _get_connection(db_path) as conn:
+        if prospect_id is None:
+            rows = conn.execute(
+                "SELECT * FROM communication_events ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM communication_events
+                WHERE prospect_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (prospect_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def ensure_sequence_enrollment(
+    prospect_id: int,
+    sequence_name: str = "default_multichannel",
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Ensure a prospect has a sequence enrollment record and return its ID.
+    """
+    with _get_connection(db_path) as conn:
+        existing = conn.execute(
+            "SELECT id FROM sequence_enrollments WHERE prospect_id = ?",
+            (prospect_id,),
+        ).fetchone()
+        if existing:
+            return int(existing["id"])
+
+        cursor = conn.execute(
+            """
+            INSERT INTO sequence_enrollments (prospect_id, sequence_name, status)
+            VALUES (?, ?, 'active')
+            """,
+            (prospect_id, sequence_name),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_sequence_enrollment(
+    prospect_id: int,
+    db_path: str = DB_PATH,
+) -> Optional[dict]:
+    """Return a prospect's sequence enrollment, if one exists."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM sequence_enrollments WHERE prospect_id = ?",
+            (prospect_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_active_sequence_enrollments(
+    db_path: str = DB_PATH,
+    sequence_name: Optional[str] = None,
+) -> list:
+    """
+    Return active sequence enrollments joined with prospect data.
+    """
+    sql = """
+        SELECT
+            se.id AS enrollment_id,
+            se.sequence_name,
+            se.status AS enrollment_status,
+            se.enrolled_at,
+            se.paused_reason,
+            se.updated_at AS enrollment_updated_at,
+            p.*
+        FROM sequence_enrollments se
+        JOIN prospects p ON p.id = se.prospect_id
+        WHERE se.status = 'active'
+    """
+    params: tuple = ()
+    if sequence_name:
+        sql += " AND se.sequence_name = ?"
+        params = (sequence_name,)
+    sql += """
+          AND p.status = 'in_sequence'
+          AND (p.email IS NULL OR lower(p.email) NOT IN (
+                SELECT lower(email) FROM suppression_list
+          ))
+        ORDER BY se.enrolled_at ASC, se.id ASC
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+        return [dict(row) for row in rows]
+
+
+def update_sequence_enrollment_status(
+    prospect_id: int,
+    new_status: str,
+    paused_reason: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Update the status of a sequence enrollment.
+    """
+    if new_status not in VALID_SEQUENCE_ENROLLMENT_STATUSES:
+        raise ValueError(
+            f"Invalid sequence enrollment status '{new_status}'. "
+            f"Choose from: {sorted(VALID_SEQUENCE_ENROLLMENT_STATUSES)}"
+        )
+
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            UPDATE sequence_enrollments
+            SET status = ?, paused_reason = ?, updated_at = datetime('now')
+            WHERE prospect_id = ?
+            """,
+            (new_status, paused_reason, prospect_id),
         )
         conn.commit()
         return cursor.rowcount > 0
