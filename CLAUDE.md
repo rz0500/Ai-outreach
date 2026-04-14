@@ -1,78 +1,147 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file gives Claude Code the current working context for this repository. It should match the real codebase, not the original module-by-module plan. Keep this file aligned with `agent.md` and `memory.md`.
 
 ## Project Overview
 
-AI-powered lead generation and outreach system built in Python. Being developed module-by-module.
+`leadgen` is a Python-based AI lead generation and outreach system. It is no longer just a database/scoring prototype. The repo now includes:
 
-- **Module 1** — Prospect database (`database.py`) — SQLite-backed CRUD layer for prospect records.
-- **Module 2** — Lead scorer (`scorer.py`) — rule-based scoring 1-100 by profile completeness and growth keywords. AI upgrade path noted in TODOs.
-- **Module 3** — CSV importer (`importer.py`) — bulk import with flexible header mapping, duplicate skipping, auto-scoring.
-- **Module 4** — CLI dashboard (`dashboard.py`) — interactive menu tying all modules together.
-- Future modules will add email outreach and enrichment.
+- prospect storage and orchestration in SQLite
+- evidence-first outbound email generation
+- enrichment and website analysis
+- multi-channel sequence foundations
+- inbox/reply handling foundations
+- a Flask testing dashboard
+- PDF-first sales deck generation from website/company inputs
 
-## Setup
+The system is still in build mode. It is modular, testable, and expanding toward the larger original automation vision, but it is not “finished”.
 
-```bash
-pip install -r requirements.txt
-```
+## Priority Context Files
 
-SQLite is built into Python — no database server needed. The `.db` file is created automatically on first run.
+Read these first before making major changes:
+
+- `agent.md` for the immediate working objective
+- `memory.md` for the latest architecture and project memory
+
+If a meaningful change is made, update:
+
+- `agent.md`
+- `memory.md`
+- `CLAUDE.md` when the repo-level workflow or architecture meaningfully changes
+
+## Current Important Modules
+
+- `database.py`
+  SQLite persistence for prospects plus compliance/orchestration tables such as `suppression_list`, `communication_events`, and `sequence_enrollments`.
+
+- `outreach.py`
+  Main outbound writer. Uses a mandatory internal `COMPANY ANALYSIS`, chooses one primary angle, applies controlled inference, and generates operator-style emails.
+
+- `email_validator.py`
+  Quality gate for outbound email copy. Rejects banned phrases, generic openers, overlong drafts, and weak/passive AI language.
+
+- `ai_engine.py`
+  Anthropic-backed prompt engine for:
+  - hyper-personalized email generation
+  - AI prospect scoring
+  - website analysis
+  - reply classification
+
+- `research_agent.py`
+  Website/data enrichment support.
+
+- `sequencer.py`
+  Legacy email sequence runner still used in the main path.
+
+- `sequence_engine.py`
+  Channel-aware future sequence model for scheduled touchpoints.
+
+- `sequence_dispatcher.py`
+  Dispatcher foundation for email, LinkedIn, Instagram, and SMS touchpoints.
+
+- `sendgrid_mailer.py`
+  SendGrid delivery and sending-domain groundwork.
+
+- `inbox_monitor.py`
+  Reply monitoring and classification support.
+
+- `web_app.py`
+  Flask dashboard and testing interface.
+  Current UI supports:
+  - email generation from a website URL
+  - sample PDF generation
+  - sample deck PDF generation
+  - URL-to-deck PDF generation
+
+- `deck_generator.py`
+  Bespoke pitch deck generator. Stores a prompt template for per-company deck generation, renders a PPTX internally, then exports PDF as the primary output. On Windows it can fall back to PowerPoint COM for PDF export.
+
+- `pdf_generator.py`
+  Older ReportLab-based PDF proposal path. Still present, but the newer deck path is the stronger “sales deck” system.
+
+## Current Output Style Rules
+
+### Email system
+
+The email engine should feel like a sharp operator, not a polite AI assistant.
+
+Important rules:
+
+- evidence first
+- one primary angle per email
+- no fake specificity
+- controlled inference is allowed when grounded
+- no passive phrasing like:
+  - `might be`
+  - `could be`
+  - `if there is`
+  - `I only have a limited read`
+- fast rhythm
+- short lines
+- calm, confident CTA
+
+### Deck system
+
+The deck generator currently targets a bespoke dark deck style with:
+
+- dark background throughout
+- card-based layout
+- named competitor references when available
+- market-specific tension lines
+- PDF as the final deliverable
+
+The deck flow should feel like:
+
+- specific
+- commercially sharp
+- tailored to the prospect’s market
+
+Not:
+
+- generic agency deck
+- consultant fluff
+- soft “AI nice” copy
 
 ## Running
 
+Common commands:
+
 ```bash
-# Module 1 - database demo (no API key needed)
-python test_database.py
-
-# Module 2 - scorer demo
-python test_scorer.py
-
-# Module 3 - CSV importer demo
-python test_importer.py
-
-# Module 4 - interactive dashboard (seeds prospects.db if empty)
-python test_dashboard.py
-
-# Launch dashboard directly against existing prospects.db
-python dashboard.py
+pip install -r requirements.txt
+python -m unittest discover
+python web_app.py
 ```
 
-## Architecture
+Useful direct checks:
 
-### database.py
-
-Single-file SQLite module with no ORM. All functions accept an optional `db_path` parameter (defaults to `prospects.db`) so tests can use an isolated file without touching production data.
-
-Key design decisions:
-- `sqlite3.Row` as `row_factory` — rows are returned as dicts, not tuples.
-- All public functions validate inputs (status enum, score range) before touching the DB.
-- `initialize_database()` uses `CREATE TABLE IF NOT EXISTS` — safe to call on every startup.
-- Duplicate emails raise `sqlite3.IntegrityError` (UNIQUE constraint on `email`).
-
-### Prospect pipeline statuses
-
-```
-new → qualified → contacted → replied → booked
-                                       → rejected
+```bash
+python -m compileall .
+python -c "import web_app, deck_generator, outreach; print('imports ok')"
 ```
 
-### scorer.py
+## Notes For Future Sessions
 
-Wraps the Anthropic SDK. Three public functions:
-- `score_prospect(prospect)` — API call only, no DB writes. Returns `{score, reasoning}`.
-- `score_and_update(prospect_id)` — scores and writes score + appends `[AI] <reasoning>` to notes.
-- `score_all_new()` — bulk scores all prospects with `status="new"`.
-
-Uses `claude-haiku-4-5-20251001` by default (cheap for bulk runs). Change `MODEL` at the top of the file for higher quality. The system prompt is cache-controlled so repeated bulk calls don't re-send it.
-
-### Lead score convention
-
-1-40 = cold, 41-70 = warm, 71-100 = hot. Scores are set by the AI scorer or overridden manually.
-
-## Context Files
-
-To help prevent hitting context window limits and losing the thread over multiple sessions, this repository uses two state files:
-- `memory.md`: Serves as your long-term memory. Read this to understand the current state, what modules have been built, roadmap goals, and architectural decisions. Please update it when major milestones are hit.
-- `agent.md`: Serves as your short-term task tracker. Read this to understand what the very next immediate task is. When you finish a task, update `agent.md` with the new objective so the next session can pick up where you left off.
+- `main.py` has not been fully switched to the newer multi-channel dispatcher path yet.
+- `agent.md` and `memory.md` are more current than old assumptions from earlier sessions.
+- Prefer improving existing modular systems rather than creating parallel duplicate paths.
+- For deck work, prefer `deck_generator.py` over `pdf_generator.py` unless the user explicitly wants the older proposal format.
