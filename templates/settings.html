@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — LeadGen AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <style>
+        .settings-wrap { max-width: 720px; margin: 2rem auto; padding: 0 1.5rem 4rem; }
+        .settings-card { background: #1e293b; border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 2rem; margin-bottom: 1.5rem; }
+        .settings-card h2 { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 1.5rem; letter-spacing: 0.03em; }
+        .field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        .field-group.full { grid-template-columns: 1fr; }
+        .field { display: flex; flex-direction: column; gap: 0.4rem; }
+        .field label { font-size: 0.75rem; color: #94a3b8; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+        .field input { background: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 0.6rem 0.9rem; color: #e2e8f0; font-family: inherit; font-size: 0.875rem; outline: none; transition: border-color 0.15s; }
+        .field input:focus { border-color: #6366f1; }
+        .btn-save { background: #6366f1; color: #fff; border: none; border-radius: 8px; padding: 0.7rem 2rem; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+        .btn-save:hover { background: #4f46e5; }
+        .banner { border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.875rem; margin-bottom: 1.5rem; }
+        .banner-ok  { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+        .banner-err { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .back-link { display: inline-block; margin-bottom: 1.5rem; color: #94a3b8; text-decoration: none; font-size: 0.85rem; }
+        .back-link:hover { color: #e2e8f0; }
+        .section-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; margin: 1.5rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+<header>
+    <h1>LeadGen AI</h1>
+    <div class="user-profile">
+        <a href="/" style="color:#94a3b8;text-decoration:none;font-size:0.85rem;">← Dashboard</a>
+    </div>
+</header>
+
+<div class="settings-wrap">
+    <a href="/" class="back-link">← Back to dashboard</a>
+
+    {% if saved %}
+    <div class="banner banner-ok">Settings saved. Changes are live immediately.</div>
+    {% endif %}
+    {% if errors %}
+    <div class="banner banner-err">
+        {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if current.SETTINGS_USER == 'admin' and current.SETTINGS_PASSWORD == 'admin' %}
+    <div class="banner" style="background:rgba(250,204,21,0.1);color:#fde68a;border:1px solid rgba(250,204,21,0.3);margin-bottom:1.5rem;">
+        &#9888; Settings page is using default credentials (admin / admin). Set <code>SETTINGS_USER</code> and <code>SETTINGS_PASSWORD</code> in your .env to secure it.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/settings">
+
+        <div class="settings-card">
+            <h2>Email Delivery (SMTP)</h2>
+            <div class="field-group">
+                <div class="field">
+                    <label>SMTP Host</label>
+                    <input type="text" name="SMTP_HOST" value="{{ current.SMTP_HOST }}" placeholder="smtp.gmail.com">
+                </div>
+                <div class="field">
+                    <label>SMTP Port</label>
+                    <input type="number" name="SMTP_PORT" value="{{ current.SMTP_PORT }}" placeholder="465">
+                </div>
+            </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>SMTP User (sender email)</label>
+                    <input type="email" name="SMTP_USER" value="{{ current.SMTP_USER }}" placeholder="you@gmail.com">
+                </div>
+                <div class="field">
+                    <label>SMTP Password / App password</label>
+                    <input type="password" name="SMTP_PASSWORD" value="" placeholder="leave blank to keep current">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <h2>Inbox Monitoring (IMAP)</h2>
+            <div class="field-group">
+                <div class="field">
+                    <label>IMAP Host</label>
+                    <input type="text" name="IMAP_HOST" value="{{ current.IMAP_HOST }}" placeholder="imap.gmail.com">
+                </div>
+                <div class="field">
+                    <label>IMAP Port</label>
+                    <input type="number" name="IMAP_PORT" value="{{ current.IMAP_PORT }}" placeholder="993">
+                </div>
+            </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>IMAP User</label>
+                    <input type="email" name="IMAP_USER" value="{{ current.IMAP_USER }}" placeholder="you@gmail.com">
+                </div>
+                <div class="field">
+                    <label>IMAP Password</label>
+                    <input type="password" name="IMAP_PASSWORD" value="" placeholder="leave blank to keep current">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <h2>AI &amp; API Keys</h2>
+            <div class="field-group">
+                <div class="field">
+                    <label>Anthropic API Key</label>
+                    <input type="password" name="ANTHROPIC_API_KEY" value="" placeholder="leave blank to keep current">
+                </div>
+                <div class="field">
+                    <label>Google Maps API Key</label>
+                    <input type="password" name="GOOGLE_MAPS_API_KEY" value="" placeholder="leave blank to keep current">
+                </div>
+            </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>SendGrid API Key</label>
+                    <input type="password" name="SENDGRID_API_KEY" value="" placeholder="leave blank to keep current">
+                </div>
+                <div class="field">
+                    <label>Use SendGrid (true / false)</label>
+                    <input type="text" name="USE_SENDGRID" value="{{ current.USE_SENDGRID }}" placeholder="false">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <h2>Outreach Settings</h2>
+            <div class="field-group">
+                <div class="field">
+                    <label>Sender First Name</label>
+                    <input type="text" name="SENDER_NAME" value="{{ current.SENDER_NAME }}" placeholder="Alex">
+                </div>
+                <div class="field">
+                    <label>Calendar / Booking Link</label>
+                    <input type="url" name="CALENDAR_LINK" value="{{ current.CALENDAR_LINK }}" placeholder="https://calendly.com/...">
+                </div>
+            </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>Inbox Poll Interval (seconds)</label>
+                    <input type="number" name="INBOX_POLL_INTERVAL" value="{{ current.INBOX_POLL_INTERVAL }}" placeholder="300" min="60">
+                </div>
+                <div class="field">
+                    <label>Sequence Run Hour (UTC, 0–23)</label>
+                    <input type="number" name="SEQUENCE_RUN_HOUR" value="{{ current.SEQUENCE_RUN_HOUR }}" placeholder="9" min="0" max="23">
+                </div>
+            </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>LinkedIn Dry Run (true / false)</label>
+                    <input type="text" name="LINKEDIN_DRY_RUN" value="{{ current.LINKEDIN_DRY_RUN }}" placeholder="true">
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <h2>Settings Page Access</h2>
+            <div class="field-group">
+                <div class="field">
+                    <label>Username</label>
+                    <input type="text" name="SETTINGS_USER" value="{{ current.SETTINGS_USER }}" placeholder="admin">
+                </div>
+                <div class="field">
+                    <label>Password</label>
+                    <input type="password" name="SETTINGS_PASSWORD" value="" placeholder="leave blank to keep current">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-save">Save Settings</button>
+    </form>
+</div>
+</body>
+</html>

@@ -11,6 +11,7 @@ from database import DB_PATH, log_communication_event, update_sequence_enrollmen
 from sendgrid_mailer import send_email
 from sms_agent import send_sms
 from social_agent import send_instagram_dm, send_linkedin_connection
+from settings import get_linkedin_dry_run
 from sequence_engine import (
     DEFAULT_SEQUENCE_NAME,
     build_touchpoint_message,
@@ -66,8 +67,10 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
         if not profile_url:
             result["error"] = "No LinkedIn URL on file."
         else:
-            ok = send_linkedin_connection(profile_url, message["body"], dry_run=False)
+            li_dry = get_linkedin_dry_run()
+            ok = send_linkedin_connection(profile_url, message["body"], dry_run=li_dry)
             result["sent"] = ok
+            result["dry_run"] = li_dry
             result["error"] = "" if ok else "LinkedIn automation failed."
 
     elif channel == "instagram":
@@ -75,7 +78,8 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
         if not profile_url:
             result["error"] = "No Instagram profile URL on file."
         else:
-            ok = send_instagram_dm(profile_url, message["body"], dry_run=False)
+            li_dry = get_linkedin_dry_run()
+            ok = send_instagram_dm(profile_url, message["body"], dry_run=li_dry)
             result["sent"] = ok
             result["error"] = "" if ok else "Instagram automation failed."
 

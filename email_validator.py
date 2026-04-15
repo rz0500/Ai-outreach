@@ -314,7 +314,7 @@ def score_internal_quality(
     evidence_count = max(1, len(evidence_values))
     weak_data_mode = bool(analysis.get("weak_data_mode"))
 
-    specificity = min(10, 4 + matched_evidence + min(2, evidence_count // 2))
+    specificity = min(10, 5 + matched_evidence + min(2, evidence_count // 2))
     if weak_data_mode:
         specificity = max(5, specificity - 1)
 

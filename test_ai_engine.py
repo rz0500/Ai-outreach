@@ -109,6 +109,16 @@ class TestExtractJson(unittest.TestCase):
         with self.assertRaises(ValueError):
             _extract_json(msg)
 
+    def test_parses_fenced_json(self):
+        from ai_engine import _extract_json
+        block = MagicMock()
+        block.type = "text"
+        block.text = '```json\n{"score": 80, "reasoning": "Strong signals."}\n```'
+        msg = MagicMock()
+        msg.content = [block]
+        result = _extract_json(msg)
+        self.assertEqual(result["score"], 80)
+
     def test_raises_when_no_text_block(self):
         from ai_engine import _extract_json
         block = MagicMock()

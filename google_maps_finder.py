@@ -102,6 +102,98 @@ def search_local_businesses(query: str, location: str) -> int:
         logging.error(f"Error while searching Google Maps: {str(e)}")
         return 0
 
+def find_and_add_prospects(query: str, location: str, limit: int = 3) -> list:
+    """
+    Search Google Maps for businesses, add new ones to the DB, and return their
+    prospect dicts (with DB IDs). Only returns businesses that have a website,
+    since the research pipeline needs one.
+
+    Args:
+        query:    e.g. "dentists", "gyms", "accountants"
+        location: e.g. "Manchester", "Austin TX"
+        limit:    Maximum number of results to return (default 3).
+
+    Returns:
+        List of prospect dicts as stored in the DB (id, company, website, …).
+    """
+    client = get_googlemaps_client()
+    if not client:
+        logging.error("GOOGLE_MAPS_API_KEY is missing from .env.")
+        return []
+
+    search_query = f"{query} in {location}"
+    logging.info(f"[find_and_add_prospects] Searching: '{search_query}'")
+
+    try:
+        places_result = client.places(query=search_query)
+        if not places_result.get("results"):
+            logging.info("[find_and_add_prospects] No results returned.")
+            return []
+
+        added = []
+
+        for place in places_result["results"]:
+            if len(added) >= limit:
+                break
+
+            place_id = place.get("place_id")
+            if not place_id:
+                continue
+
+            details = client.place(
+                place_id,
+                fields=["name", "formatted_address", "formatted_phone_number", "website"],
+            ).get("result", {})
+
+            name    = details.get("name") or place.get("name") or "Unknown"
+            address = details.get("formatted_address") or place.get("formatted_address") or ""
+            phone   = details.get("formatted_phone_number") or ""
+            website = details.get("website") or ""
+
+            if not website:
+                logging.debug(f"  Skipping '{name}' — no website.")
+                continue
+
+            # Find or create in DB
+            existing = database.search_by_company(name)
+            matched  = [p for p in existing if p.get("company", "").lower() == name.lower()]
+            if matched:
+                prospect_id = matched[0]["id"]
+                logging.debug(f"  '{name}' already in DB (id={prospect_id}).")
+            else:
+                try:
+                    prospect_id = database.add_prospect(
+                        name="Owner/Manager",
+                        company=name,
+                        phone=phone,
+                        website=website,
+                        notes=f"Address: {address}",
+                        status="qualified",
+                        lead_score=55,
+                    )
+                    logging.info(f"  Added '{name}' to DB (id={prospect_id}).")
+                except IntegrityError:
+                    existing = database.search_by_company(name)
+                    if existing:
+                        prospect_id = existing[0]["id"]
+                    else:
+                        continue
+
+            prospect = next(
+                (p for p in database.get_all_prospects() if p["id"] == prospect_id),
+                None,
+            )
+            if prospect:
+                added.append(dict(prospect))
+
+        logging.info(f"[find_and_add_prospects] Returning {len(added)} prospects.")
+        return added
+
+    except Exception as exc:
+        logging.error(f"[find_and_add_prospects] Error: {exc}")
+        return []
+
+
 if __name__ == "__main__":
     print("Testing map scraper config...")
     if GOOGLE_MAPS_API_KEY:

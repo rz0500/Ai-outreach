@@ -98,6 +98,8 @@ def _handle_classified_reply(
     drafted_reply: str,
     sender_email: str,
     inbound_body: str = "",
+    inbound_message_id: str = "",
+    inbound_subject: str = "",
 ) -> None:
     """
     Act on a classified reply: update DB, pause sequence, log events.
@@ -136,8 +138,28 @@ def _handle_classified_reply(
             prospect_id, "paused", paused_reason="not_interested_reply"
         )
 
+    elif classification == "booked":
+        logging.info(f"  BOOKED reply from {sender_email} — marking booked, stopping sequence.")
+        database.update_status(prospect_id, "booked")
+        database.update_sequence_enrollment_status(
+            prospect_id, "completed", paused_reason="meeting_booked"
+        )
+        if drafted_reply:
+            save_reply_draft(
+                prospect_id=prospect_id,
+                inbound_from=sender_email,
+                inbound_body=inbound_body,
+                classification=classification,
+                classification_reasoning=reasoning,
+                drafted_reply=drafted_reply,
+                inbound_message_id=inbound_message_id,
+                inbound_subject=inbound_subject,
+            )
+            logging.info(f"  Booking confirmation draft saved.")
+
     elif classification == "interested":
         logging.info(f"  INTERESTED reply from {sender_email} — pausing sequence, drafting response.")
+        database.update_status(prospect_id, "replied")
         database.update_sequence_enrollment_status(
             prospect_id, "paused", paused_reason="interested_reply_awaiting_response"
         )
@@ -150,6 +172,8 @@ def _handle_classified_reply(
                 classification=classification,
                 classification_reasoning=reasoning,
                 drafted_reply=drafted_reply,
+                inbound_message_id=inbound_message_id,
+                inbound_subject=inbound_subject,
             )
             # Also append to notes for backward-compat
             existing_notes = prospect.get("notes") or ""
@@ -212,8 +236,10 @@ def check_for_replies(mark_as_read: bool = True) -> int:
                     continue
 
                 msg = email.message_from_bytes(response_part[1])
-                from_header   = decode_mime_words(msg.get("From", ""))
-                sender_email  = extract_email_address(from_header)
+                from_header       = decode_mime_words(msg.get("From", ""))
+                sender_email      = extract_email_address(from_header)
+                inbound_message_id = (msg.get("Message-ID") or "").strip()
+                inbound_subject    = decode_mime_words(msg.get("Subject", "")).strip()
 
                 if not sender_email:
                     continue
@@ -256,6 +282,8 @@ def check_for_replies(mark_as_read: bool = True) -> int:
                 _handle_classified_reply(
                     prospect, classification, reasoning, drafted_reply,
                     sender_email, inbound_body=body,
+                    inbound_message_id=inbound_message_id,
+                    inbound_subject=inbound_subject,
                 )
 
             if mark_as_read:

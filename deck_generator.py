@@ -34,6 +34,7 @@ from pptx.oxml.ns import qn
 from pptx.oxml.xmlchemy import OxmlElement
 
 from database import DB_PATH, get_all_prospects
+from settings import get_calendar_link
 
 OUTPUT_DIR = "decks"
 
@@ -58,7 +59,7 @@ DANGER   = "EF4444"
 INDIGO   = "6366F1"
 
 FOOTER_TXT = "LeadGen AI  \u00b7  Confidential"
-CTA_LINK   = "calendly.com/leadgenai/30min"
+CTA_LINK   = get_calendar_link()
 
 # ---------------------------------------------------------------------------
 # Copy quality gates

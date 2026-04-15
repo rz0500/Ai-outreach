@@ -24,13 +24,15 @@ Usage:
         print(f"Send failed: {err}")
 """
 
+import os
 import smtplib
 import ssl
-from email.mime.text import MIMEText
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from dotenv import load_dotenv
-import os
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -53,19 +55,27 @@ def send_email(
     subject: str,
     body: str,
     from_address: str = SMTP_USER,
+    in_reply_to: str = "",
+    references: str = "",
+    attachment_path: str = "",
 ) -> tuple[bool, str]:
     """
-    Send a plain-text email via SMTP.
+    Send a plain-text email via SMTP, with an optional file attachment.
 
     Supports two connection modes based on SMTP_PORT:
       - Port 465 : SMTP_SSL  (SSL from the start — common for Gmail)
       - Any other : STARTTLS (plain connection upgraded to TLS — common for port 587)
 
     Args:
-        to_address:   Recipient email address.
-        subject:      Email subject line.
-        body:         Plain-text email body.
-        from_address: Sender address. Defaults to SMTP_USER from .env.
+        to_address:      Recipient email address.
+        subject:         Email subject line.
+        body:            Plain-text email body.
+        from_address:    Sender address. Defaults to SMTP_USER from .env.
+        in_reply_to:     Message-ID of the email being replied to.
+        references:      Thread reference chain (defaults to in_reply_to).
+        attachment_path: Local filesystem path to a file to attach (e.g. a PDF
+                         proposal). Silently skipped if the path is empty or the
+                         file does not exist.
 
     Returns:
         A (success, error_message) tuple.
@@ -82,12 +92,28 @@ def send_email(
     if missing:
         return False, f"Missing .env keys: {', '.join(missing)}"
 
-    # Build the message
-    msg = MIMEMultipart("alternative")
+    # Use "mixed" when there is an attachment, "alternative" for text-only.
+    has_attachment = bool(attachment_path and os.path.isfile(attachment_path))
+    msg = MIMEMultipart("mixed" if has_attachment else "alternative")
     msg["Subject"] = subject
     msg["From"]    = from_address
     msg["To"]      = to_address
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"]  = references or in_reply_to
     msg.attach(MIMEText(body, "plain"))
+
+    if has_attachment:
+        with open(attachment_path, "rb") as fh:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(fh.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            "attachment",
+            filename=os.path.basename(attachment_path),
+        )
+        msg.attach(part)
 
     context = ssl.create_default_context()
 

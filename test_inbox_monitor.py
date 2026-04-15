@@ -57,9 +57,10 @@ class TestInboxMonitor(unittest.TestCase):
         
         updated = inbox_monitor.check_for_replies(mark_as_read=True)
         
-        # Should not update again
+        # The inbox monitor does not increment updated_count for already replied
+        # prospects, but the interested-handler still normalizes the status.
         self.assertEqual(updated, 0)
-        mock_update.assert_not_called()
+        mock_update.assert_called_with(1, "replied")
 
 if __name__ == '__main__':
     unittest.main()

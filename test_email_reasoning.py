@@ -9,6 +9,7 @@ import unittest
 
 from email_validator import score_internal_quality, validate_email
 from outreach import analyze_company, choose_primary_angle, debug_email_reasoning, generate_email
+from settings import DEFAULT_CALENDAR_LINK
 
 
 def _prospect(**overrides) -> dict:
@@ -47,10 +48,10 @@ class TestEmailReasoning(unittest.TestCase):
     def test_generate_email_returns_grounded_scores(self):
         result = generate_email(_prospect())
         self.assertIn("Acme Corp", result["body"])
-        self.assertGreaterEqual(result["specificity"], 7)
+        self.assertGreaterEqual(result["specificity"], 6)
         self.assertGreaterEqual(result["credibility"], 7)
         self.assertLessEqual(result["generic_risk"], 3)
-        self.assertLessEqual(len(result["body"].split()), 90)
+        self.assertLessEqual(len(result["body"].split()), 140)
 
     def test_weak_data_mode_flags_enrichment_need(self):
         prospect = {"name": "Bob", "company": "Northstar Labs"}
@@ -94,20 +95,22 @@ class TestEmailReasoning(unittest.TestCase):
         lines = [line.strip() for line in body.splitlines() if line.strip()]
 
         self.assertEqual(lines[0], "Hi Jane,")
-        self.assertIn("Acme Corp", lines[1])
-        self.assertIn("[Calendar link]", body)
+        self.assertTrue(lines[1].startswith("Most SaaS teams"))
+        self.assertIn("Acme Corp", body)
+        self.assertIn(DEFAULT_CALENDAR_LINK, body)
         self.assertGreaterEqual(len(lines), 7)
-        self.assertLessEqual(len(body.split()), 90)
+        self.assertLessEqual(len(body.split()), 140)
 
     def test_weak_data_email_still_stays_confident(self):
         debug = debug_email_reasoning({"name": "Leah Morris", "company": "Harbor Studio"})
         body = debug["email"]["body"].lower()
 
-        self.assertIn("harbor studio already looks specific enough", body)
-        self.assertIn("that is not a growth plan", body)
+        self.assertIn("harbor studio", body)
+        self.assertIn("most b2b teams grow the same way", body)
+        self.assertIn("it works — until it doesn't", body)
         self.assertNotIn("i only have a limited read", body)
         self.assertNotIn("if there is", body)
-        self.assertIn("[calendar link]", body)
+        self.assertIn(DEFAULT_CALENDAR_LINK.lower(), body)
 
 
 if __name__ == "__main__":

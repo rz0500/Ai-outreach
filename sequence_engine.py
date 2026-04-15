@@ -9,7 +9,10 @@ from datetime import date
 import re
 
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
-from outreach import OPT_OUT_LINE, generate_email
+from outreach import generate_email
+
+# Sequence follow-ups use a soft opt-out line (separate from cold outbound rules)
+OPT_OUT_LINE = "If now's not the right time, just reply and I'll leave you alone."
 
 DEFAULT_SEQUENCE_NAME = "default_multichannel"
 

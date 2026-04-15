@@ -38,6 +38,7 @@ from reportlab.platypus import (
 )
 
 from database import DB_PATH, get_all_prospects
+from settings import get_calendar_link
 
 OUTPUT_DIR = "proposals"
 
@@ -68,7 +69,7 @@ _PAGE_BAR = [C_INDIGO, C_ORANGE, C_GREEN, C_PURPLE, C_RED]
 SENDER_NAME    = "LeadGen AI"
 SENDER_EMAIL   = "hello@leadgenai.com"
 SENDER_WEBSITE = "www.leadgenai.com"
-CTA_LINK       = "calendly.com/leadgenai/30min"
+CTA_LINK       = get_calendar_link()
 
 # ─── Banned / validation lists (unchanged) ──────────────────────────────────
 BANNED_PHRASES = [

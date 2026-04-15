@@ -169,6 +169,19 @@ def initialize_database(db_path: str = DB_PATH) -> None:
                 conn.execute(f"ALTER TABLE prospects ADD COLUMN {col} {definition}")
             except sqlite3.OperationalError:
                 pass  # column already exists
+
+        # Migrate reply_drafts — add thread-header and sent_at columns
+        reply_draft_columns = [
+            ("inbound_message_id", "TEXT"),   # Value of the inbound email's Message-ID header
+            ("inbound_subject",    "TEXT"),   # Original subject line from the inbound email
+            ("sent_at",            "TEXT"),   # Timestamp when the approved reply was sent
+        ]
+        for col, definition in reply_draft_columns:
+            try:
+                conn.execute(f"ALTER TABLE reply_drafts ADD COLUMN {col} {definition}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
         conn.commit()
     print(f"[DB] Database ready: {db_path}")
 
@@ -360,6 +373,94 @@ def update_notes(
             "UPDATE prospects SET notes = ? WHERE id = ?",
             (notes, prospect_id),
         )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def update_prospect_email(
+    prospect_id: int,
+    email: str,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Set the email address on a prospect record. Only writes if the address
+    is non-empty and the prospect does not already have one stored.
+
+    Returns:
+        True if the field was updated, False otherwise.
+    """
+    if not email:
+        return False
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "UPDATE prospects SET email = ? WHERE id = ? AND (email IS NULL OR email = '')",
+            (email.strip().lower(), prospect_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def update_prospect(
+    prospect_id: int,
+    name: Optional[str] = None,
+    company: Optional[str] = None,
+    email: Optional[str] = None,
+    linkedin_url: Optional[str] = None,
+    website: Optional[str] = None,
+    phone: Optional[str] = None,
+    lead_score: Optional[int] = None,
+    status: Optional[str] = None,
+    notes: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> bool:
+    """
+    Update any subset of fields on an existing prospect.
+    Only non-None arguments are written. Returns True if the row was found.
+    """
+    fields: list[tuple] = []
+    if name         is not None: fields.append(("name", name))
+    if company      is not None: fields.append(("company", company))
+    if email        is not None: fields.append(("email", email.strip().lower()))
+    if linkedin_url is not None: fields.append(("linkedin_url", linkedin_url))
+    if website      is not None: fields.append(("website", website))
+    if phone        is not None: fields.append(("phone", phone))
+    if notes        is not None: fields.append(("notes", notes))
+    if lead_score   is not None:
+        if not (1 <= lead_score <= 100):
+            raise ValueError(f"lead_score must be 1-100, got {lead_score}.")
+        fields.append(("lead_score", lead_score))
+    if status is not None:
+        if status not in VALID_STATUSES:
+            raise ValueError(f"Invalid status '{status}'.")
+        fields.append(("status", status))
+
+    if not fields:
+        return False
+
+    set_clause = ", ".join(f"{col} = ?" for col, _ in fields)
+    values = [v for _, v in fields] + [prospect_id]
+
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            f"UPDATE prospects SET {set_clause} WHERE id = ?",
+            values,
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_prospect(prospect_id: int, db_path: str = DB_PATH) -> bool:
+    """
+    Hard-delete a prospect and all related outreach records.
+    Returns True if the prospect was found and removed.
+    """
+    with _get_connection(db_path) as conn:
+        conn.execute("DELETE FROM outreach WHERE prospect_id = ?", (prospect_id,))
+        conn.execute("DELETE FROM communication_events WHERE prospect_id = ?", (prospect_id,))
+        conn.execute("DELETE FROM sequence_enrollments WHERE prospect_id = ?", (prospect_id,))
+        conn.execute("DELETE FROM reply_drafts WHERE prospect_id = ?", (prospect_id,))
+        conn.execute("DELETE FROM prospect_research WHERE prospect_id = ?", (prospect_id,))
+        cursor = conn.execute("DELETE FROM prospects WHERE id = ?", (prospect_id,))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -753,6 +854,12 @@ def initialize_outreach_table(db_path: str = DB_PATH) -> None:
                 date_created TEXT    DEFAULT (datetime('now'))
             )
         """)
+        # Migrate: add sent_at and pdf_path columns
+        for col in ("sent_at TEXT", "pdf_path TEXT"):
+            try:
+                conn.execute(f"ALTER TABLE outreach ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         conn.commit()
 
 
@@ -760,6 +867,7 @@ def save_outreach(
     prospect_id: int,
     subject: str,
     body: str,
+    pdf_path: str = "",
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -769,6 +877,7 @@ def save_outreach(
         prospect_id: ID of the prospect this email is for.
         subject:     Email subject line.
         body:        Email body text.
+        pdf_path:    Optional path to a PDF proposal to attach when sending.
         db_path:     Path to the database file.
 
     Returns:
@@ -776,8 +885,8 @@ def save_outreach(
     """
     with _get_connection(db_path) as conn:
         cursor = conn.execute(
-            "INSERT INTO outreach (prospect_id, subject, body) VALUES (?, ?, ?)",
-            (prospect_id, subject, body),
+            "INSERT INTO outreach (prospect_id, subject, body, pdf_path) VALUES (?, ?, ?, ?)",
+            (prospect_id, subject, body, pdf_path or ""),
         )
         conn.commit()
         return cursor.lastrowid
@@ -794,15 +903,41 @@ def get_all_outreach(db_path: str = DB_PATH) -> list:
     with _get_connection(db_path) as conn:
         rows = conn.execute("""
             SELECT
-                o.id, o.prospect_id, o.subject, o.body,
-                o.status, o.date_created,
-                p.name  AS prospect_name,
+                o.*,
+                p.name    AS prospect_name,
                 p.company AS prospect_company,
                 p.lead_score
             FROM outreach o
             JOIN prospects p ON p.id = o.prospect_id
             ORDER BY o.date_created DESC
         """).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_sent_outreach(db_path: str = DB_PATH) -> list:
+    """
+    Return all outreach records with status='sent', joined with prospect data.
+    Includes the prospect's current status so the tracker can show 'replied'.
+    Sorted most-recent-send first.
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                o.id, o.prospect_id, o.subject, o.body,
+                o.status AS outreach_status,
+                o.sent_at, o.date_created,
+                p.name    AS prospect_name,
+                p.company AS prospect_company,
+                p.email   AS prospect_email,
+                p.website AS prospect_website,
+                p.status  AS prospect_status
+            FROM outreach o
+            JOIN prospects p ON p.id = o.prospect_id
+            WHERE o.status = 'sent'
+            ORDER BY o.sent_at DESC, o.date_created DESC
+            """
+        ).fetchall()
         return [dict(row) for row in rows]
 
 
@@ -841,10 +976,16 @@ def update_outreach_status(
             f"Choose from: {sorted(VALID_OUTREACH_STATUSES)}"
         )
     with _get_connection(db_path) as conn:
-        cursor = conn.execute(
-            "UPDATE outreach SET status = ? WHERE id = ?",
-            (new_status, outreach_id),
-        )
+        if new_status == "sent":
+            cursor = conn.execute(
+                "UPDATE outreach SET status = ?, sent_at = datetime('now') WHERE id = ?",
+                (new_status, outreach_id),
+            )
+        else:
+            cursor = conn.execute(
+                "UPDATE outreach SET status = ? WHERE id = ?",
+                (new_status, outreach_id),
+            )
         conn.commit()
         return cursor.rowcount > 0
 
@@ -945,6 +1086,8 @@ def save_reply_draft(
     classification: str,
     classification_reasoning: str,
     drafted_reply: str,
+    inbound_message_id: str = "",
+    inbound_subject: str = "",
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -952,6 +1095,12 @@ def save_reply_draft(
 
     Stores the original reply body, the classification, the reasoning, and
     the suggested reply so they can be reviewed and approved in the UI.
+
+    Args:
+        inbound_message_id: The Message-ID header from the inbound email, used to
+                            set In-Reply-To / References when sending the reply.
+        inbound_subject:    The Subject header from the inbound email, used to
+                            build a proper Re: subject line on the outgoing reply.
 
     Returns:
         The ID of the newly created reply_draft record.
@@ -961,8 +1110,9 @@ def save_reply_draft(
             """
             INSERT INTO reply_drafts
                 (prospect_id, inbound_from, inbound_body,
-                 classification, classification_reasoning, drafted_reply)
-            VALUES (?, ?, ?, ?, ?, ?)
+                 classification, classification_reasoning, drafted_reply,
+                 inbound_message_id, inbound_subject)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prospect_id,
@@ -971,6 +1121,8 @@ def save_reply_draft(
                 classification or "",
                 classification_reasoning or "",
                 drafted_reply or "",
+                inbound_message_id or "",
+                inbound_subject or "",
             ),
         )
         conn.commit()
@@ -1002,6 +1154,29 @@ def get_pending_reply_drafts(db_path: str = DB_PATH) -> list:
         return [dict(r) for r in rows]
 
 
+def get_sent_reply_drafts(db_path: str = DB_PATH) -> list:
+    """
+    Return all reply drafts with status='sent', joined with prospect data.
+    Sorted most-recently-sent first.
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                rd.*,
+                p.name    AS prospect_name,
+                p.company AS prospect_company,
+                p.email   AS prospect_email,
+                p.status  AS prospect_status
+            FROM reply_drafts rd
+            JOIN prospects p ON p.id = rd.prospect_id
+            WHERE rd.status = 'sent'
+            ORDER BY rd.sent_at DESC, rd.created_at DESC
+            """,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_reply_drafts_for_prospect(
     prospect_id: int,
     db_path: str = DB_PATH,
@@ -1017,6 +1192,31 @@ def get_reply_drafts_for_prospect(
             (prospect_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_reply_draft_by_id(
+    draft_id: int,
+    db_path: str = DB_PATH,
+) -> Optional[dict]:
+    """Return one reply draft joined with prospect data, or None if missing."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                rd.*,
+                p.name    AS prospect_name,
+                p.company AS prospect_company,
+                p.email   AS prospect_email,
+                p.status  AS prospect_status,
+                p.lead_score
+            FROM reply_drafts rd
+            JOIN prospects p ON p.id = rd.prospect_id
+            WHERE rd.id = ?
+            LIMIT 1
+            """,
+            (draft_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def update_reply_draft_status(
@@ -1035,9 +1235,15 @@ def update_reply_draft_status(
             f"Choose from: {sorted(VALID_REPLY_DRAFT_STATUSES)}"
         )
     with _get_connection(db_path) as conn:
-        cursor = conn.execute(
-            "UPDATE reply_drafts SET status = ? WHERE id = ?",
-            (new_status, draft_id),
-        )
+        if new_status == "sent":
+            cursor = conn.execute(
+                "UPDATE reply_drafts SET status = ?, sent_at = datetime('now') WHERE id = ?",
+                (new_status, draft_id),
+            )
+        else:
+            cursor = conn.execute(
+                "UPDATE reply_drafts SET status = ? WHERE id = ?",
+                (new_status, draft_id),
+            )
         conn.commit()
         return cursor.rowcount > 0

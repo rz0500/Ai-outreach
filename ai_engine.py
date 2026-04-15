@@ -44,6 +44,7 @@ import json
 
 import anthropic
 from dotenv import load_dotenv
+from settings import get_calendar_link
 
 load_dotenv()
 
@@ -108,7 +109,7 @@ Example: "We're opening this up to 5 studios for free to prove it works. Harbor'
 CTA line (soft question — not a command):
 "Worth a 15-minute call?"
 
-Then on its own line: [Calendar link]
+Then on its own line: {calendar_link}
 
 Sign-off: — [Name]
 
@@ -127,7 +128,8 @@ Rules:
 - CTA must be a question, not a command
 
 Subject line: short (3-6 words), plain, no clickbait.
-Examples: "outbound for Harbor" / "Harbor" / "quick question, Leah"
+Vary it with the angle when possible.
+Examples: "Harbor hiring" / "Harbor and 6sense" / "Harbor pipeline" / "quick question, Leah"
 
 Before answering, check:
 - Does it read like a human wrote it?
@@ -137,8 +139,8 @@ Before answering, check:
 If any check fails, rewrite.
 
 Respond with ONLY this JSON object and nothing else:
-{"subject": "<subject line>", "body": "<email body with \\n for newlines>"}\
-"""
+{{"subject": "<subject line>", "body": "<email body with \\n for newlines>"}}\
+""".format(calendar_link=get_calendar_link())
 
 _SCORE_SYSTEM_PROMPT = """\
 You are an expert B2B sales qualification analyst. You evaluate prospects \
@@ -185,16 +187,18 @@ You are an expert SDR reply analyst. Classify the intent of an inbound reply to 
 
 Categories:
 - "interested"      — they want to learn more, asked a question, or expressed positive intent
+- "booked"          — they have confirmed a meeting, accepted a calendar invite, or said "see you then"
 - "not_interested"  — explicitly declined or said timing is wrong
 - "opt_out"         — asked to be removed, unsubscribe, stop emailing
 - "out_of_office"   — automated OOO message
 - "auto_reply"      — generic auto-reply (not a real human response)
 
-If the classification is "interested", also draft a short (2-3 sentence) warm reply from the sender.
+If the classification is "interested" or "booked", also draft a short (2-3 sentence) warm reply from the sender.
+For "booked" replies, the drafted reply should confirm the meeting and express enthusiasm.
 Keep it low-pressure, specific, and human. No fluff.
 
 Respond with ONLY this JSON:
-{"classification": "<category>", "reasoning": "<1 sentence>", "drafted_reply": "<reply body if interested, else empty string>"}
+{"classification": "<category>", "reasoning": "<1 sentence>", "drafted_reply": "<reply body if interested or booked, else empty string>"}
 No markdown, no explanation — only the JSON object.\
 """
 
@@ -226,8 +230,17 @@ def _extract_json(response: anthropic.types.Message) -> dict:
     """
     for block in response.content:
         if block.type == "text":
+            raw = block.text.strip()
+            cleaned = raw
+            if cleaned.startswith("```"):
+                lines = cleaned.splitlines()
+                if lines and lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                cleaned = "\n".join(lines).strip()
             try:
-                return json.loads(block.text.strip())
+                return json.loads(cleaned)
             except json.JSONDecodeError as exc:
                 raise ValueError(
                     f"AI returned invalid JSON: {block.text!r}"
@@ -538,7 +551,7 @@ def classify_reply(prospect: dict, reply_body: str) -> dict:
 
     result = _extract_json(response)
 
-    valid_categories = {"interested", "not_interested", "opt_out", "out_of_office", "auto_reply"}
+    valid_categories = {"interested", "booked", "not_interested", "opt_out", "out_of_office", "auto_reply"}
     classification = result.get("classification", "")
     if classification not in valid_categories:
         raise ValueError(f"AI returned unknown classification '{classification}'")

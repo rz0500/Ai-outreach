@@ -297,8 +297,10 @@ tbody tr:hover {
 
 .status-new { color: #f8fafc; }
 .status-replied { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3);}
+.status-booked { background: rgba(250, 204, 21, 0.15); color: #fde68a; border-color: rgba(250, 204, 21, 0.3);}
 .status-in_sequence { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border-color: rgba(139, 92, 246, 0.3);}
 .status-contacted { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; border-color: rgba(56, 189, 248, 0.3);}
+.status-rejected { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);}
 
 /* Animations */
 @keyframes fadeInUp {

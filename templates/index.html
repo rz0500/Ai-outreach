@@ -12,7 +12,14 @@
     <header>
         <h1>LeadGen AI</h1>
         <div class="user-profile">
-            <span class="status-pill status-in_sequence">System Active</span>
+            <span class="status-pill status-in_sequence" id="scheduler-pill">System Active</span>
+            <span id="inbox-status-label" style="font-size:0.75rem;color:#94a3b8;margin-left:0.75rem;">Inbox: checking...</span>
+            <button id="resume-monitor-btn"
+                    onclick="resumeMonitor(this)"
+                    style="display:none;margin-left:0.75rem;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:0.35rem 0.8rem;color:#fca5a5;font-size:0.78rem;cursor:pointer;">
+                Resume Inbox Polling
+            </button>
+            <a href="/settings" style="margin-left:1rem;color:#94a3b8;text-decoration:none;font-size:0.82rem;" title="Settings">&#9881; Settings</a>
         </div>
     </header>
 
@@ -36,26 +43,58 @@
         </div>
     </div>
 
+    <!-- Add Lead inline form -->
+    <div class="table-container" style="margin-bottom:1.5rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+            <h2 style="font-weight:600;margin:0;">Add Lead</h2>
+            <button onclick="toggleAddLead()" id="add-lead-toggle" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:0.4rem 0.9rem;color:#c4b5fd;font-size:0.8rem;cursor:pointer;">+ New Lead</button>
+        </div>
+        <div id="add-lead-form" style="display:none;background:#0f172a;border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:1.25rem;">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Name *</label>
+                    <input id="al-name" placeholder="Jane Smith" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Company *</label>
+                    <input id="al-company" placeholder="Acme Ltd" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Email</label>
+                    <input id="al-email" type="email" placeholder="jane@acme.com" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;margin-bottom:1rem;">
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Website</label>
+                    <input id="al-website" placeholder="https://acme.com" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Phone</label>
+                    <input id="al-phone" placeholder="+44 7700 000000" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Notes</label>
+                    <input id="al-notes" placeholder="Any context…" style="width:100%;margin-top:0.3rem;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+            </div>
+            <div id="al-error" style="display:none;color:#fca5a5;font-size:0.8rem;margin-bottom:0.6rem;"></div>
+            <div id="al-success" style="display:none;color:#6ee7b7;font-size:0.8rem;margin-bottom:0.6rem;"></div>
+            <button onclick="submitAddLead(this)" style="background:#6366f1;border:none;border-radius:8px;padding:0.6rem 1.5rem;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;">Save Lead</button>
+        </div>
+    </div>
+
     <div class="table-container">
         <h2 style="margin-bottom: 1.5rem; font-weight: 500;">Active Pipeline</h2>
-        <table>
+        <table id="prospects-table">
             <thead>
                 <tr>
                     <th>Lead Name</th>
                     <th>Company</th>
                     <th>Email</th>
+                    <th>Sequence</th>
                     <th>Score</th>
                     <th>Status</th>
+                    <th style="width:80px;text-align:center;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in prospects %}
-                <tr>
+                <tr id="prospect-row-{{ p.id }}">
                     <td style="font-weight: 500;">{{ p.name }}</td>
                     <td style="color: var(--text-muted);">{{ p.company }}</td>
                     <td style="color: var(--text-muted);">{{ p.email or 'N/A' }}</td>
+                    <td style="color: var(--text-muted);">{{ p.sequence_day_label }}</td>
                     <td>
-                        <span class="score-badge 
+                        <span class="score-badge
                             {% if p.lead_score >= 71 %}score-hot
                             {% elif p.lead_score >= 41 %}score-warm
                             {% else %}score-cold{% endif %}">
@@ -67,10 +106,120 @@
                             {{ p.status }}
                         </span>
                     </td>
+                    <td style="text-align:center;white-space:nowrap;">
+                        {% if p.status not in ('in_sequence','booked','rejected') %}
+                        <button class="btn-enrol-prospect"
+                                data-id="{{ p.id }}"
+                                style="background:none;border:none;cursor:pointer;color:#a5b4fc;font-size:0.78rem;padding:0.2rem 0.4rem;font-weight:600;" title="Enrol in sequence">&#9654; Enrol</button>
+                        {% endif %}
+                        <button class="btn-edit-prospect"
+                                data-id="{{ p.id }}"
+                                data-prospect="{{ p|tojson|forceescape }}"
+                                style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:0.85rem;padding:0.2rem 0.4rem;" title="Edit">&#9998;</button>
+                        <button class="btn-delete-prospect"
+                                data-id="{{ p.id }}"
+                                style="background:none;border:none;cursor:pointer;color:#f87171;font-size:0.85rem;padding:0.2rem 0.4rem;" title="Delete">&#128465;</button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <!-- Edit Prospect Modal -->
+    <div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:2rem;width:480px;max-width:95vw;">
+            <h3 style="margin:0 0 1.5rem;font-size:1rem;font-weight:600;">Edit Prospect</h3>
+            <input type="hidden" id="edit-id">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Name</label>
+                    <input id="edit-name" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Company</label>
+                    <input id="edit-company" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Email</label>
+                    <input id="edit-email" type="email" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Phone</label>
+                    <input id="edit-phone" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Website</label>
+                    <input id="edit-website" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+                <div><label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Lead Score (1-100)</label>
+                    <input id="edit-lead_score" type="number" min="1" max="100" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;"></div>
+            </div>
+            <div style="margin-bottom:0.75rem;">
+                <label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Status</label>
+                <select id="edit-status" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;">
+                    <option>new</option><option>qualified</option><option>contacted</option>
+                    <option>in_sequence</option><option>replied</option><option>booked</option><option>rejected</option>
+                </select>
+            </div>
+            <div style="margin-bottom:1.25rem;">
+                <label style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">Notes</label>
+                <textarea id="edit-notes" rows="3" style="width:100%;margin-top:0.3rem;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:0.5rem 0.7rem;color:#e2e8f0;font-size:0.85rem;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+            </div>
+            <div id="edit-error" style="display:none;color:#fca5a5;font-size:0.8rem;margin-bottom:0.75rem;"></div>
+            <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+                <button onclick="closeEditModal()" style="background:#334155;border:none;border-radius:8px;padding:0.6rem 1.2rem;color:#e2e8f0;cursor:pointer;font-size:0.85rem;">Cancel</button>
+                <button onclick="saveEditModal()" style="background:#6366f1;border:none;border-radius:8px;padding:0.6rem 1.4rem;color:#fff;cursor:pointer;font-size:0.85rem;font-weight:600;">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- FIND & FIRE — Google Maps → Research → Email → PDF → Send     -->
+    <!-- ================================================================ -->
+    <div class="pipeline-section" id="find-and-fire" style="background: linear-gradient(135deg, rgba(16,185,129,0.05) 0%, rgba(99,102,241,0.05) 100%); border-color: rgba(16,185,129,0.2);">
+        <div class="pipeline-header">
+            <div>
+                <h2 style="font-weight: 700; margin: 0 0 0.3rem 0; font-size: 1.5rem;">
+                    Find & Fire Campaign
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.88rem; margin: 0;">
+                    Enter a business type and location. Claude finds 3 real businesses via Google Maps, researches each one, writes a personalised email, generates a PDF proposal — then you send with one click.
+                </p>
+            </div>
+            <span class="pipeline-badge" style="background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(99,102,241,0.2)); border-color: rgba(16,185,129,0.4); color: #6ee7b7;">Maps → AI → Send</span>
+        </div>
+
+        <!-- Inputs -->
+        <div class="pipeline-inputs" style="flex-wrap: wrap; gap: 0.75rem;">
+            <input id="ff-query" type="text" placeholder='Business type, e.g. "gyms", "dentists"'
+                class="pipeline-input" style="flex: 1; min-width: 200px;"
+                onfocus="this.style.borderColor='rgba(16,185,129,0.5)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'" />
+            <input id="ff-location" type="text" placeholder='Location, e.g. "Manchester"'
+                class="pipeline-input" style="flex: 1; min-width: 180px;"
+                onfocus="this.style.borderColor='rgba(16,185,129,0.5)'"
+                onblur="this.style.borderColor='rgba(255,255,255,0.1)'" />
+            <button id="ff-btn" class="pipeline-run-btn"
+                style="background: linear-gradient(135deg, #059669, #6366f1);"
+                onclick="runFindAndFire()">
+                Find 3 Leads &amp; Build Campaign
+            </button>
+        </div>
+
+        <!-- Progress -->
+        <div id="ff-steps" style="display:none;" class="pipeline-steps">
+            <div class="pl-step" id="ff-step-find"><div class="pl-step-dot"></div><span>Finding Businesses</span></div>
+            <div class="pl-step-line"></div>
+            <div class="pl-step" id="ff-step-research"><div class="pl-step-dot"></div><span>Research</span></div>
+            <div class="pl-step-line"></div>
+            <div class="pl-step" id="ff-step-email"><div class="pl-step-dot"></div><span>Emails</span></div>
+            <div class="pl-step-line"></div>
+            <div class="pl-step" id="ff-step-pdf"><div class="pl-step-dot"></div><span>PDFs</span></div>
+        </div>
+
+        <!-- Error -->
+        <div id="ff-error" style="display:none; margin-top:1rem; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:1rem; color:#fca5a5; font-size:0.85rem;"></div>
+
+        <!-- Results: 3 lead cards -->
+        <div id="ff-results" style="display:none; margin-top:1.5rem;">
+            <div style="font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#6ee7b7; margin-bottom:1rem;" id="ff-results-label"></div>
+            <div id="ff-cards" style="display:grid; gap:1.25rem;"></div>
+        </div>
     </div>
 
     <!-- ================================================================ -->
@@ -232,8 +381,9 @@
                 </div>
 
                 <div style="margin-bottom: 1.1rem;">
-                    <div class="reply-label" style="color: #6ee7b7;">Suggested reply</div>
-                    <div class="reply-draft-body">{{ draft.drafted_reply }}</div>
+                    <div class="reply-label" style="color: #6ee7b7; margin-bottom:0.4rem;">Suggested reply <span style="color:#64748b;font-size:0.72rem;">(edit before sending)</span></div>
+                    <textarea id="reply-body-{{ draft.id }}" rows="5"
+                        style="width:100%;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.75rem;color:#e2e8f0;font-size:0.85rem;font-family:inherit;resize:vertical;box-sizing:border-box;line-height:1.55;">{{ draft.drafted_reply }}</textarea>
                 </div>
 
                 <div style="display: flex; align-items: center; gap: 0.6rem;">
@@ -250,6 +400,49 @@
                 Use "Seed demo reply" above to preview the UI.
             </p>
         {% endif %}
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SENT REPLIES — approved reply drafts that were sent out        -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="sent-replies-section">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            <h2 style="font-weight: 500; margin: 0;">Sent Replies</h2>
+            <span id="sent-replies-badge" style="display:none; background: rgba(99,102,241,0.15); color: #a5b4fc; font-size: 0.73rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 99px; border: 1px solid rgba(99,102,241,0.3);"></span>
+            <span style="flex:1;"></span>
+            <button onclick="refreshSentReplies(this)"
+                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+                ↻ Refresh
+            </button>
+        </div>
+        <div id="sent-replies-body">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+                No replies sent yet. Approve a reply draft above to send it — it will appear here.
+            </p>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- OUTREACH TRACKER — sent emails + reply status                  -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="outreach-tracker">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+            <h2 style="font-weight: 500; margin: 0;">Outreach Tracker</h2>
+            <span style="flex:1;"></span>
+            <button onclick="refreshTracker(this)"
+                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+                ↻ Refresh
+            </button>
+        </div>
+        <div id="tracker-body">
+            <p style="color: var(--text-muted); font-size: 0.9rem;" id="tracker-empty">
+                No emails sent yet. Use Find &amp; Fire or Full Pipeline to generate and send emails — they'll appear here.
+            </p>
         </div>
     </div>
 
@@ -565,6 +758,39 @@
             <!-- Error panel -->
             <div id="url-error" style="display:none; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25); border-radius: 12px; padding: 1.2rem; color: #fca5a5; font-size: 0.85rem;"></div>
         </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- BULK LEAD IMPORT                                                   -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-bottom:2rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+            <div>
+                <h2 style="font-weight:600;margin:0;">Bulk Lead Import</h2>
+                <p style="color:var(--text-muted);font-size:0.82rem;margin:0.3rem 0 0 0;">Upload a CSV with columns: name, company, email, website, phone, linkedin_url, notes. Any order, flexible header names.</p>
+            </div>
+        </div>
+        <div id="csv-drop-zone"
+             style="border:2px dashed rgba(99,102,241,0.35);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:border-color 0.2s;position:relative;"
+             ondragover="event.preventDefault();this.style.borderColor='#6366f1';"
+             ondragleave="this.style.borderColor='rgba(99,102,241,0.35)';"
+             ondrop="handleCsvDrop(event)"
+             onclick="document.getElementById('csv-file-input').click()">
+            <div style="color:#94a3b8;font-size:0.9rem;">&#8679; Drop CSV here or <span style="color:#a5b4fc;text-decoration:underline;">click to browse</span></div>
+            <input id="csv-file-input" type="file" accept=".csv" style="display:none;" onchange="uploadCsvFile(this.files[0])">
+        </div>
+        <div id="csv-import-result" style="display:none;margin-top:1rem;border-radius:8px;padding:1rem;font-size:0.875rem;"></div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- ANALYTICS PANEL                                                   -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-bottom:2rem;" id="analytics-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+            <h2 style="font-weight:600;margin:0;">Pipeline Analytics</h2>
+            <button onclick="refreshAnalytics(this)" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:0.45rem 1rem;color:#c4b5fd;font-size:0.8rem;cursor:pointer;">&#8635; Refresh</button>
+        </div>
+        <div id="analytics-content" style="color:var(--text-muted);font-size:0.88rem;">Loading…</div>
     </div>
 
     <!-- ================================================================ -->
@@ -1176,13 +1402,19 @@
         const orig    = btn.textContent;
 
         btn.disabled    = true;
-        btn.textContent = action === 'approve' ? 'Approving…' : 'Dismissing…';
+        btn.textContent = action === 'approve' ? 'Sending…' : 'Dismissing…';
 
         try {
+            // If approving, pick up any edits the operator made in the textarea
+            const payload = { action };
+            if (action === 'approve') {
+                const ta = document.getElementById('reply-body-' + draftId);
+                if (ta) payload.body = ta.value.trim();
+            }
             const resp = await fetch('/api/reply-drafts/' + draftId + '/action', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ action }),
+                body:    JSON.stringify(payload),
             });
             const data = await resp.json();
             if (data.error) {
@@ -1206,6 +1438,8 @@
                     list.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">All caught up. No replies awaiting review.</p>';
                 }
             }, 300);
+            // If approved, refresh the Sent Replies section immediately
+            if (action === 'approve') refreshSentReplies();
         } catch (err) {
             alert('Network error.');
             btn.disabled    = false;
@@ -1233,6 +1467,643 @@
     document.getElementById('deck-url-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') generateDeckFromUrl();
     });
+
+    // ------------------------------------------------------------------ //
+    // FIND & FIRE                                                         //
+    // ------------------------------------------------------------------ //
+
+    function ffSetStep(id, state) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const dot = el.querySelector('.pl-step-dot');
+        const c = {
+            idle:   { dot: 'rgba(255,255,255,0.1)', text: 'var(--text-muted)' },
+            active: { dot: '#10b981',                text: '#f8fafc' },
+            done:   { dot: '#10b981',                text: '#6ee7b7' },
+            error:  { dot: '#ef4444',                text: '#fca5a5' },
+        }[state] || { dot: 'rgba(255,255,255,0.1)', text: 'var(--text-muted)' };
+        dot.style.background = c.dot;
+        dot.style.boxShadow  = state === 'active' ? '0 0 10px rgba(16,185,129,0.7)' : 'none';
+        el.style.color       = c.text;
+    }
+
+    function buildLeadCard(r, idx) {
+        const hasEmail  = !!(r.email && r.email.subject && r.email.body);
+        const hasPdf    = !!(r.pdf && r.pdf.url);
+        const research  = r.research || {};
+        const niche     = research.niche || research.note || '';
+        const painPoint = research.pain_point || '';
+        const qs        = (r.email && r.email.quality_score) || 0;
+        const qsStyle   = qs >= 80
+            ? 'background:rgba(16,185,129,0.15);color:#6ee7b7;'
+            : qs >= 60
+            ? 'background:rgba(251,191,36,0.15);color:#fbbf24;'
+            : 'background:rgba(239,68,68,0.15);color:#f87171;';
+
+        return `
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:1.5rem; position:relative;">
+            <!-- Header -->
+            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.1rem; flex-wrap:wrap;">
+                <span style="font-weight:700; font-size:1.05rem; color:#f8fafc;">${escHtml(r.company)}</span>
+                ${r.website ? `<a href="${escHtml(r.website)}" target="_blank" style="font-size:0.75rem; color:var(--text-muted); text-decoration:none;">↗ site</a>` : ''}
+                ${hasEmail ? `<span style="margin-left:auto; padding:0.2rem 0.6rem; border-radius:10px; font-size:0.68rem; font-weight:700; ${qsStyle}">QS ${qs}/100</span>` : ''}
+            </div>
+
+            <!-- Research summary -->
+            ${niche ? `<div style="font-size:0.8rem; color:#a5b4fc; margin-bottom:0.5rem;"><span style="color:var(--text-muted); font-weight:600;">Niche: </span>${escHtml(niche)}</div>` : ''}
+            ${painPoint ? `<div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.9rem;"><span style="font-weight:600;">Pain: </span>${escHtml(painPoint)}</div>` : ''}
+
+            <!-- Email preview -->
+            ${hasEmail ? `
+            <div style="background:rgba(99,102,241,0.06); border:1px solid rgba(99,102,241,0.2); border-radius:10px; padding:1rem; margin-bottom:1rem;">
+                <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#a5b4fc; margin-bottom:0.5rem;">Email Draft</div>
+                <div style="font-size:0.82rem; font-weight:600; color:#e2e8f0; margin-bottom:0.6rem;">
+                    <span style="color:var(--text-muted);">Subject: </span>${escHtml(r.email.subject)}
+                </div>
+                <div style="font-size:0.81rem; color:#94a3b8; line-height:1.7; white-space:pre-wrap; max-height:140px; overflow:hidden; position:relative;" id="ff-body-${idx}">
+                    ${escHtml(r.email.body)}
+                    <div style="position:absolute; bottom:0; left:0; right:0; height:40px; background:linear-gradient(transparent, rgba(15,23,42,0.9));"></div>
+                </div>
+            </div>` : `<div style="color:var(--text-muted); font-size:0.82rem; margin-bottom:1rem;">Email generation failed for this company.</div>`}
+
+            <!-- PDF link -->
+            ${hasPdf ? `<a href="${escHtml(r.pdf.url)}" target="_blank" style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.78rem; color:#6ee7b7; text-decoration:none; margin-bottom:1rem; border:1px solid rgba(16,185,129,0.25); padding:0.3rem 0.7rem; border-radius:8px; background:rgba(16,185,129,0.06);">📄 PDF Proposal</a>` : ''}
+
+            <!-- Send row -->
+            <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.5rem; flex-wrap:wrap;">
+                <input
+                    id="ff-email-${idx}"
+                    type="email"
+                    placeholder="Recipient email..."
+                    value="${escHtml(r.prospect_email || '')}"
+                    style="flex:1; min-width:180px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.5rem 0.8rem; color:var(--text-primary); font-size:0.83rem; font-family:'Outfit',sans-serif; outline:none;"
+                    onfocus="this.style.borderColor='rgba(16,185,129,0.5)'"
+                    onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
+                />
+                <button
+                    id="ff-send-btn-${idx}"
+                    onclick="ffSendEmail(${idx}, ${r.outreach_id || 'null'})"
+                    ${!hasEmail || !r.outreach_id ? 'disabled title="No email draft available"' : ''}
+                    style="background:${hasEmail && r.outreach_id ? 'linear-gradient(135deg,#059669,#0284c7)' : 'rgba(255,255,255,0.05)'}; border:none; border-radius:8px; padding:0.5rem 1.1rem; color:${hasEmail && r.outreach_id ? '#fff' : 'var(--text-muted)'}; font-size:0.83rem; font-weight:600; font-family:'Outfit',sans-serif; cursor:${hasEmail && r.outreach_id ? 'pointer' : 'not-allowed'}; white-space:nowrap;"
+                >Send Email</button>
+                <span id="ff-send-status-${idx}" style="font-size:0.78rem; color:var(--text-muted);"></span>
+            </div>
+        </div>`;
+    }
+
+    async function ffSendEmail(idx, outreachId) {
+        if (!outreachId) return;
+        const emailInput = document.getElementById(`ff-email-${idx}`);
+        const btn        = document.getElementById(`ff-send-btn-${idx}`);
+        const status     = document.getElementById(`ff-send-status-${idx}`);
+        const toAddress  = (emailInput ? emailInput.value : '').trim();
+
+        if (!toAddress) {
+            emailInput && emailInput.focus();
+            status.textContent = 'Enter an email address first.';
+            status.style.color = '#fca5a5';
+            return;
+        }
+
+        btn.disabled    = true;
+        btn.textContent = 'Sending…';
+        status.textContent = '';
+
+        try {
+            const resp = await fetch(`/api/send-outreach/${outreachId}`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ to_address: toAddress }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.error) {
+                status.textContent = data.error || 'Send failed.';
+                status.style.color = '#fca5a5';
+                btn.disabled    = false;
+                btn.textContent = 'Send Email';
+                return;
+            }
+            btn.textContent    = 'Sent ✓';
+            btn.style.background = 'rgba(16,185,129,0.15)';
+            btn.style.color    = '#6ee7b7';
+            status.textContent = `Sent to ${data.sent_to}`;
+            status.style.color = '#6ee7b7';
+            // Refresh the tracker table
+            refreshTracker();
+        } catch (err) {
+            status.textContent = 'Network error.';
+            status.style.color = '#fca5a5';
+            btn.disabled    = false;
+            btn.textContent = 'Send Email';
+        }
+    }
+
+    async function runFindAndFire() {
+        const query    = document.getElementById('ff-query').value.trim();
+        const location = document.getElementById('ff-location').value.trim();
+
+        if (!query)    { document.getElementById('ff-query').focus(); return; }
+        if (!location) { document.getElementById('ff-location').focus(); return; }
+
+        // Reset UI
+        const btn      = document.getElementById('ff-btn');
+        const steps    = document.getElementById('ff-steps');
+        const errEl    = document.getElementById('ff-error');
+        const results  = document.getElementById('ff-results');
+
+        btn.disabled    = true;
+        btn.textContent = 'Working…';
+        errEl.style.display    = 'none';
+        results.style.display  = 'none';
+        steps.style.display    = 'flex';
+        ['ff-step-find','ff-step-research','ff-step-email','ff-step-pdf'].forEach(id => ffSetStep(id, 'idle'));
+        ffSetStep('ff-step-find', 'active');
+
+        try {
+            const resp = await fetch('/api/find-and-fire', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ query, location, limit: 3 }),
+            });
+
+            // Step animations (server is synchronous — animate on arrival)
+            ffSetStep('ff-step-find',     'done');
+            ffSetStep('ff-step-research', 'active');
+
+            const d = await resp.json();
+
+            if (!resp.ok || d.error) {
+                errEl.style.display = 'block';
+                errEl.textContent   = d.error || 'Find & Fire failed.';
+                ffSetStep('ff-step-find', 'error');
+                return;
+            }
+
+            ffSetStep('ff-step-research', 'done');
+            ffSetStep('ff-step-email',    'done');
+            ffSetStep('ff-step-pdf',      'done');
+
+            // Build result cards
+            const cardsEl = document.getElementById('ff-cards');
+            cardsEl.innerHTML = '';
+            d.results.forEach((r, i) => {
+                cardsEl.innerHTML += buildLeadCard(r, i);
+            });
+
+            document.getElementById('ff-results-label').textContent =
+                `${d.count} business${d.count !== 1 ? 'es' : ''} found — ${query} in ${location}`;
+            results.style.display = 'block';
+            results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        } catch (err) {
+            errEl.style.display = 'block';
+            errEl.textContent   = 'Network error — is the server running?';
+            ffSetStep('ff-step-find', 'error');
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = 'Find 3 Leads & Build Campaign';
+        }
+    }
+
+    document.getElementById('ff-query').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('ff-location').focus();
+    });
+    document.getElementById('ff-location').addEventListener('keydown', e => {
+        if (e.key === 'Enter') runFindAndFire();
+    });
+
+    // ------------------------------------------------------------------ //
+    // OUTREACH TRACKER                                                    //
+    // ------------------------------------------------------------------ //
+
+    function renderTrackerRows(records) {
+        const body = document.getElementById('tracker-body');
+        if (!records || records.length === 0) {
+            body.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">No emails sent yet.</p>';
+            return;
+        }
+        const rows = records.map(r => {
+            const prospectStatus = r.prospect_status || '';
+            const replied = prospectStatus === 'replied' || prospectStatus === 'booked';
+            const statusBadge = replied
+                ? '<span style="background:rgba(16,185,129,0.15);color:#6ee7b7;padding:0.2rem 0.7rem;border-radius:99px;font-size:0.7rem;font-weight:700;">Replied</span>'
+                : '<span style="background:rgba(99,102,241,0.12);color:#a5b4fc;padding:0.2rem 0.7rem;border-radius:99px;font-size:0.7rem;font-weight:600;">Awaiting reply</span>';
+            const sentAt = (r.sent_at || r.date_created || '').replace('T',' ').slice(0,16);
+            return `
+            <tr>
+                <td style="font-weight:500;color:#f1f5f9;">${escHtml(r.prospect_company || '')}</td>
+                <td style="color:var(--text-muted);font-size:0.83rem;">${escHtml(r.prospect_email || '—')}</td>
+                <td style="color:#cbd5e1;font-size:0.83rem;">${escHtml(r.subject || '')}</td>
+                <td style="color:var(--text-muted);font-size:0.78rem;">${escHtml(sentAt)}</td>
+                <td>${statusBadge}</td>
+            </tr>`;
+        }).join('');
+
+        body.innerHTML = `
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-muted);">
+                    <th style="text-align:left;padding:0.5rem 0.75rem 0.75rem 0;">Company</th>
+                    <th style="text-align:left;padding:0.5rem 0.75rem 0.75rem;">Email</th>
+                    <th style="text-align:left;padding:0.5rem 0.75rem 0.75rem;">Subject</th>
+                    <th style="text-align:left;padding:0.5rem 0.75rem 0.75rem;">Sent At</th>
+                    <th style="text-align:left;padding:0.5rem 0.75rem 0.75rem;">Status</th>
+                </tr>
+            </thead>
+            <tbody style="font-size:0.85rem;">${rows}</tbody>
+        </table>`;
+    }
+
+    async function refreshTracker(btn) {
+        if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+        try {
+            const resp = await fetch('/api/outreach-tracker');
+            const data = await resp.json();
+            renderTrackerRows(data);
+        } catch (err) {
+            // silent — tracker is secondary UI
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+        }
+    }
+
+    // Load tracker on page load
+    refreshTracker();
+
+    // ------------------------------------------------------------------ //
+    // SENT REPLIES                                                        //
+    // ------------------------------------------------------------------ //
+
+    function renderSentReplies(records) {
+        const body  = document.getElementById('sent-replies-body');
+        const badge = document.getElementById('sent-replies-badge');
+
+        if (!records || records.length === 0) {
+            body.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">No replies sent yet. Approve a reply draft above to send it — it will appear here.</p>';
+            badge.style.display = 'none';
+            return;
+        }
+
+        badge.textContent   = records.length + ' sent';
+        badge.style.display = 'inline';
+
+        body.innerHTML = records.map(r => {
+            const sentAt      = (r.sent_at || r.created_at || '').replace('T',' ').slice(0,16);
+            const inbound     = (r.inbound_body || '').slice(0, 220);
+            const reply       = (r.drafted_reply || '');
+            const subject     = r.inbound_subject ? `Re: ${escHtml(r.inbound_subject)}` : '';
+            const prospStatus = r.prospect_status || '';
+            const repliedBack = prospStatus === 'replied' || prospStatus === 'booked';
+
+            return `
+            <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); border-radius:14px; padding:1.4rem; margin-bottom:1rem;">
+                <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap;">
+                    <span style="font-weight:600; color:#f1f5f9;">${escHtml(r.prospect_name || '')}</span>
+                    <span style="color:var(--text-muted); font-size:0.85rem;">${escHtml(r.prospect_company || '')}</span>
+                    ${subject ? `<span style="font-size:0.78rem; color:var(--text-muted); margin-left:auto;">${subject}</span>` : ''}
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                    <div>
+                        <div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--text-muted); margin-bottom:0.4rem;">Their message</div>
+                        <div style="font-size:0.81rem; color:#94a3b8; line-height:1.6; background:rgba(255,255,255,0.03); border-radius:8px; padding:0.75rem; border-left:2px solid rgba(255,255,255,0.1);">${escHtml(inbound)}${inbound.length < (r.inbound_body||'').length ? '…' : ''}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#a5b4fc; margin-bottom:0.4rem;">We replied</div>
+                        <div style="font-size:0.81rem; color:#cbd5e1; line-height:1.6; background:rgba(99,102,241,0.05); border-radius:8px; padding:0.75rem; border-left:2px solid rgba(99,102,241,0.3); white-space:pre-wrap;">${escHtml(reply)}</div>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:0.75rem; font-size:0.75rem; color:var(--text-muted);">
+                    <span>Sent ${escHtml(sentAt)}</span>
+                    <span>·</span>
+                    <span>To: ${escHtml(r.inbound_from || r.prospect_email || '—')}</span>
+                    <span style="flex:1;"></span>
+                    ${repliedBack
+                        ? '<span style="background:rgba(16,185,129,0.15);color:#6ee7b7;padding:0.2rem 0.65rem;border-radius:99px;font-weight:700;">Replied again ↩</span>'
+                        : '<span style="background:rgba(99,102,241,0.1);color:#a5b4fc;padding:0.2rem 0.65rem;border-radius:99px;font-weight:600;">Awaiting response</span>'}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function refreshSentReplies(btn) {
+        if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+        try {
+            const resp = await fetch('/api/sent-replies');
+            const data = await resp.json();
+            renderSentReplies(data);
+        } catch (err) {
+            // silent
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+        }
+    }
+
+    // Load on page open
+    refreshSentReplies();
+
+    // ── Add Lead form ─────────────────────────────────────────────────────
+    function toggleAddLead() {
+        const f = document.getElementById('add-lead-form');
+        f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function submitAddLead(btn) {
+        const errEl = document.getElementById('al-error');
+        const okEl  = document.getElementById('al-success');
+        errEl.style.display = 'none';
+        okEl.style.display  = 'none';
+        const payload = {
+            name:    document.getElementById('al-name').value.trim(),
+            company: document.getElementById('al-company').value.trim(),
+            email:   document.getElementById('al-email').value.trim(),
+            website: document.getElementById('al-website').value.trim(),
+            phone:   document.getElementById('al-phone').value.trim(),
+            notes:   document.getElementById('al-notes').value.trim(),
+        };
+        if (!payload.name || !payload.company) {
+            errEl.textContent = 'Name and Company are required.';
+            errEl.style.display = 'block';
+            return;
+        }
+        btn.disabled = true; btn.textContent = 'Saving…';
+        const res = await fetch('/api/prospects', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        btn.disabled = false; btn.textContent = 'Save Lead';
+        if (!res.ok) {
+            errEl.textContent = d.error || 'Save failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+        okEl.textContent = `${payload.name} at ${payload.company} added. Reload to see in pipeline.`;
+        okEl.style.display = 'block';
+        ['al-name','al-company','al-email','al-website','al-phone','al-notes'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+    }
+
+    // ── Bulk CSV import ───────────────────────────────────────────────────
+    function handleCsvDrop(e) {
+        e.preventDefault();
+        document.getElementById('csv-drop-zone').style.borderColor = 'rgba(99,102,241,0.35)';
+        const file = e.dataTransfer.files[0];
+        if (file) uploadCsvFile(file);
+    }
+
+    async function uploadCsvFile(file) {
+        if (!file || !file.name.endsWith('.csv')) {
+            alert('Please drop a .csv file.');
+            return;
+        }
+        const resultEl = document.getElementById('csv-import-result');
+        resultEl.style.display = 'block';
+        resultEl.style.background = 'rgba(99,102,241,0.1)';
+        resultEl.style.border = '1px solid rgba(99,102,241,0.25)';
+        resultEl.style.color = '#c4b5fd';
+        resultEl.textContent = `Uploading ${file.name}…`;
+
+        const form = new FormData();
+        form.append('file', file);
+
+        try {
+            const res = await fetch('/api/import-csv', { method: 'POST', body: form });
+            const d   = await res.json();
+            if (!res.ok) {
+                resultEl.style.background = 'rgba(239,68,68,0.1)';
+                resultEl.style.border     = '1px solid rgba(239,68,68,0.25)';
+                resultEl.style.color      = '#fca5a5';
+                resultEl.textContent = `Error: ${d.error}`;
+                return;
+            }
+            resultEl.style.background = 'rgba(16,185,129,0.1)';
+            resultEl.style.border     = '1px solid rgba(16,185,129,0.25)';
+            resultEl.style.color      = '#6ee7b7';
+            resultEl.innerHTML = `<strong>Import complete</strong> — ${d.imported} imported, ${d.skipped} skipped (duplicate), ${d.failed} failed.`
+                + (d.errors.length ? `<br>Errors: ${d.errors.map(e => `row ${e.row}: ${e.reason}`).join(' | ')}` : '')
+                + `<br><em style="color:#94a3b8;font-size:0.8rem;">Reload the page to see new leads in the pipeline table.</em>`;
+        } catch (err) {
+            resultEl.style.color = '#fca5a5';
+            resultEl.textContent = `Upload failed: ${err}`;
+        }
+    }
+
+    // ── Analytics panel ──────────────────────────────────────────────────
+    async function refreshAnalytics(btn) {
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        try {
+            const res  = await fetch('/api/analytics');
+            const d    = await res.json();
+            const f    = d.funnel.counts;
+            const sb   = d.score_bands;
+            const out  = d.outreach;
+            const total = d.prospects.total || 1;
+
+            const bar = (n, max) => {
+                const pct = Math.round((n / (max || 1)) * 100);
+                return `<div style="display:inline-block;width:80px;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;vertical-align:middle;margin:0 0.5rem;">
+                    <div style="width:${pct}%;height:100%;background:#6366f1;border-radius:3px;"></div></div>`;
+            };
+            const funnel_order = ['new','qualified','contacted','in_sequence','replied','booked','rejected'];
+            const maxFunnel = Math.max(...funnel_order.map(s => f[s] || 0), 1);
+
+            const funnelRows = funnel_order.map(s => {
+                const cnt = f[s] || 0;
+                const pct = Math.round(cnt / total * 100);
+                return `<tr><td style="color:#94a3b8;padding:0.3rem 0.5rem;text-transform:capitalize;">${s.replace('_',' ')}</td>
+                    <td style="padding:0.3rem 0.5rem;">${bar(cnt, maxFunnel)}</td>
+                    <td style="text-align:right;padding:0.3rem 0.5rem;">${cnt}</td>
+                    <td style="text-align:right;color:#94a3b8;padding:0.3rem 0.5rem;">${pct}%</td></tr>`;
+            }).join('');
+
+            document.getElementById('analytics-content').innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
+                <div style="background:#0f172a;border-radius:8px;padding:1rem;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:0.7rem;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Conversion</div>
+                    <div style="font-size:1.6rem;font-weight:700;color:#fde68a;">${d.funnel.conversion_rate}%</div>
+                    <div style="font-size:0.75rem;color:#64748b;margin-top:0.2rem;">new → booked</div>
+                </div>
+                <div style="background:#0f172a;border-radius:8px;padding:1rem;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:0.7rem;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Emails Sent</div>
+                    <div style="font-size:1.6rem;font-weight:700;color:#7dd3fc;">${out.sent}</div>
+                    <div style="font-size:0.75rem;color:#64748b;margin-top:0.2rem;">${out.draft} drafts · ${out.approved} approved</div>
+                </div>
+                <div style="background:#0f172a;border-radius:8px;padding:1rem;border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-size:0.7rem;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">Score Bands</div>
+                    <div style="font-size:0.85rem;color:#6ee7b7;margin-bottom:0.2rem;">&#9632; Hot: ${sb.hot}</div>
+                    <div style="font-size:0.85rem;color:#fde68a;margin-bottom:0.2rem;">&#9632; Warm: ${sb.warm}</div>
+                    <div style="font-size:0.85rem;color:#94a3b8;">&#9632; Cold: ${sb.cold}</div>
+                </div>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                <thead><tr>
+                    <th style="text-align:left;color:#64748b;font-weight:500;padding:0.3rem 0.5rem;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;">Status</th>
+                    <th style="padding:0.3rem 0.5rem;"></th>
+                    <th style="text-align:right;color:#64748b;font-weight:500;padding:0.3rem 0.5rem;font-size:0.7rem;">Count</th>
+                    <th style="text-align:right;color:#64748b;font-weight:500;padding:0.3rem 0.5rem;font-size:0.7rem;">%</th>
+                </tr></thead>
+                <tbody>${funnelRows}</tbody>
+            </table>`;
+        } catch(e) {
+            document.getElementById('analytics-content').textContent = 'Could not load analytics.';
+        }
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+    }
+    refreshAnalytics();
+
+    // ── Prospect edit / delete ────────────────────────────────────────────
+    document.getElementById('prospects-table').addEventListener('click', function(e) {
+        const editBtn   = e.target.closest('.btn-edit-prospect');
+        const deleteBtn = e.target.closest('.btn-delete-prospect');
+        const enrolBtn  = e.target.closest('.btn-enrol-prospect');
+        if (editBtn)   openEditModal(parseInt(editBtn.dataset.id), JSON.parse(editBtn.dataset.prospect));
+        if (deleteBtn) deleteProspect(parseInt(deleteBtn.dataset.id), deleteBtn);
+        if (enrolBtn)  enrolProspect(parseInt(enrolBtn.dataset.id), enrolBtn);
+    });
+
+    async function enrolProspect(id, btn) {
+        if (!confirm('Enrol this prospect in the outreach sequence?')) return;
+        btn.disabled = true; btn.textContent = '…';
+        const res = await fetch(`/api/prospects/${id}/enrol`, { method: 'POST' });
+        const d   = await res.json();
+        if (res.ok) {
+            btn.remove();   // hide enrol button — they're now in sequence
+            // update status pill in the row
+            const row    = document.getElementById(`prospect-row-${id}`);
+            const pill   = row?.querySelector('.status-pill');
+            if (pill) { pill.textContent = 'in_sequence'; pill.className = 'status-pill status-in_sequence'; }
+        } else {
+            alert(d.error || 'Enrolment failed.');
+            btn.disabled = false; btn.textContent = '▶ Enrol';
+        }
+    }
+
+    function openEditModal(id, p) {
+        document.getElementById('edit-id').value           = id;
+        document.getElementById('edit-name').value         = p.name        || '';
+        document.getElementById('edit-company').value      = p.company     || '';
+        document.getElementById('edit-email').value        = p.email       || '';
+        document.getElementById('edit-phone').value        = p.phone       || '';
+        document.getElementById('edit-website').value      = p.website     || '';
+        document.getElementById('edit-lead_score').value   = p.lead_score  || 50;
+        document.getElementById('edit-notes').value        = p.notes       || '';
+        document.getElementById('edit-status').value       = p.status      || 'new';
+        document.getElementById('edit-error').style.display = 'none';
+        document.getElementById('edit-modal').style.display = 'flex';
+    }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').style.display = 'none';
+    }
+
+    async function saveEditModal() {
+        const id = document.getElementById('edit-id').value;
+        const payload = {
+            name:       document.getElementById('edit-name').value.trim(),
+            company:    document.getElementById('edit-company').value.trim(),
+            email:      document.getElementById('edit-email').value.trim(),
+            phone:      document.getElementById('edit-phone').value.trim(),
+            website:    document.getElementById('edit-website').value.trim(),
+            lead_score: parseInt(document.getElementById('edit-lead_score').value) || 50,
+            status:     document.getElementById('edit-status').value,
+            notes:      document.getElementById('edit-notes').value.trim(),
+        };
+        const res = await fetch(`/api/prospects/${id}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const d = await res.json();
+        if (!res.ok) {
+            const errEl = document.getElementById('edit-error');
+            errEl.textContent = d.error || 'Save failed.';
+            errEl.style.display = 'block';
+            return;
+        }
+        closeEditModal();
+        location.reload();
+    }
+
+    async function deleteProspect(id, btn) {
+        if (!confirm('Delete this prospect and all related records? This cannot be undone.')) return;
+        btn.disabled = true;
+        const res = await fetch(`/api/prospects/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            document.getElementById(`prospect-row-${id}`)?.remove();
+        } else {
+            const d = await res.json();
+            alert(d.error || 'Delete failed.');
+            btn.disabled = false;
+        }
+    }
+
+    // ── Background scheduler status bar ──────────────────────────────────
+    async function refreshMonitorStatus() {
+        try {
+            const res = await fetch('/api/monitor-status');
+            const d   = await res.json();
+            const pill  = document.getElementById('scheduler-pill');
+            const label = document.getElementById('inbox-status-label');
+            const resumeBtn = document.getElementById('resume-monitor-btn');
+            if (!pill || !label) return;
+
+            if (d.paused) {
+                pill.textContent = 'Scheduler Paused';
+                pill.className   = 'status-pill status-rejected';
+                if (resumeBtn) resumeBtn.style.display = 'inline-block';
+            } else if (d.running) {
+                pill.textContent = 'Scheduler Running';
+                pill.className   = 'status-pill status-in_sequence';
+                if (resumeBtn) resumeBtn.style.display = 'none';
+            } else {
+                pill.textContent = 'Scheduler Stopped';
+                pill.className   = 'status-pill status-rejected';
+                if (resumeBtn) resumeBtn.style.display = 'none';
+            }
+
+            if (d.last_inbox_error) {
+                label.textContent = `Inbox error: ${d.last_inbox_error}`;
+                label.style.color = '#f87171';
+            } else if (d.last_inbox_check === 'never') {
+                label.textContent = 'Inbox: waiting for first check…';
+                label.style.color = '#94a3b8';
+            } else {
+                const count = d.last_inbox_result ?? 0;
+                label.textContent = `Inbox: checked ${d.last_inbox_check} · ${count} new repl${count === 1 ? 'y' : 'ies'}`;
+                label.style.color = count > 0 ? '#6ee7b7' : '#94a3b8';
+            }
+        } catch (_) {}
+    }
+
+    async function resumeMonitor(btn) {
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Resuming...';
+        try {
+            const res = await fetch('/api/monitor-reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                alert(data.error || 'Could not resume inbox polling.');
+            } else {
+                await refreshMonitorStatus();
+            }
+        } catch (_) {
+            alert('Network error while resuming inbox polling.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = orig;
+        }
+    }
+    refreshMonitorStatus();
+    setInterval(refreshMonitorStatus, 30000);   // refresh every 30 s
+
     </script>
 </body>
 </html>

@@ -52,6 +52,7 @@ from email_validator import (
     score_internal_quality,
     validate_email,
 )
+from settings import get_calendar_link
 
 # ---------------------------------------------------------------------------
 # Signal keywords
@@ -74,8 +75,8 @@ PRIMARY_ANGLES = (
     "ICP mismatch",
     "funnel weakness",
 )
-CALENDAR_LINK = "[Calendar link]"
 
+OPT_OUT_LINE = "If this isn't relevant, reply no thanks and I'll stop."
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -254,6 +255,43 @@ def _operator_risk_reversal(company: str, market_label: str) -> str:
     )
 
 
+def _calendar_link() -> str:
+    """Fetch the latest configured calendar link."""
+    return get_calendar_link()
+
+
+def _build_angle_subject(
+    prospect: dict,
+    analysis: dict,
+    angle: str,
+    rewrite_pass: int = 0,
+) -> str:
+    """Return a short subject that varies with the strongest email angle."""
+    company = _clean(prospect.get("company")) or "your company"
+    first = _first_name(prospect.get("name", "there"))
+    competitor = _clean(analysis.get("relevant_competitor"))
+    feature = _clean(analysis.get("key_offer_or_feature"))
+
+    if rewrite_pass > 0:
+        return f"quick question, {first}"
+    if angle == "hiring signal" and _clean(analysis.get("recent_signal")):
+        return f"{company} hiring"
+    if angle == "competitor" and competitor:
+        return f"{company} and {competitor}"
+    if angle == "product feature" and feature:
+        short_feature = feature.split(",")[0].split(" with ")[0].strip()
+        return f"{company} {short_feature}" if len(short_feature) <= 36 else company
+    if angle == "outbound gap":
+        return f"{company} pipeline"
+    if angle == "funnel weakness":
+        return f"{company} demand"
+    if angle == "ICP mismatch":
+        return f"{company} buyers"
+    if angle == "positioning":
+        return f"{company} outbound"
+    return company
+
+
 def _detect_signals(notes: str) -> dict:
     """
     Scan notes for signal keywords.
@@ -395,7 +433,7 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
     mechanism    = _mechanism_line()
     reversal     = _operator_risk_reversal(company, market_label)
 
-    subject = f"outbound for {company}"
+    subject = _build_angle_subject(prospect, analysis, choose_primary_angle(analysis))
     body = (
         f"Hi {first},\n\n"
         f"{truth}\n\n"
@@ -403,8 +441,9 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
         f"We build outbound pipelines specifically for {market_label} like {company}. "
         f"{mechanism}\n\n"
         f"{reversal}\n\n"
+        f"{OPT_OUT_LINE}\n\n"
         f"Worth a 15-minute call?\n\n"
-        f"{CALENDAR_LINK}\n\n"
+        f"{_calendar_link()}\n\n"
         f"\u2014 [Name]"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
@@ -433,21 +472,7 @@ def _build_data_driven_email(
     market_label = _operator_market_label(prospect, analysis)
 
     # Subject — short, personal, angle-aware
-    recent_signal = analysis.get("recent_signal") or ""
-    competitor    = analysis.get("relevant_competitor") or ""
-
-    if angle == "hiring signal" and recent_signal:
-        subject = f"outbound for {company}"
-    elif angle == "competitor" and competitor:
-        subject = f"{company}"
-    elif angle == "outbound gap":
-        subject = f"outbound for {company}"
-    elif angle == "product feature":
-        subject = f"{company}"
-    elif rewrite_pass > 0:
-        subject = f"quick question, {first}"
-    else:
-        subject = f"outbound for {company}"
+    subject = _build_angle_subject(prospect, analysis, angle, rewrite_pass=rewrite_pass)
 
     truth     = _market_truth_opener(market_label, angle, prospect)
     tension   = _tension_line(angle, prospect)
@@ -461,8 +486,9 @@ def _build_data_driven_email(
         f"We build outbound pipelines specifically for {market_label} like {company}. "
         f"{mechanism}\n\n"
         f"{reversal}\n\n"
+        f"{OPT_OUT_LINE}\n\n"
         f"Worth a 15-minute call?\n\n"
-        f"{CALENDAR_LINK}\n\n"
+        f"{_calendar_link()}\n\n"
         f"\u2014 [Name]"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}
