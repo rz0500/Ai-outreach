@@ -100,6 +100,12 @@
                     <input type="password" name="IMAP_PASSWORD" value="" placeholder="leave blank to keep current">
                 </div>
             </div>
+            <div class="field-group">
+                <div class="field">
+                    <label>IMAP Max Messages Per Poll</label>
+                    <input type="number" name="IMAP_MAX_MESSAGES_PER_POLL" value="{{ current.IMAP_MAX_MESSAGES_PER_POLL }}" placeholder="25" min="1">
+                </div>
+            </div>
         </div>
 
         <div class="settings-card">

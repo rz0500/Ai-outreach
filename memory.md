@@ -19,6 +19,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Monitor can now be resumed without restarting the app
 - Pipeline table now shows sequence day progress from enrollment date
 - Full unittest discovery is green again after compatibility and expectation cleanup
+- Live IMAP inbox polling now authenticates and searches Gmail successfully after query/charset hardening
 
 **What's missing next:**
 1. Test suite coverage for the new API surface
@@ -36,6 +37,8 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Reply classification:** valid categories include `interested`, `booked`, `not_interested`, `opt_out`, `out_of_office`, and `auto_reply`.
 
 **Background scheduler:** daemon thread in `web_app.py`. Polls `check_for_replies()` every `INBOX_POLL_INTERVAL` seconds and runs `run_multichannel_sequence()` once daily at `SEQUENCE_RUN_HOUR`. `GET /api/monitor-status` exposes state. `POST /api/monitor-reset` clears the paused state and consecutive inbox errors.
+
+**Inbox polling hardening:** `inbox_monitor.py` now uses `UNSEEN` for IMAP search, normalizes odd MIME charsets like `unknown-8bit`, and limits each run to `IMAP_MAX_MESSAGES_PER_POLL` messages by default.
 
 **Outbound email routing:** `_route_send_email()` in `web_app.py` is the single send router. SMTP supports attachments and thread headers. SendGrid currently does not.
 

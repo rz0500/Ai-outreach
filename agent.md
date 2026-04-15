@@ -31,6 +31,12 @@ All 10 build tasks: background scheduler, booking detection, settings UI, prospe
 - Realigned email reasoning and inbox monitor tests with the current operator-style email flow
 - Full `python -m unittest discover` suite is passing again
 
+### Session 6 (live inbox hardening)
+- Fixed IMAP search query in `inbox_monitor.py` from `UNREAD` to `UNSEEN` for Gmail compatibility
+- Added tolerant MIME decoding for `unknown-8bit` / unknown charsets
+- Added `IMAP_MAX_MESSAGES_PER_POLL` cap (default `25`) so one large unread backlog does not stall a poll cycle
+- Live Gmail smoke test now connects, authenticates, selects inbox, and searches successfully
+
 ---
 
 ## Next Session - Planned Tasks
@@ -57,6 +63,10 @@ All 10 build tasks: background scheduler, booking detection, settings UI, prospe
 4. **`/api/find-and-fire` progress streaming**
    - It currently blocks until all businesses are processed
    - Switch to SSE or job ID plus polling
+
+5. **Inbox monitor follow-up**
+   - Consider more defensive decoding around odd real-world messages
+   - Consider reducing backlog by using a narrower search window or a smaller poll cap
 
 ### P3 - Production
 5. **Gunicorn startup script**

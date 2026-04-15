@@ -40,6 +40,19 @@ def get_inbox_poll_interval() -> int:
     return max(60, val)
 
 
+def get_imap_max_messages_per_poll() -> int:
+    """
+    Return how many unread IMAP messages to process in one polling cycle.
+    Minimum 1, default 25.
+    """
+    raw = os.getenv("IMAP_MAX_MESSAGES_PER_POLL", "25")
+    try:
+        val = int(raw)
+    except ValueError:
+        val = 25
+    return max(1, val)
+
+
 def get_sequence_run_hour() -> int:
     """
     Return the hour of day (0-23, UTC) at which the sequence dispatcher runs.

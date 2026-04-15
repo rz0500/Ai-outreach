@@ -53,6 +53,9 @@ If a meaningful repo-level change is made, update all three files.
 
 ### Inbox
 - **`inbox_monitor.py`** - IMAP reply monitor and reply classification flow
+  - Gmail/live inbox path now uses `UNSEEN`
+  - tolerates `unknown-8bit` style MIME charset labels
+  - limits each poll with `IMAP_MAX_MESSAGES_PER_POLL` (default 25)
 
 ### Web
 - **`web_app.py`** - Flask dashboard and API surface. Important endpoints include:

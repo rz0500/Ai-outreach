@@ -1405,6 +1405,7 @@ def settings_page():
         ("IMAP_PORT",            "IMAP Port",              "number",   "993"),
         ("IMAP_USER",            "IMAP User",              "email",    ""),
         ("IMAP_PASSWORD",        "IMAP Password",          "password", ""),
+        ("IMAP_MAX_MESSAGES_PER_POLL", "IMAP Max Messages Per Poll", "number", "25"),
         ("ANTHROPIC_API_KEY",    "Anthropic API Key",      "password", ""),
         ("GOOGLE_MAPS_API_KEY",  "Google Maps API Key",    "password", ""),
         ("CALENDAR_LINK",        "Calendar / Booking Link","url",      ""),

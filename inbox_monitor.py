@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 import database
 from database import save_reply_draft
 from ai_engine import classify_reply
+from settings import get_imap_max_messages_per_poll
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -49,7 +50,13 @@ def decode_mime_words(s: str) -> str:
     result = []
     for word, charset in words:
         if isinstance(word, bytes):
-            result.append(word.decode(charset or "utf-8", errors="ignore"))
+            normalized = (charset or "utf-8").lower()
+            if normalized in {"unknown-8bit", "x-unknown", "unknown"}:
+                normalized = "utf-8"
+            try:
+                result.append(word.decode(normalized, errors="ignore"))
+            except LookupError:
+                result.append(word.decode("utf-8", errors="ignore"))
         else:
             result.append(word)
     return "".join(result)
@@ -73,16 +80,24 @@ def extract_body(msg: email.message.Message) -> str:
                 disposition = str(part.get("Content-Disposition") or "")
                 if "attachment" in disposition:
                     continue
-                charset = part.get_content_charset() or "utf-8"
+                charset = (part.get_content_charset() or "utf-8").lower()
+                if charset in {"unknown-8bit", "x-unknown", "unknown"}:
+                    charset = "utf-8"
                 try:
                     return part.get_payload(decode=True).decode(charset, errors="ignore").strip()
+                except LookupError:
+                    return part.get_payload(decode=True).decode("utf-8", errors="ignore").strip()
                 except Exception:
                     continue
         return ""
     else:
-        charset = msg.get_content_charset() or "utf-8"
+        charset = (msg.get_content_charset() or "utf-8").lower()
+        if charset in {"unknown-8bit", "x-unknown", "unknown"}:
+            charset = "utf-8"
         try:
             return msg.get_payload(decode=True).decode(charset, errors="ignore").strip()
+        except LookupError:
+            return msg.get_payload(decode=True).decode("utf-8", errors="ignore").strip()
         except Exception:
             return ""
 
@@ -215,13 +230,20 @@ def check_for_replies(mark_as_read: bool = True) -> int:
             logging.error("Could not select INBOX.")
             return 0
 
-        status, response = mail.search(None, "UNREAD")
+        status, response = mail.search(None, "UNSEEN")
         if status != "OK":
             logging.error("Could not search for unread messages.")
             return 0
 
         message_ids = response[0].split()
-        logging.info(f"Found {len(message_ids)} unread message(s).")
+        total_unread = len(message_ids)
+        max_messages = get_imap_max_messages_per_poll()
+        if total_unread > max_messages:
+            message_ids = message_ids[:max_messages]
+        logging.info(
+            f"Found {total_unread} unread message(s). "
+            f"Processing {len(message_ids)} this poll."
+        )
 
         updated_count = 0
 
