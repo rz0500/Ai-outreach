@@ -223,8 +223,79 @@
     </div>
 
     <!-- ================================================================ -->
-    <!-- FULL PIPELINE: URL → Research → Email → PDF                    -->
+    <!-- IMPORT & FIRE: CSV list → Research → Email → Auto-send / Review-->
     <!-- ================================================================ -->
+    <div class="pipeline-section" id="import-and-fire" style="background: linear-gradient(135deg, rgba(139,92,246,0.05) 0%, rgba(59,130,246,0.05) 100%); border-color: rgba(139,92,246,0.2);">
+        <div class="pipeline-header">
+            <div>
+                <h2 style="font-weight: 700; margin: 0 0 0.3rem 0; font-size: 1.5rem;">
+                    Import &amp; Fire
+                </h2>
+                <p style="color: var(--text-muted); font-size: 0.88rem; margin: 0;">
+                    Upload a CSV of leads. Claude researches each one, writes a personalised email, then either sends automatically or holds them in your review queue.
+                </p>
+            </div>
+            <span class="pipeline-badge" style="background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(59,130,246,0.2)); border-color: rgba(139,92,246,0.4); color: #c4b5fd;">CSV → AI → Send</span>
+        </div>
+
+        <!-- CSV hint -->
+        <div style="font-size:0.78rem;color:#64748b;margin-bottom:0.75rem;">
+            CSV columns: <code style="background:rgba(255,255,255,0.06);padding:0.1rem 0.35rem;border-radius:4px;">name, company, email, website, phone, linkedin_url</code>
+            — email &amp; website optional but improve personalisation.
+        </div>
+
+        <!-- Upload row -->
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;margin-bottom:0.75rem;">
+            <label id="iaf-drop" for="iaf-file"
+                style="flex:1;min-width:220px;border:2px dashed rgba(139,92,246,0.35);border-radius:10px;padding:0.9rem 1.25rem;cursor:pointer;color:#94a3b8;font-size:0.85rem;text-align:center;transition:border-color 0.2s;"
+                ondragover="event.preventDefault();this.style.borderColor='rgba(139,92,246,0.7)'"
+                ondragleave="this.style.borderColor='rgba(139,92,246,0.35)'"
+                ondrop="iafFileDrop(event)">
+                <span id="iaf-file-label">Drop CSV here or <u>click to browse</u></span>
+                <input id="iaf-file" type="file" accept=".csv,text/csv" style="display:none" onchange="iafFileChange(this)">
+            </label>
+
+            <!-- Mode toggle -->
+            <div style="display:flex;gap:0;border:1px solid rgba(139,92,246,0.35);border-radius:8px;overflow:hidden;flex-shrink:0;">
+                <button id="iaf-mode-review" onclick="iafSetMode('review')"
+                    style="padding:0.6rem 1rem;background:rgba(139,92,246,0.25);border:none;color:#c4b5fd;font-size:0.82rem;font-weight:600;cursor:pointer;">
+                    Review Queue
+                </button>
+                <button id="iaf-mode-auto" onclick="iafSetMode('auto_send')"
+                    style="padding:0.6rem 1rem;background:transparent;border:none;color:#64748b;font-size:0.82rem;font-weight:600;cursor:pointer;">
+                    Auto Send
+                </button>
+            </div>
+
+            <button id="iaf-btn" onclick="runImportAndFire()"
+                style="background:linear-gradient(135deg,#7c3aed,#3b82f6);border:none;border-radius:8px;padding:0.6rem 1.4rem;color:#fff;font-size:0.9rem;font-weight:600;cursor:pointer;white-space:nowrap;"
+                disabled>
+                Import &amp; Process
+            </button>
+        </div>
+
+        <!-- Progress bar -->
+        <div id="iaf-progress-wrap" style="display:none;margin-top:0.75rem;">
+            <div style="display:flex;justify-content:space-between;font-size:0.78rem;color:#94a3b8;margin-bottom:0.3rem;">
+                <span id="iaf-progress-label">Processing…</span>
+                <span id="iaf-progress-pct">0%</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.06);border-radius:99px;height:6px;overflow:hidden;">
+                <div id="iaf-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#3b82f6);transition:width 0.3s;"></div>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="iaf-error" style="display:none;margin-top:1rem;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:0.9rem 1rem;color:#fca5a5;font-size:0.85rem;"></div>
+
+        <!-- Results summary -->
+        <div id="iaf-results" style="display:none;margin-top:1.25rem;">
+            <div id="iaf-results-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c4b5fd;margin-bottom:0.85rem;"></div>
+            <div id="iaf-results-table"></div>
+        </div>
+    </div>
+
+    <div style="display:none;" id="full-pipeline-removed">
     <div class="pipeline-section" id="full-pipeline">
         <div class="pipeline-header">
             <div>
@@ -341,6 +412,7 @@
             </div>
         </div>
     </div>
+    </div><!-- end full-pipeline-removed -->
 
     <!-- REPLY REVIEW -->
     <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;">
@@ -354,13 +426,6 @@
             <span id="reply-pending-badge" style="display:none;"></span>
             {% endif %}
             <span style="flex:1;"></span>
-            <button
-                onclick="seedDemoReply(this)"
-                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
-                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
-                onmouseout="this.style.background='rgba(255,255,255,0.04)'"
-                title="Inject a test reply to preview the review UI"
-            >+ Seed demo reply</button>
         </div>
 
         <div id="reply-draft-list">
@@ -396,8 +461,7 @@
             {% endfor %}
         {% else %}
             <p id="reply-empty-state" style="color: var(--text-muted); font-size: 0.9rem;">
-                No replies awaiting review. When prospects reply and are classified as interested, their drafted responses appear here.
-                Use "Seed demo reply" above to preview the UI.
+                No replies awaiting review. When prospects reply and the inbox monitor classifies them as interested, their drafted responses appear here.
             </p>
         {% endif %}
         </div>
@@ -426,8 +490,25 @@
     </div>
 
     <!-- ================================================================ -->
-    <!-- OUTREACH TRACKER — sent emails + reply status                  -->
+    <!-- OUTREACH REVIEW QUEUE                                          -->
     <!-- ================================================================ -->
+    <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="outreach-queue-section">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <h2 style="font-weight:500;margin:0;">Outreach Review Queue</h2>
+            <span id="oq-count-badge" style="display:none;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.35);border-radius:99px;padding:0.15rem 0.6rem;font-size:0.72rem;font-weight:700;color:#c4b5fd;"></span>
+            <span style="flex:1;"></span>
+            <button onclick="loadOutreachQueue()"
+                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.04)'">↻ Refresh</button>
+        </div>
+        <div id="oq-body">
+            <p style="color:var(--text-muted);font-size:0.9rem;" id="oq-empty">
+                No emails in the review queue. Use <strong>Import &amp; Fire</strong> with "Review Queue" mode to populate this.
+            </p>
+        </div>
+    </div>
+
     <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="outreach-tracker">
         <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
             <h2 style="font-weight: 500; margin: 0;">Outreach Tracker</h2>
@@ -446,7 +527,10 @@
         </div>
     </div>
 
-    <!-- NEW SECTION: Sample Delivery Log & Proposals -->
+    <!-- REMOVED SECTIONS: Recent AI Outreach Drafts, Generated Proposals, Generated Decks,
+         Generate Email from Website, Bulk Lead Import, AI Email Engine Showcase —
+         all replaced by Outreach Tracker, Outreach Review Queue, and Import & Fire -->
+    <div style="display:none;">
     <div class="stats-grid" style="grid-template-columns: 2fr 1fr; margin-top: 2rem; margin-bottom: 2rem;">
         <div class="table-container">
             <h2 style="margin-bottom: 1.5rem; font-weight: 500;">Recent AI Outreach Drafts</h2>
@@ -781,6 +865,7 @@
         </div>
         <div id="csv-import-result" style="display:none;margin-top:1rem;border-radius:8px;padding:1rem;font-size:0.875rem;"></div>
     </div>
+    </div><!-- end display:none wrapper -->
 
     <!-- ================================================================ -->
     <!-- ANALYTICS PANEL                                                   -->
@@ -793,9 +878,7 @@
         <div id="analytics-content" style="color:var(--text-muted);font-size:0.88rem;">Loading…</div>
     </div>
 
-    <!-- ================================================================ -->
-    <!-- SAMPLE EMAIL ENGINE SHOWCASE                                      -->
-    <!-- ================================================================ -->
+    <div style="display:none;"><!-- AI Email Engine Showcase removed -->
     <div class="table-container" style="margin-bottom: 4rem;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem;">
             <div>
@@ -885,6 +968,7 @@
             {% endfor %}
         </div>
     </div>
+    </div><!-- end showcase display:none wrapper -->
     <script>
     // ================================================================== //
     // FULL PIPELINE                                                       //
@@ -1620,22 +1704,52 @@
         ffSetStep('ff-step-find', 'active');
 
         try {
-            const resp = await fetch('/api/find-and-fire', {
+            // Start job — returns immediately with job_id
+            const startResp = await fetch('/api/find-and-fire', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ query, location, limit: 3 }),
             });
+            const startData = await startResp.json();
 
-            // Step animations (server is synchronous — animate on arrival)
-            ffSetStep('ff-step-find',     'done');
+            if (!startResp.ok || startData.error) {
+                errEl.style.display = 'block';
+                errEl.textContent   = startData.error || 'Find & Fire failed.';
+                ffSetStep('ff-step-find', 'error');
+                return;
+            }
+
+            const jobId = startData.job_id;
+            ffSetStep('ff-step-find', 'done');
             ffSetStep('ff-step-research', 'active');
 
-            const d = await resp.json();
+            // Poll until done
+            const d = await new Promise((resolve, reject) => {
+                const poll = setInterval(async () => {
+                    try {
+                        const pollResp = await fetch(`/api/find-and-fire/${jobId}`);
+                        const pollData = await pollResp.json();
 
-            if (!resp.ok || d.error) {
+                        // Update progress animation
+                        const pct = pollData.total > 0
+                            ? Math.round((pollData.progress / pollData.total) * 100) : 0;
+                        btn.textContent = `Working… ${pollData.progress}/${pollData.total}`;
+
+                        if (pollData.status === 'done') {
+                            clearInterval(poll);
+                            resolve(pollData);
+                        }
+                    } catch (e) {
+                        clearInterval(poll);
+                        reject(e);
+                    }
+                }, 2000);
+            });
+
+            if (d.error && d.results.length === 0) {
                 errEl.style.display = 'block';
-                errEl.textContent   = d.error || 'Find & Fire failed.';
-                ffSetStep('ff-step-find', 'error');
+                errEl.textContent   = d.error;
+                ffSetStep('ff-step-research', 'error');
                 return;
             }
 
@@ -1651,7 +1765,7 @@
             });
 
             document.getElementById('ff-results-label').textContent =
-                `${d.count} business${d.count !== 1 ? 'es' : ''} found — ${query} in ${location}`;
+                `${d.results.length} business${d.results.length !== 1 ? 'es' : ''} found — ${query} in ${location}`;
             results.style.display = 'block';
             results.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -1671,6 +1785,282 @@
     document.getElementById('ff-location').addEventListener('keydown', e => {
         if (e.key === 'Enter') runFindAndFire();
     });
+
+    // ------------------------------------------------------------------ //
+    // IMPORT & FIRE                                                      //
+    // ------------------------------------------------------------------ //
+
+    let iafMode = 'review';
+    let iafFile = null;
+    let iafJobPoller = null;
+
+    function iafSetMode(m) {
+        iafMode = m;
+        const btnReview = document.getElementById('iaf-mode-review');
+        const btnAuto   = document.getElementById('iaf-mode-auto');
+        if (m === 'review') {
+            btnReview.style.background = 'rgba(139,92,246,0.25)';
+            btnReview.style.color      = '#c4b5fd';
+            btnAuto.style.background   = 'transparent';
+            btnAuto.style.color        = '#64748b';
+        } else {
+            btnAuto.style.background   = 'rgba(139,92,246,0.25)';
+            btnAuto.style.color        = '#c4b5fd';
+            btnReview.style.background = 'transparent';
+            btnReview.style.color      = '#64748b';
+        }
+    }
+
+    function iafFileChange(input) {
+        iafFile = input.files[0] || null;
+        document.getElementById('iaf-file-label').textContent =
+            iafFile ? iafFile.name : 'Drop CSV here or click to browse';
+        document.getElementById('iaf-btn').disabled = !iafFile;
+    }
+
+    function iafFileDrop(e) {
+        e.preventDefault();
+        const f = e.dataTransfer.files[0];
+        if (!f) return;
+        iafFile = f;
+        document.getElementById('iaf-file-label').textContent = f.name;
+        document.getElementById('iaf-btn').disabled = false;
+        document.getElementById('iaf-drop').style.borderColor = 'rgba(139,92,246,0.35)';
+    }
+
+    async function runImportAndFire() {
+        if (!iafFile) return;
+
+        const btn       = document.getElementById('iaf-btn');
+        const errorEl   = document.getElementById('iaf-error');
+        const progressW = document.getElementById('iaf-progress-wrap');
+        const progressB = document.getElementById('iaf-progress-bar');
+        const progressL = document.getElementById('iaf-progress-label');
+        const progressP = document.getElementById('iaf-progress-pct');
+        const resultsEl = document.getElementById('iaf-results');
+
+        btn.disabled = true;
+        errorEl.style.display = 'none';
+        resultsEl.style.display = 'none';
+        progressW.style.display = 'block';
+        progressB.style.width   = '0%';
+        progressL.textContent   = 'Uploading…';
+        progressP.textContent   = '0%';
+
+        const form = new FormData();
+        form.append('file', iafFile);
+        form.append('mode', iafMode);
+
+        let job;
+        try {
+            const r = await fetch('/api/import-and-fire', { method: 'POST', body: form });
+            job = await r.json();
+            if (!r.ok || job.error) throw new Error(job.error || 'Upload failed');
+        } catch (err) {
+            btn.disabled = false;
+            progressW.style.display = 'none';
+            errorEl.textContent    = err.message;
+            errorEl.style.display  = 'block';
+            return;
+        }
+
+        const total  = job.total || 1;
+        progressL.textContent = `Processing ${total} lead${total === 1 ? '' : 's'}…`;
+
+        if (iafJobPoller) clearInterval(iafJobPoller);
+        iafJobPoller = setInterval(async () => {
+            try {
+                const r2   = await fetch(`/api/import-and-fire/${job.job_id}`);
+                const data = await r2.json();
+                const pct  = data.total > 0 ? Math.round((data.progress / data.total) * 100) : 0;
+                progressB.style.width  = pct + '%';
+                progressP.textContent  = pct + '%';
+                progressL.textContent  = `Processing ${data.progress} / ${data.total}…`;
+
+                if (data.status === 'done') {
+                    clearInterval(iafJobPoller);
+                    btn.disabled         = false;
+                    progressW.style.display = 'none';
+                    if (data.error) {
+                        errorEl.textContent   = data.error;
+                        errorEl.style.display = 'block';
+                    }
+                    renderIafResults(data);
+                    if (iafMode === 'review') loadOutreachQueue();
+                }
+            } catch (_) {}
+        }, 2000);
+    }
+
+    function renderIafResults(data) {
+        const el    = document.getElementById('iaf-results');
+        const label = document.getElementById('iaf-results-label');
+        const table = document.getElementById('iaf-results-table');
+
+        const results  = data.results || [];
+        const sent     = results.filter(r => r.action === 'sent').length;
+        const queued   = results.filter(r => r.action === 'queued').length;
+        const failed   = results.filter(r => ['error','email_failed','send_failed','no_email'].includes(r.action)).length;
+
+        const parts = [];
+        if (sent)   parts.push(`${sent} sent`);
+        if (queued) parts.push(`${queued} queued for review`);
+        if (failed) parts.push(`${failed} failed`);
+        label.textContent = parts.join(' · ') || 'Done';
+
+        const rows = results.map(r => {
+            const actionBadge = {
+                sent:        '<span style="color:#6ee7b7;font-weight:600;">✓ Sent</span>',
+                queued:      '<span style="color:#c4b5fd;font-weight:600;">⏳ In Queue</span>',
+                send_failed: '<span style="color:#fca5a5;">✗ Send failed</span>',
+                email_failed:'<span style="color:#fca5a5;">✗ Email gen failed</span>',
+                no_email:    '<span style="color:#fb923c;">— No email</span>',
+                error:       '<span style="color:#fca5a5;">✗ Error</span>',
+            }[r.action] || r.action;
+
+            return `<tr>
+                <td style="padding:0.55rem 0.75rem;color:#e2e8f0;">${escHtml(r.company||'')}</td>
+                <td style="padding:0.55rem 0.75rem;color:#94a3b8;font-size:0.82rem;">${escHtml(r.prospect_email||'—')}</td>
+                <td style="padding:0.55rem 0.75rem;font-size:0.82rem;">${escHtml(r.subject||'—')}</td>
+                <td style="padding:0.55rem 0.75rem;">${actionBadge}</td>
+                <td style="padding:0.55rem 0.75rem;color:#fca5a5;font-size:0.78rem;">${escHtml(r.error||'')}</td>
+            </tr>`;
+        }).join('');
+
+        table.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+            <thead><tr style="border-bottom:1px solid rgba(255,255,255,0.08);">
+                <th style="padding:0.4rem 0.75rem;text-align:left;color:#64748b;font-weight:500;">Company</th>
+                <th style="padding:0.4rem 0.75rem;text-align:left;color:#64748b;font-weight:500;">Email</th>
+                <th style="padding:0.4rem 0.75rem;text-align:left;color:#64748b;font-weight:500;">Subject</th>
+                <th style="padding:0.4rem 0.75rem;text-align:left;color:#64748b;font-weight:500;">Action</th>
+                <th style="padding:0.4rem 0.75rem;text-align:left;color:#64748b;font-weight:500;">Note</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+
+        el.style.display = 'block';
+    }
+
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ------------------------------------------------------------------ //
+    // OUTREACH REVIEW QUEUE                                              //
+    // ------------------------------------------------------------------ //
+
+    async function loadOutreachQueue() {
+        const body    = document.getElementById('oq-body');
+        const badge   = document.getElementById('oq-count-badge');
+        const emptyEl = document.getElementById('oq-empty');
+        try {
+            const r    = await fetch('/api/outreach-queue');
+            const data = await r.json();
+            if (!data || data.length === 0) {
+                body.innerHTML = '';
+                body.appendChild(emptyEl);
+                emptyEl.style.display = 'block';
+                badge.style.display   = 'none';
+                return;
+            }
+            badge.textContent    = data.length;
+            badge.style.display  = 'inline';
+            emptyEl.style.display = 'none';
+            body.innerHTML = renderQueueItems(data);
+        } catch (_) {}
+    }
+
+    function renderQueueItems(items) {
+        return items.map(item => `
+            <div id="oq-item-${item.id}" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:0.85rem;">
+                <div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;color:#e2e8f0;margin-bottom:0.2rem;">
+                            ${escHtml(item.prospect_name||'')}
+                            <span style="color:#94a3b8;font-weight:400;"> · ${escHtml(item.prospect_company||'')}</span>
+                        </div>
+                        <div style="font-size:0.8rem;color:#64748b;margin-bottom:0.55rem;">${escHtml(item.prospect_email||'no email on file')}</div>
+                        <div style="font-size:0.88rem;font-weight:600;color:#c4b5fd;margin-bottom:0.4rem;">${escHtml(item.subject)}</div>
+                        <div style="font-size:0.83rem;color:#94a3b8;white-space:pre-wrap;max-height:6rem;overflow:hidden;position:relative;" id="oq-body-${item.id}">${escHtml(item.body)}<div style="position:absolute;bottom:0;left:0;right:0;height:2rem;background:linear-gradient(transparent,#1e1e2e);"></div></div>
+                        <button onclick="oqToggleExpand(${item.id})" style="background:none;border:none;color:#7c3aed;font-size:0.78rem;cursor:pointer;padding:0.3rem 0;margin-top:0.15rem;" id="oq-expand-${item.id}">Show more ↓</button>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:0.5rem;flex-shrink:0;">
+                        <button onclick="oqApprove(${item.id})"
+                            style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.35);border-radius:7px;padding:0.45rem 1rem;color:#6ee7b7;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;"
+                            id="oq-approve-btn-${item.id}">
+                            ✓ Approve &amp; Send
+                        </button>
+                        <button onclick="oqReject(${item.id})"
+                            style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:7px;padding:0.45rem 1rem;color:#fca5a5;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                            ✗ Skip
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    let oqExpanded = {};
+    function oqToggleExpand(id) {
+        const bodyEl   = document.getElementById(`oq-body-${id}`);
+        const btnEl    = document.getElementById(`oq-expand-${id}`);
+        oqExpanded[id] = !oqExpanded[id];
+        if (oqExpanded[id]) {
+            bodyEl.style.maxHeight = 'none';
+            bodyEl.querySelector('div').style.display = 'none';
+            btnEl.textContent = 'Show less ↑';
+        } else {
+            bodyEl.style.maxHeight = '6rem';
+            bodyEl.querySelector('div').style.display = 'block';
+            btnEl.textContent = 'Show more ↓';
+        }
+    }
+
+    async function oqApprove(id) {
+        const btn = document.getElementById(`oq-approve-btn-${id}`);
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+            const r = await fetch(`/api/outreach-queue/${id}/approve`, { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok || d.error) throw new Error(d.error || 'Send failed');
+            const item = document.getElementById(`oq-item-${id}`);
+            item.style.opacity = '0.4';
+            item.innerHTML += '<div style="text-align:right;color:#6ee7b7;font-size:0.82rem;font-weight:600;margin-top:0.5rem;">✓ Sent</div>';
+            setTimeout(() => { item.remove(); updateOqBadge(); }, 2000);
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = '✓ Approve & Send';
+            alert('Error: ' + err.message);
+        }
+    }
+
+    async function oqReject(id) {
+        try {
+            await fetch(`/api/outreach-queue/${id}/reject`, { method: 'POST' });
+            const item = document.getElementById(`oq-item-${id}`);
+            item.remove();
+            updateOqBadge();
+        } catch (_) {}
+    }
+
+    function updateOqBadge() {
+        const remaining = document.querySelectorAll('[id^="oq-item-"]').length;
+        const badge = document.getElementById('oq-count-badge');
+        if (remaining === 0) {
+            badge.style.display = 'none';
+            const body = document.getElementById('oq-body');
+            const emptyEl = document.getElementById('oq-empty');
+            body.innerHTML = '';
+            body.appendChild(emptyEl);
+            emptyEl.style.display = 'block';
+        } else {
+            badge.textContent = remaining;
+        }
+    }
+
+    // Load queue on page load
+    loadOutreachQueue();
 
     // ------------------------------------------------------------------ //
     // OUTREACH TRACKER                                                    //

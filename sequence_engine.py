@@ -10,6 +10,7 @@ import re
 
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
 from outreach import generate_email
+from settings import get_sender_name
 
 # Sequence follow-ups use a soft opt-out line (separate from cold outbound rules)
 OPT_OUT_LINE = "If now's not the right time, just reply and I'll leave you alone."
@@ -123,7 +124,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
                 f"Would a quick 15-minute chat this week be worth exploring?\n\n"
                 f"{OPT_OUT_LINE}\n\n"
                 f"Best,\n"
-                f"[Your name]"
+                f"{get_sender_name()}"
             ),
         }
 
@@ -137,7 +138,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
                 f"If useful, I can share a short example of what this could look like for {company}.\n\n"
                 f"{OPT_OUT_LINE}\n\n"
                 f"Best,\n"
-                f"[Your name]"
+                f"{get_sender_name()}"
             ),
         }
 
@@ -151,7 +152,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
                 f"If not, totally fine.\n\n"
                 f"{OPT_OUT_LINE}\n\n"
                 f"Best,\n"
-                f"[Your name]"
+                f"{get_sender_name()}"
             ),
         }
 
@@ -164,7 +165,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
                 f"a priority for {company} later, I am happy to reconnect.\n\n"
                 f"{OPT_OUT_LINE}\n\n"
                 f"Best,\n"
-                f"[Your name]"
+                f"{get_sender_name()}"
             ),
         }
 

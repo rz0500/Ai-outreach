@@ -24,15 +24,16 @@ def get_googlemaps_client():
         return None
     return googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
-def search_local_businesses(query: str, location: str) -> int:
+def search_local_businesses(query: str, location: str, client_id: int = 1) -> int:
     """
     Searches Google Maps for businesses matching the query and location.
     Extracts their details and adds them to the prospect database.
-    
+
     Args:
-        query: e.g. "plumbers", "dentists"
-        location: e.g. "Austin, TX", "London"
-        
+        query:     e.g. "plumbers", "dentists"
+        location:  e.g. "Austin, TX", "London"
+        client_id: Workspace to add prospects under (default: house account).
+
     Returns:
         Number of *new* prospects successfully added.
     """
@@ -43,75 +44,82 @@ def search_local_businesses(query: str, location: str) -> int:
 
     search_query = f"{query} in {location}"
     logging.info(f"Searching Google Maps for: '{search_query}'")
-    
+
     try:
         # Perform text search
         places_result = client.places(query=search_query)
-        
+
         if not places_result.get('results'):
             logging.info("No results found.")
             return 0
-            
+
         added_count = 0
-        
+
         for place in places_result['results']:
             place_id = place.get('place_id')
             if not place_id:
                 continue
-                
+
             # Get Place Details to retrieve website and phone number
             details_response = client.place(
-                place_id, 
+                place_id,
                 fields=['name', 'formatted_address', 'formatted_phone_number', 'website']
             )
             details = details_response.get('result', {})
-            
+
             name = details.get('name', place.get('name', 'Unknown'))
             address = details.get('formatted_address', place.get('formatted_address', ''))
             phone = details.get('formatted_phone_number', '')
             website = details.get('website', '')
-            
-            # Prevent duplicates by checking if company name already exists
-            existing_match = database.search_by_company(name)
+
+            # Prevent duplicates within this workspace
+            existing_match = database.search_by_company(name, client_id=client_id)
             is_duplicate = any(e['company'].lower() == name.lower() for e in existing_match)
             if is_duplicate:
                 logging.debug(f"Skipping duplicate prospect: {name}")
                 continue
-            
+
             try:
                 # Add to DB. Maps doesn't list individual owners easily, so we use a placeholder role.
                 database.add_prospect(
-                    name="Owner/Manager", 
+                    name="Owner/Manager",
                     company=name,
                     phone=phone,
                     website=website,
                     notes=f"Address: {address}",
                     status="new",
-                    lead_score=50
+                    lead_score=50,
+                    client_id=client_id,
                 )
                 added_count += 1
                 logging.info(f"Added new prospect: {name} ({phone})")
-                
+
             except IntegrityError:
                 logging.debug(f"Skipped duplicate or invalid prospect: {name}")
 
         logging.info(f"Successfully added {added_count} new leads to the database.")
         return added_count
-        
+
     except Exception as e:
         logging.error(f"Error while searching Google Maps: {str(e)}")
         return 0
 
-def find_and_add_prospects(query: str, location: str, limit: int = 3) -> list:
+def find_and_add_prospects(
+    query: str,
+    location: str,
+    limit: int = 3,
+    client_id: int = 1,
+) -> list:
     """
     Search Google Maps for businesses, add new ones to the DB, and return their
     prospect dicts (with DB IDs). Only returns businesses that have a website,
     since the research pipeline needs one.
 
     Args:
-        query:    e.g. "dentists", "gyms", "accountants"
-        location: e.g. "Manchester", "Austin TX"
-        limit:    Maximum number of results to return (default 3).
+        query:     e.g. "dentists", "gyms", "accountants"
+        location:  e.g. "Manchester", "Austin TX"
+        limit:     Maximum number of results to return (default 3).
+        client_id: Workspace to add prospects under (default: house account).
 
     Returns:
         List of prospect dicts as stored in the DB (id, company, website, …).
@@ -154,8 +162,8 @@ def find_and_add_prospects(query: str, location: str, limit: int = 3) -> list:
                 logging.debug(f"  Skipping '{name}' — no website.")
                 continue
 
-            # Find or create in DB
-            existing = database.search_by_company(name)
+            # Find or create in this workspace
+            existing = database.search_by_company(name, client_id=client_id)
             matched  = [p for p in existing if p.get("company", "").lower() == name.lower()]
             if matched:
                 prospect_id = matched[0]["id"]
@@ -170,17 +178,19 @@ def find_and_add_prospects(query: str, location: str, limit: int = 3) -> list:
                         notes=f"Address: {address}",
                         status="qualified",
                         lead_score=55,
+                        client_id=client_id,
                     )
                     logging.info(f"  Added '{name}' to DB (id={prospect_id}).")
                 except IntegrityError:
-                    existing = database.search_by_company(name)
+                    existing = database.search_by_company(name, client_id=client_id)
                     if existing:
                         prospect_id = existing[0]["id"]
                     else:
                         continue
 
             prospect = next(
-                (p for p in database.get_all_prospects() if p["id"] == prospect_id),
+                (p for p in database.get_all_prospects(client_id=client_id)
+                 if p["id"] == prospect_id),
                 None,
             )
             if prospect:

@@ -74,3 +74,49 @@ def get_use_sendgrid() -> bool:
 def get_linkedin_dry_run() -> bool:
     """Return True if LinkedIn outreach should run in dry-run (no real sends) mode."""
     return os.getenv("LINKEDIN_DRY_RUN", "true").strip().lower() not in ("0", "false", "no")
+
+
+# ---------------------------------------------------------------------------
+# Self-prospecting (autonomous lead discovery for house account)
+# ---------------------------------------------------------------------------
+
+def get_self_prospect_niche() -> str:
+    """Niche/query to search Google Maps for as self-prospecting targets."""
+    return (os.getenv("SELF_PROSPECT_NICHE") or "").strip()
+
+
+def get_self_prospect_location() -> str:
+    """Location string passed to Google Maps self-prospecting search."""
+    return (os.getenv("SELF_PROSPECT_LOCATION") or "").strip()
+
+
+def get_self_prospect_daily_limit() -> int:
+    """Max new prospects to add per self-prospecting run. Default 5, minimum 1."""
+    raw = os.getenv("SELF_PROSPECT_DAILY_LIMIT", "5")
+    try:
+        val = int(raw)
+    except ValueError:
+        val = 5
+    return max(1, val)
+
+
+def get_self_prospect_run_hour() -> int:
+    """
+    Hour of day (0-23, UTC) at which autonomous self-prospecting runs.
+    Default: 7 (07:00 UTC), runs before the sequence dispatch hour.
+    """
+    raw = os.getenv("SELF_PROSPECT_RUN_HOUR", "7")
+    try:
+        val = int(raw)
+    except ValueError:
+        val = 7
+    return max(0, min(23, val))
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+def get_secret_key() -> str:
+    """Return the Flask session secret key. Falls back to a fixed dev default."""
+    return (os.getenv("SECRET_KEY") or "dev-secret-change-in-production").strip()

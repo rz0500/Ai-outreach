@@ -35,14 +35,18 @@ FUNNEL_ORDER = ["new", "qualified", "contacted", "replied", "booked", "rejected"
 # Data collection
 # ---------------------------------------------------------------------------
 
-def generate_summary(db_path: str = DB_PATH) -> dict:
+def generate_summary(client_id: int = 1, db_path: str = DB_PATH) -> dict:
     """
-    Collect all pipeline statistics into a single dict.
+    Collect all pipeline statistics for a client workspace into a single dict.
+
+    Args:
+        client_id: Filter to this workspace (default: house account = 1).
+        db_path:   Path to the database file.
 
     Returns a dict with keys: date, prospects, outreach, funnel,
     score_bands, top_prospects, top_companies.
     """
-    prospects = get_all_prospects(db_path)
+    prospects = get_all_prospects(client_id=client_id, db_path=db_path)
     total = len(prospects)
 
     # --- Completeness ---
@@ -79,7 +83,7 @@ def generate_summary(db_path: str = DB_PATH) -> dict:
     top_companies = sorted(company_counts.items(), key=lambda x: x[1], reverse=True)[:7]
 
     # --- Outreach ---
-    outreach = get_all_outreach(db_path)
+    outreach = get_all_outreach(client_id=client_id, db_path=db_path)
     outreach_counts = {"draft": 0, "approved": 0, "sent": 0}
     for r in outreach:
         s = r.get("status", "draft")
@@ -250,21 +254,22 @@ def save_report(filepath: str, db_path: str = DB_PATH) -> None:
     print(f"[Reporter] Report saved to: {filepath}")
 
 
-def export_prospects_csv(filepath: str, db_path: str = DB_PATH) -> int:
+def export_prospects_csv(filepath: str, client_id: int = 1, db_path: str = DB_PATH) -> int:
     """
-    Export all prospects to a CSV file.
+    Export prospects for a client workspace to a CSV file.
 
     Columns match the database schema so the file can be re-imported
     or opened in Excel / Google Sheets.
 
     Args:
-        filepath: Path to write the .csv file (created or overwritten).
-        db_path:  Path to the database file.
+        filepath:  Path to write the .csv file (created or overwritten).
+        client_id: Filter to this workspace (default: house account = 1).
+        db_path:   Path to the database file.
 
     Returns:
         The number of rows written (excluding the header).
     """
-    prospects = get_all_prospects(db_path)
+    prospects = get_all_prospects(client_id=client_id, db_path=db_path)
     if not prospects:
         print("[Reporter] No prospects to export.")
         return 0

@@ -35,45 +35,53 @@ All 10 build tasks: background scheduler, booking detection, settings UI, prospe
 - Fixed IMAP search query in `inbox_monitor.py` from `UNREAD` to `UNSEEN` for Gmail compatibility
 - Added tolerant MIME decoding for `unknown-8bit` / unknown charsets
 - Added `IMAP_MAX_MESSAGES_PER_POLL` cap (default `25`) so one large unread backlog does not stall a poll cycle
-- Live Gmail smoke test now connects, authenticates, selects inbox, and searches successfully
+
+### Session 7 (SaaS layer — Antigravity)
+
+**Task 1 — Multi-tenancy (complete)**
+- `clients` table added to `initialize_database()` with house account seed (id=1)
+- `client_id INTEGER NOT NULL DEFAULT 1` migrated onto: `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`
+- New client functions: `add_client`, `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`, `update_client`, `get_client_analytics`
+- All query functions updated: `get_all_prospects`, `get_prospects_by_min_score`, `search_by_company`, `get_prospects_in_sequence`, `get_active_sequence_enrollments`, `get_all_outreach`, `save_outreach`, `get_sent_outreach`, `save_reply_draft`, `get_pending_reply_drafts`, `get_sent_reply_drafts`, `log_communication_event`, `add_prospect` — all default `client_id=1`
+- `reporter.generate_summary()` and `export_prospects_csv()` accept `client_id=1`
+- `google_maps_finder.search_local_businesses()` and `find_and_add_prospects()` accept `client_id=1`
+- All existing web_app.py calls work unchanged (house account default)
+- All `test_sequence_engine` tests pass; pre-existing missing-module errors are unchanged
+
+**Task 2 — Self-booking onboarding (complete)**
+- `GET /onboard` and `POST /onboard` in `web_app.py`
+- `templates/onboard.html` — public form (name, niche, ICP, website, calendar link, email)
+- `templates/onboard_confirm.html` — confirmation page
+- On submit: creates client via `add_client()`, queues `client_id` in `_pending_client_research` set
+- Scheduler picks up pending clients each cycle, runs research + enrols starter prospect
+
+**Task 3 — Autonomous self-prospecting (complete)**
+- New `.env` / `settings.py` keys: `SELF_PROSPECT_NICHE`, `SELF_PROSPECT_LOCATION`, `SELF_PROSPECT_DAILY_LIMIT`, `SELF_PROSPECT_RUN_HOUR`
+- Background scheduler runs daily self-prospect cycle for house account (client_id=1)
+- `find_and_add_prospects()` + research + sequence enrolment under client_id=1
+
+**Task 4 — Client-facing dashboard (complete)**
+- `client_sessions` table: `id, client_id, token, created_at, expires_at, used`
+- `GET /client/login`, `POST /client/login` (sends magic link via `_route_send_email()`)
+- `GET /client/verify?token=xxx` — validates, sets `session["client_id"]`, redirects
+- `GET /client` — session-gated, shows only their workspace data
+- `POST /client/logout`
+- `templates/client_login.html` and `templates/client_dashboard.html`
+
+**Task 5 — Weekly client reports (complete)**
+- Background scheduler: Monday 8am UTC, iterates `get_active_clients()`, sends weekly summary
+- `reporter.generate_summary(client_id=N)` used per client
+- Subject: `"Your Antigravity pipeline — week of {date}"`
 
 ---
 
 ## Next Session - Planned Tasks
 
-### P1 - Test suite
-1. **Update `test_reply_workflow.py`**
-   - Add test for the `booked` classification path in `_handle_classified_reply`
-   - Check prospect status becomes `booked` and enrollment becomes `completed`
-
-2. **Add `test_api_endpoints.py`** using Flask test client
-   - `POST /api/prospects`
-   - `PATCH /api/prospects/<id>`
-   - `DELETE /api/prospects/<id>` with cascade check
-   - `POST /api/prospects/<id>/enrol`
-   - `GET /api/analytics`
-   - `POST /api/import-csv`
-
-3. **Add `test_email_validation.py`**
-   - Valid address passes
-   - Bad syntax rejected
-   - Unresolvable domain rejected
-
-### P2 - Polish
-4. **`/api/find-and-fire` progress streaming**
-   - It currently blocks until all businesses are processed
-   - Switch to SSE or job ID plus polling
-
-5. **Inbox monitor follow-up**
-   - Consider more defensive decoding around odd real-world messages
-   - Consider reducing backlog by using a narrower search window or a smaller poll cap
-
-### P3 - Production
-5. **Gunicorn startup script**
-   - Separate worker for `_background_scheduler`
-
-6. **`.env.example` audit**
-   - Ensure all new config keys are documented
+1. Test suite coverage for new SaaS endpoints (onboard, client auth, weekly reports)
+2. Find-and-fire progress streaming (SSE or job ID + poll)
+3. Gunicorn startup script with separate scheduler worker
+4. SendGrid attachment + thread-header parity
+5. `.env.example` full audit including all new SaaS keys
 
 ---
 
@@ -84,3 +92,5 @@ All 10 build tasks: background scheduler, booking detection, settings UI, prospe
 - Scheduler only starts from `python web_app.py`
 - All sends in `web_app.py` must go through `_route_send_email()`
 - `/settings` is Basic Auth protected
+- `/client` requires `session["client_id"]` (magic-link set)
+- House account is always `client_id=1`; all existing data defaults to it

@@ -65,6 +65,25 @@ def initialize_database(db_path: str = DB_PATH) -> None:
         db_path: Path to the .db file (created automatically if missing).
     """
     with _get_connection(db_path) as conn:
+        # Clients table — one row per workspace (house account = id 1)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT    NOT NULL,
+                email         TEXT    NOT NULL DEFAULT '',
+                status        TEXT    NOT NULL DEFAULT 'active',
+                niche         TEXT,
+                icp           TEXT,
+                calendar_link TEXT,
+                created_at    TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        # Seed the house account so client_id=1 always exists
+        conn.execute("""
+            INSERT OR IGNORE INTO clients (id, name, email, status)
+            VALUES (1, 'House Account', '', 'active')
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS prospects (
                 id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,8 +201,178 @@ def initialize_database(db_path: str = DB_PATH) -> None:
             except sqlite3.OperationalError:
                 pass  # column already exists
 
+        # Multi-tenancy: add client_id to every data table (DEFAULT 1 = house account)
+        _client_id_tables = [
+            "prospects",
+            "suppression_list",
+            "communication_events",
+            "sequence_enrollments",
+            "prospect_research",
+            "reply_drafts",
+        ]
+        for tbl in _client_id_tables:
+            try:
+                conn.execute(
+                    f"ALTER TABLE {tbl} ADD COLUMN client_id INTEGER NOT NULL DEFAULT 1"
+                )
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
+        conn.commit()
+        # Client sessions — magic-link auth tokens for client dashboard
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS client_sessions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id  INTEGER NOT NULL REFERENCES clients(id),
+                token      TEXT    NOT NULL UNIQUE,
+                created_at TEXT    DEFAULT (datetime('now')),
+                expires_at TEXT    NOT NULL,
+                used       INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+
         conn.commit()
     print(f"[DB] Database ready: {db_path}")
+
+
+# ---------------------------------------------------------------------------
+# Client management
+# ---------------------------------------------------------------------------
+
+def add_client(
+    name: str,
+    email: str,
+    niche: Optional[str] = None,
+    icp: Optional[str] = None,
+    calendar_link: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Create a new client workspace.
+
+    Returns:
+        The integer ID of the newly created client record.
+    """
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO clients (name, email, niche, icp, calendar_link, status)
+            VALUES (?, ?, ?, ?, ?, 'active')
+            """,
+            (name.strip(), email.strip().lower(), niche, icp, calendar_link),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_client(client_id: int, db_path: str = DB_PATH) -> Optional[dict]:
+    """Return a client record by ID, or None if not found."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM clients WHERE id = ?", (client_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_all_clients(db_path: str = DB_PATH) -> list:
+    """Return all client records, newest first."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM clients ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_active_clients(db_path: str = DB_PATH) -> list:
+    """Return all clients with status='active'."""
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM clients WHERE status = 'active' ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_client_by_email(email: str, db_path: str = DB_PATH) -> Optional[dict]:
+    """Return a client record by email address, or None if not found."""
+    normalized = (email or "").strip().lower()
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM clients WHERE lower(email) = ?", (normalized,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_client(
+    client_id: int,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    status: Optional[str] = None,
+    niche: Optional[str] = None,
+    icp: Optional[str] = None,
+    calendar_link: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> bool:
+    """Update any subset of fields on a client record. Returns True if found."""
+    fields: list[tuple] = []
+    if name          is not None: fields.append(("name", name.strip()))
+    if email         is not None: fields.append(("email", email.strip().lower()))
+    if status        is not None: fields.append(("status", status))
+    if niche         is not None: fields.append(("niche", niche))
+    if icp           is not None: fields.append(("icp", icp))
+    if calendar_link is not None: fields.append(("calendar_link", calendar_link))
+    if not fields:
+        return False
+    set_clause = ", ".join(f"{col} = ?" for col, _ in fields)
+    values = [v for _, v in fields] + [client_id]
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            f"UPDATE clients SET {set_clause} WHERE id = ?", values
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_client_analytics(client_id: int, db_path: str = DB_PATH) -> dict:
+    """
+    Return pipeline analytics for a single client workspace.
+
+    Keys: total_prospects, emails_sent, replies, booked, recent_events.
+    """
+    with _get_connection(db_path) as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE client_id = ?", (client_id,)
+        ).fetchone()[0]
+        emails_sent = conn.execute(
+            "SELECT COUNT(*) FROM outreach WHERE client_id = ? AND status = 'sent'",
+            (client_id,),
+        ).fetchone()[0]
+        replies = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE client_id = ? AND status = 'replied'",
+            (client_id,),
+        ).fetchone()[0]
+        booked = conn.execute(
+            "SELECT COUNT(*) FROM prospects WHERE client_id = ? AND status = 'booked'",
+            (client_id,),
+        ).fetchone()[0]
+        events = conn.execute(
+            """
+            SELECT ce.event_type, ce.channel, ce.status, ce.created_at,
+                   p.name AS prospect_name, p.company AS prospect_company
+            FROM communication_events ce
+            JOIN prospects p ON p.id = ce.prospect_id
+            WHERE ce.client_id = ?
+            ORDER BY ce.created_at DESC, ce.id DESC
+            LIMIT 20
+            """,
+            (client_id,),
+        ).fetchall()
+    return {
+        "total_prospects": total,
+        "emails_sent": emails_sent,
+        "replies": replies,
+        "booked": booked,
+        "recent_events": [dict(r) for r in events],
+    }
 
 
 def add_prospect(
@@ -196,6 +385,7 @@ def add_prospect(
     lead_score: int = 50,
     status: str = "new",
     notes: Optional[str] = None,
+    client_id: int = 1,
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -211,6 +401,7 @@ def add_prospect(
         lead_score:   Quality score from 1 (cold) to 100 (very hot). Default 50.
         status:       One of: new, qualified, contacted, replied, booked, rejected.
         notes:        Free-text notes about the prospect.
+        client_id:    Workspace owner. Defaults to 1 (house account).
         db_path:      Path to the database file.
 
     Returns:
@@ -232,11 +423,11 @@ def add_prospect(
             """
             INSERT INTO prospects
                 (name, company, email, linkedin_url, website,
-                 phone, lead_score, status, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 phone, lead_score, status, notes, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (name, company, email, linkedin_url, website,
-             phone, lead_score, status, notes),
+             phone, lead_score, status, notes, client_id),
         )
         conn.commit()
         return cursor.lastrowid
@@ -465,9 +656,9 @@ def delete_prospect(prospect_id: int, db_path: str = DB_PATH) -> bool:
         return cursor.rowcount > 0
 
 
-def get_all_prospects(db_path: str = DB_PATH) -> list:
+def get_all_prospects(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Retrieve every prospect in the database.
+    Retrieve every prospect for a given client workspace.
 
     Returns:
         A list of dicts, sorted by lead_score descending (highest first).
@@ -475,19 +666,23 @@ def get_all_prospects(db_path: str = DB_PATH) -> list:
     """
     with _get_connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT * FROM prospects ORDER BY lead_score DESC"
+            "SELECT * FROM prospects WHERE client_id = ? ORDER BY lead_score DESC",
+            (client_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def get_prospects_by_min_score(min_score: int, db_path: str = DB_PATH) -> list:
+def get_prospects_by_min_score(
+    min_score: int,
+    client_id: int = 1,
+    db_path: str = DB_PATH,
+) -> list:
     """
     Retrieve prospects whose lead_score is at or above a threshold.
 
-    Useful for filtering out cold leads when deciding who to contact next.
-
     Args:
         min_score: Only return prospects with lead_score >= this value.
+        client_id: Filter to this workspace (default: house account).
         db_path:   Path to the database file.
 
     Returns:
@@ -495,21 +690,23 @@ def get_prospects_by_min_score(min_score: int, db_path: str = DB_PATH) -> list:
     """
     with _get_connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT * FROM prospects WHERE lead_score >= ? ORDER BY lead_score DESC",
-            (min_score,),
+            "SELECT * FROM prospects WHERE lead_score >= ? AND client_id = ? ORDER BY lead_score DESC",
+            (min_score, client_id),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def search_by_company(company_name: str, db_path: str = DB_PATH) -> list:
+def search_by_company(
+    company_name: str,
+    client_id: int = 1,
+    db_path: str = DB_PATH,
+) -> list:
     """
     Find prospects whose company name contains a search term.
 
-    The search is case-insensitive and matches partial names, so
-    searching "acme" will match "Acme Corp", "AcmeSaaS", etc.
-
     Args:
         company_name: The search term to look for inside the company field.
+        client_id:    Filter to this workspace (default: house account).
         db_path:      Path to the database file.
 
     Returns:
@@ -517,15 +714,16 @@ def search_by_company(company_name: str, db_path: str = DB_PATH) -> list:
     """
     with _get_connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT * FROM prospects WHERE company LIKE ? ORDER BY lead_score DESC",
-            (f"%{company_name}%",),
+            "SELECT * FROM prospects WHERE company LIKE ? AND client_id = ? ORDER BY lead_score DESC",
+            (f"%{company_name}%", client_id),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def get_prospects_in_sequence(db_path: str = DB_PATH) -> list:
+def get_prospects_in_sequence(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Return all prospects currently enrolled in the follow-up sequence.
+    Return all prospects currently enrolled in the follow-up sequence
+    for a given client workspace.
 
     Returns:
         A list of prospect dicts with status='in_sequence', ordered by
@@ -535,11 +733,12 @@ def get_prospects_in_sequence(db_path: str = DB_PATH) -> list:
         rows = conn.execute("""
             SELECT * FROM prospects
             WHERE status = 'in_sequence'
+              AND client_id = ?
               AND (email IS NULL OR lower(email) NOT IN (
                     SELECT lower(email) FROM suppression_list
               ))
             ORDER BY last_contacted_date ASC
-        """).fetchall()
+        """, (client_id,)).fetchall()
         return [dict(row) for row in rows]
 
 
@@ -650,7 +849,11 @@ def suppress_prospect(
     Returns:
         True if the prospect had an email and was newly added to the suppression list.
     """
-    prospect = next((p for p in get_all_prospects(db_path) if p["id"] == prospect_id), None)
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM prospects WHERE id = ?", (prospect_id,)
+        ).fetchone()
+    prospect = dict(row) if row else None
     if not prospect:
         raise ValueError(f"No prospect found with id={prospect_id}")
 
@@ -680,6 +883,7 @@ def log_communication_event(
     status: str,
     content_excerpt: Optional[str] = None,
     metadata: Optional[str] = None,
+    client_id: int = 1,
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -694,10 +898,12 @@ def log_communication_event(
         cursor = conn.execute(
             """
             INSERT INTO communication_events
-                (prospect_id, channel, direction, event_type, status, content_excerpt, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (prospect_id, channel, direction, event_type, status,
+                 content_excerpt, metadata, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (prospect_id, channel, direction, event_type, status, content_excerpt, metadata),
+            (prospect_id, channel, direction, event_type, status,
+             content_excerpt, metadata, client_id),
         )
         conn.commit()
         return cursor.lastrowid
@@ -768,9 +974,11 @@ def get_sequence_enrollment(
 def get_active_sequence_enrollments(
     db_path: str = DB_PATH,
     sequence_name: Optional[str] = None,
+    client_id: int = 1,
 ) -> list:
     """
-    Return active sequence enrollments joined with prospect data.
+    Return active sequence enrollments joined with prospect data,
+    filtered to a single client workspace.
     """
     sql = """
         SELECT
@@ -784,11 +992,12 @@ def get_active_sequence_enrollments(
         FROM sequence_enrollments se
         JOIN prospects p ON p.id = se.prospect_id
         WHERE se.status = 'active'
+          AND p.client_id = ?
     """
-    params: tuple = ()
+    params: list = [client_id]
     if sequence_name:
         sql += " AND se.sequence_name = ?"
-        params = (sequence_name,)
+        params.append(sequence_name)
     sql += """
           AND p.status = 'in_sequence'
           AND (p.email IS NULL OR lower(p.email) NOT IN (
@@ -854,8 +1063,9 @@ def initialize_outreach_table(db_path: str = DB_PATH) -> None:
                 date_created TEXT    DEFAULT (datetime('now'))
             )
         """)
-        # Migrate: add sent_at and pdf_path columns
-        for col in ("sent_at TEXT", "pdf_path TEXT"):
+        # Migrate: add sent_at, pdf_path, and client_id columns
+        for col in ("sent_at TEXT", "pdf_path TEXT",
+                    "client_id INTEGER NOT NULL DEFAULT 1"):
             try:
                 conn.execute(f"ALTER TABLE outreach ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -868,6 +1078,7 @@ def save_outreach(
     subject: str,
     body: str,
     pdf_path: str = "",
+    client_id: int = 1,
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -878,6 +1089,7 @@ def save_outreach(
         subject:     Email subject line.
         body:        Email body text.
         pdf_path:    Optional path to a PDF proposal to attach when sending.
+        client_id:   Workspace owner. Defaults to 1 (house account).
         db_path:     Path to the database file.
 
     Returns:
@@ -885,16 +1097,19 @@ def save_outreach(
     """
     with _get_connection(db_path) as conn:
         cursor = conn.execute(
-            "INSERT INTO outreach (prospect_id, subject, body, pdf_path) VALUES (?, ?, ?, ?)",
-            (prospect_id, subject, body, pdf_path or ""),
+            """
+            INSERT INTO outreach (prospect_id, subject, body, pdf_path, client_id)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (prospect_id, subject, body, pdf_path or "", client_id),
         )
         conn.commit()
         return cursor.lastrowid
 
 
-def get_all_outreach(db_path: str = DB_PATH) -> list:
+def get_all_outreach(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Return all outreach records joined with their prospect's name and company.
+    Return all outreach records for a client workspace, joined with prospect data.
 
     Returns:
         A list of dicts with outreach fields plus 'prospect_name' and
@@ -909,14 +1124,15 @@ def get_all_outreach(db_path: str = DB_PATH) -> list:
                 p.lead_score
             FROM outreach o
             JOIN prospects p ON p.id = o.prospect_id
+            WHERE o.client_id = ?
             ORDER BY o.date_created DESC
-        """).fetchall()
+        """, (client_id,)).fetchall()
         return [dict(row) for row in rows]
 
 
-def get_sent_outreach(db_path: str = DB_PATH) -> list:
+def get_sent_outreach(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Return all outreach records with status='sent', joined with prospect data.
+    Return all outreach records with status='sent' for a client workspace.
     Includes the prospect's current status so the tracker can show 'replied'.
     Sorted most-recent-send first.
     """
@@ -934,9 +1150,10 @@ def get_sent_outreach(db_path: str = DB_PATH) -> list:
                 p.status  AS prospect_status
             FROM outreach o
             JOIN prospects p ON p.id = o.prospect_id
-            WHERE o.status = 'sent'
+            WHERE o.status = 'sent' AND o.client_id = ?
             ORDER BY o.sent_at DESC, o.date_created DESC
-            """
+            """,
+            (client_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -986,6 +1203,40 @@ def update_outreach_status(
                 "UPDATE outreach SET status = ? WHERE id = ?",
                 (new_status, outreach_id),
             )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_draft_outreach(client_id: int = 1, db_path: str = DB_PATH) -> list:
+    """
+    Return all outreach records with status='draft' for a client workspace,
+    joined with the prospect's name, company, and email.
+    Sorted oldest-first so the review queue shows leads in arrival order.
+    """
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                o.id, o.prospect_id, o.subject, o.body,
+                o.status, o.date_created, o.pdf_path,
+                p.name    AS prospect_name,
+                p.company AS prospect_company,
+                p.email   AS prospect_email,
+                p.website AS prospect_website
+            FROM outreach o
+            JOIN prospects p ON p.id = o.prospect_id
+            WHERE o.status = 'draft' AND o.client_id = ?
+            ORDER BY o.date_created ASC
+            """,
+            (client_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_outreach(outreach_id: int, db_path: str = DB_PATH) -> bool:
+    """Delete an outreach record by ID. Returns True if a row was deleted."""
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute("DELETE FROM outreach WHERE id = ?", (outreach_id,))
         conn.commit()
         return cursor.rowcount > 0
 
@@ -1088,6 +1339,7 @@ def save_reply_draft(
     drafted_reply: str,
     inbound_message_id: str = "",
     inbound_subject: str = "",
+    client_id: int = 1,
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -1101,6 +1353,7 @@ def save_reply_draft(
                             set In-Reply-To / References when sending the reply.
         inbound_subject:    The Subject header from the inbound email, used to
                             build a proper Re: subject line on the outgoing reply.
+        client_id:          Workspace owner. Defaults to 1 (house account).
 
     Returns:
         The ID of the newly created reply_draft record.
@@ -1111,8 +1364,8 @@ def save_reply_draft(
             INSERT INTO reply_drafts
                 (prospect_id, inbound_from, inbound_body,
                  classification, classification_reasoning, drafted_reply,
-                 inbound_message_id, inbound_subject)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 inbound_message_id, inbound_subject, client_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prospect_id,
@@ -1123,15 +1376,16 @@ def save_reply_draft(
                 drafted_reply or "",
                 inbound_message_id or "",
                 inbound_subject or "",
+                client_id,
             ),
         )
         conn.commit()
         return cursor.lastrowid
 
 
-def get_pending_reply_drafts(db_path: str = DB_PATH) -> list:
+def get_pending_reply_drafts(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Return all reply drafts with status='pending_review', joined with prospect data.
+    Return all reply drafts with status='pending_review' for a client workspace.
 
     Sorted by created_at ascending so oldest replies surface first.
     """
@@ -1148,15 +1402,17 @@ def get_pending_reply_drafts(db_path: str = DB_PATH) -> list:
             JOIN prospects p ON p.id = rd.prospect_id
             WHERE rd.status = 'pending_review'
               AND rd.drafted_reply != ''
+              AND rd.client_id = ?
             ORDER BY rd.created_at ASC
             """,
+            (client_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
-def get_sent_reply_drafts(db_path: str = DB_PATH) -> list:
+def get_sent_reply_drafts(client_id: int = 1, db_path: str = DB_PATH) -> list:
     """
-    Return all reply drafts with status='sent', joined with prospect data.
+    Return all reply drafts with status='sent' for a client workspace.
     Sorted most-recently-sent first.
     """
     with _get_connection(db_path) as conn:
@@ -1171,8 +1427,10 @@ def get_sent_reply_drafts(db_path: str = DB_PATH) -> list:
             FROM reply_drafts rd
             JOIN prospects p ON p.id = rd.prospect_id
             WHERE rd.status = 'sent'
+              AND rd.client_id = ?
             ORDER BY rd.sent_at DESC, rd.created_at DESC
             """,
+            (client_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -1217,6 +1475,54 @@ def get_reply_draft_by_id(
             (draft_id,),
         ).fetchone()
         return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Client session management (magic-link auth)
+# ---------------------------------------------------------------------------
+
+def create_client_session(
+    client_id: int,
+    token: str,
+    expires_at: str,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Persist a new magic-link session token.
+
+    Args:
+        client_id:  The client this token grants access to.
+        token:      A UUID string generated by the caller.
+        expires_at: ISO datetime string (UTC) when the token expires.
+
+    Returns:
+        The ID of the new session record.
+    """
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "INSERT INTO client_sessions (client_id, token, expires_at) VALUES (?, ?, ?)",
+            (client_id, token, expires_at),
+        )
+        conn.commit()
+        return cursor.lastrowid
+
+
+def get_client_session(token: str, db_path: str = DB_PATH) -> Optional[dict]:
+    """Return a session record by token, or None if not found."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM client_sessions WHERE token = ?", (token,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def mark_session_used(token: str, db_path: str = DB_PATH) -> None:
+    """Mark a session token as used so it cannot be replayed."""
+    with _get_connection(db_path) as conn:
+        conn.execute(
+            "UPDATE client_sessions SET used = 1 WHERE token = ?", (token,)
+        )
+        conn.commit()
 
 
 def update_reply_draft_status(

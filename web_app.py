@@ -1,7 +1,11 @@
 import os
 import time
 import datetime
-from flask import Flask, render_template, send_from_directory, jsonify, request
+import uuid
+from flask import (
+    Flask, render_template, send_from_directory, jsonify,
+    request, session, redirect, url_for,
+)
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -17,22 +21,34 @@ from settings import (
     get_inbox_poll_interval,
     get_sequence_run_hour,
     get_use_sendgrid,
+    get_self_prospect_niche,
+    get_self_prospect_location,
+    get_self_prospect_daily_limit,
+    get_self_prospect_run_hour,
+    get_secret_key,
 )
 
 app = Flask(__name__)
+app.secret_key = get_secret_key()
+
+# Pending client research queue — client_ids added by /onboard, drained by scheduler
+_pending_client_research: set = set()
 
 # ---------------------------------------------------------------------------
 # Background scheduler state — shared across threads (GIL-safe for these ops)
 # ---------------------------------------------------------------------------
 _scheduler_state: dict = {
-    "last_inbox_check":      None,   # datetime | None
-    "last_inbox_result":     None,   # int (replies found) | None
-    "last_inbox_error":      None,   # str | None
-    "last_sequence_run":     None,   # datetime | None
-    "last_sequence_error":   None,   # str | None
-    "running":               False,
-    "paused":                False,  # True after MAX_CONSECUTIVE_ERRORS inbox failures
-    "consecutive_errors":    0,
+    "last_inbox_check":           None,   # datetime | None
+    "last_inbox_result":          None,   # int (replies found) | None
+    "last_inbox_error":           None,   # str | None
+    "last_sequence_run":          None,   # datetime | None
+    "last_sequence_error":        None,   # str | None
+    "last_self_prospect_count":   None,   # int | None
+    "last_self_prospect_error":   None,   # str | None
+    "last_weekly_report_error":   None,   # str | None
+    "running":                    False,
+    "paused":                     False,  # True after MAX_CONSECUTIVE_ERRORS inbox failures
+    "consecutive_errors":         0,
 }
 
 _MAX_CONSECUTIVE_ERRORS = 5
@@ -48,6 +64,8 @@ def _background_scheduler() -> None:
     """
     _scheduler_state["running"] = True
     last_sequence_date: datetime.date | None = None
+    last_self_prospect_date: datetime.date | None = None
+    last_weekly_report_date: datetime.date | None = None
 
     while True:
         now_utc = datetime.datetime.utcnow()
@@ -85,6 +103,63 @@ def _background_scheduler() -> None:
             except Exception as exc:
                 _scheduler_state["last_sequence_error"] = str(exc)
                 last_sequence_date = today  # don't retry same day on error
+
+        # ── Daily self-prospecting (house account) ────────────────────────
+        sp_hour = get_self_prospect_run_hour()
+        if now_utc.hour >= sp_hour and last_self_prospect_date != today:
+            niche    = get_self_prospect_niche()
+            location = get_self_prospect_location()
+            if niche and location:
+                try:
+                    from google_maps_finder import find_and_add_prospects
+                    limit     = get_self_prospect_daily_limit()
+                    new_leads = find_and_add_prospects(niche, location, limit=limit, client_id=1)
+                    for prospect in new_leads:
+                        try:
+                            _run_pipeline_for_db_prospect(prospect)
+                            database.ensure_sequence_enrollment(prospect["id"])
+                            database.update_status(prospect["id"], "in_sequence")
+                        except Exception as exc:
+                            print(f"[Scheduler] self-prospect pipeline failed for '{prospect.get('company')}': {exc}")
+                    _scheduler_state["last_self_prospect_count"] = len(new_leads)
+                    _scheduler_state["last_self_prospect_error"] = None
+                except Exception as exc:
+                    _scheduler_state["last_self_prospect_error"] = str(exc)
+            last_self_prospect_date = today
+
+        # ── Drain pending client research queue (from /onboard) ───────────
+        if _pending_client_research:
+            to_process = set(_pending_client_research)
+            for cid in to_process:
+                try:
+                    # Find the first prospect for this client that has a website
+                    # (added by /onboard POST before queuing the research)
+                    prospects = database.get_all_prospects(client_id=cid)
+                    prospect = next(
+                        (p for p in prospects if p.get("website")),
+                        None,
+                    )
+                    if prospect:
+                        try:
+                            _run_pipeline_for_db_prospect(prospect)
+                        except Exception as exc:
+                            print(f"[Scheduler] onboard pipeline failed for client {cid}: {exc}")
+                        database.ensure_sequence_enrollment(prospect["id"])
+                        database.update_status(prospect["id"], "in_sequence")
+                    _pending_client_research.discard(cid)
+                except Exception as exc:
+                    print(f"[Scheduler] onboard drain error for client {cid}: {exc}")
+                    _pending_client_research.discard(cid)
+
+        # ── Weekly client reports (Monday 08:00 UTC) ──────────────────────
+        this_monday = today - datetime.timedelta(days=today.weekday())
+        if today.weekday() == 0 and now_utc.hour >= 8 and last_weekly_report_date != this_monday:
+            try:
+                _send_weekly_client_reports()
+                _scheduler_state["last_weekly_report_error"] = None
+            except Exception as exc:
+                _scheduler_state["last_weekly_report_error"] = str(exc)
+            last_weekly_report_date = this_monday
 
         time.sleep(get_inbox_poll_interval())
 
@@ -1143,22 +1218,31 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
     return result
 
 
+# In-memory job store for find-and-fire background jobs
+# { job_id: {status, progress, total, results, error} }
+_find_fire_jobs: dict = {}
+
+
 @app.route("/api/find-and-fire", methods=["POST"])
 def api_find_and_fire():
     """
     Google Maps → Research → Email → PDF for up to `limit` businesses.
 
-    Body: { "query": "dentists", "location": "Manchester", "limit": 3 }
+    Starts a background job and returns immediately with a job_id.
+    Poll GET /api/find-and-fire/<job_id> for progress and results.
 
-    Returns a list of per-company campaign results. Each result contains
-    prospect_id, outreach_id, email draft, pdf url, and research summary.
+    Body: { "query": "dentists", "location": "Manchester", "limit": 3 }
     """
+    import threading as _threading
     from google_maps_finder import find_and_add_prospects
 
     data     = request.get_json(silent=True) or {}
     query    = (data.get("query") or "").strip()
     location = (data.get("location") or "").strip()
-    limit    = max(1, min(int(data.get("limit", 3)), 5))  # cap at 5
+    try:
+        limit = max(1, min(int(data.get("limit", 3)), 5))
+    except (TypeError, ValueError):
+        limit = 3
 
     if not query or not location:
         return jsonify({"error": "query and location are required"}), 400
@@ -1166,15 +1250,56 @@ def api_find_and_fire():
     if not os.getenv("GOOGLE_MAPS_API_KEY", "").strip():
         return jsonify({"error": "GOOGLE_MAPS_API_KEY not configured in .env"}), 400
 
-    prospects = find_and_add_prospects(query, location, limit=limit)
-    if not prospects:
-        return jsonify({"error": "No businesses with websites found for that search."}), 404
+    job_id = str(uuid.uuid4())
+    _find_fire_jobs[job_id] = {
+        "status":   "running",
+        "progress": 0,
+        "total":    limit,
+        "results":  [],
+        "error":    None,
+    }
 
-    results = []
-    for p in prospects:
-        results.append(_run_pipeline_for_db_prospect(p))
+    def _run(job_id, query, location, limit):
+        job = _find_fire_jobs[job_id]
+        try:
+            prospects = find_and_add_prospects(query, location, limit=limit)
+            if not prospects:
+                job["status"] = "done"
+                job["error"]  = "No businesses with websites found for that search."
+                return
+            job["total"] = len(prospects)
+            for i, p in enumerate(prospects):
+                try:
+                    result = _run_pipeline_for_db_prospect(p)
+                    job["results"].append(result)
+                except Exception as exc:
+                    job["results"].append({"company": p.get("company", "?"), "error": str(exc)})
+                job["progress"] = i + 1
+            job["status"] = "done"
+        except Exception as exc:
+            job["status"] = "done"
+            job["error"]  = str(exc)
 
-    return jsonify({"query": query, "location": location, "count": len(results), "results": results})
+    t = _threading.Thread(target=_run, args=(job_id, query, location, limit), daemon=True)
+    t.start()
+
+    return jsonify({"job_id": job_id, "status": "running", "total": limit})
+
+
+@app.route("/api/find-and-fire/<job_id>", methods=["GET"])
+def api_find_and_fire_status(job_id):
+    """Poll the status of a find-and-fire background job."""
+    job = _find_fire_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "job_id":   job_id,
+        "status":   job["status"],
+        "progress": job["progress"],
+        "total":    job["total"],
+        "results":  job["results"],
+        "error":    job["error"],
+    })
 
 
 @app.route("/api/send-outreach/<int:outreach_id>", methods=["POST"])
@@ -1535,6 +1660,542 @@ def api_monitor_reset():
         "paused": _scheduler_state["paused"],
         "consecutive_errors": _scheduler_state["consecutive_errors"],
     })
+
+
+# ---------------------------------------------------------------------------
+# Weekly client report helper
+# ---------------------------------------------------------------------------
+
+def _send_weekly_client_reports() -> None:
+    """
+    Send a plain-text pipeline summary to every active client.
+    Called by the background scheduler every Monday at 08:00 UTC.
+    """
+    monday = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday()))
+    subject = f"Your Antigravity pipeline — week of {monday.strftime('%d %b %Y')}"
+
+    clients = database.get_active_clients()
+    for client in clients:
+        if not client.get("email"):
+            continue
+        try:
+            summary  = reporter.generate_summary(client_id=client["id"])
+            funnel   = summary["funnel"]["counts"]
+            outreach = summary["outreach"]
+            prospects_total = summary["prospects"]["total"]
+            body = (
+                f"Hi {client['name']},\n\n"
+                f"Here's your Antigravity pipeline update for the week of {monday}:\n\n"
+                f"  Prospects found : {prospects_total}\n"
+                f"  Emails sent     : {outreach.get('sent', 0)}\n"
+                f"  Replies         : {funnel.get('replied', 0)}\n"
+                f"  Booked calls    : {funnel.get('booked', 0)}\n\n"
+                f"Your pipeline is active. We'll be in touch as results come in.\n\n"
+                f"— The Antigravity Team\n"
+            )
+            _route_send_email(
+                to_address=client["email"],
+                subject=subject,
+                body=body,
+            )
+        except Exception as exc:
+            print(f"[Weekly report] Failed for client {client['id']}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Onboarding — public self-serve signup
+# ---------------------------------------------------------------------------
+
+@app.route("/onboard", methods=["GET"])
+def onboard_page():
+    """Public onboarding form — no auth required."""
+    return render_template("onboard.html")
+
+
+@app.route("/onboard", methods=["POST"])
+def onboard_submit():
+    """
+    Create a new client workspace from the onboarding form.
+    Queues the client for their first research and outreach cycle.
+    """
+    data = request.form
+    name          = (data.get("name") or "").strip()
+    niche         = (data.get("niche") or "").strip()
+    icp           = (data.get("icp") or "").strip()
+    website       = (data.get("website") or "").strip()
+    calendar_link = (data.get("calendar_link") or "").strip()
+    email         = (data.get("email") or "").strip().lower()
+
+    if not name or not email:
+        return render_template("onboard.html", error="Business name and email are required.")
+
+    _db = database.DB_PATH
+
+    # Prevent duplicate signups for the same email
+    existing = database.get_client_by_email(email, db_path=_db)
+    if existing:
+        return redirect(url_for("onboard_confirm"))
+
+    client_id = database.add_client(
+        name=name,
+        email=email,
+        niche=niche,
+        icp=icp,
+        calendar_link=calendar_link,
+        db_path=_db,
+    )
+
+    # Optionally store website on the client record via update_client
+    if website:
+        database.update_client(client_id, niche=niche, icp=icp, calendar_link=calendar_link, db_path=_db)
+        # Store website in the pending research queue payload by adding a stub prospect
+        # The scheduler will pick this up and run full research
+        database.add_prospect(
+            name="Owner",
+            company=name,
+            website=website,
+            client_id=client_id,
+            status="new",
+            db_path=_db,
+        )
+
+    _pending_client_research.add(client_id)
+    return redirect(url_for("onboard_confirm"))
+
+
+@app.route("/onboard/confirm")
+def onboard_confirm():
+    """Post-signup confirmation page."""
+    return render_template("onboard_confirm.html")
+
+
+# ---------------------------------------------------------------------------
+# Client dashboard — magic-link login
+# ---------------------------------------------------------------------------
+
+def _client_login_required():
+    """Return the client_id from session, or None if not authenticated."""
+    return session.get("client_id")
+
+
+@app.route("/client/login", methods=["GET"])
+def client_login_page():
+    """Magic link request form."""
+    return render_template("client_login.html", sent=False, error=None)
+
+
+@app.route("/client/login", methods=["POST"])
+def client_login_submit():
+    """
+    Generate a magic link token and email it to the client.
+    Uses the same _route_send_email() path as all other outbound sends.
+    """
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        return render_template("client_login.html", sent=False, error="Email is required.")
+
+    _db = database.DB_PATH
+    client = database.get_client_by_email(email, db_path=_db)
+    if not client:
+        # Don't reveal whether the email exists — show the same success message
+        return render_template("client_login.html", sent=True, error=None)
+
+    token      = str(uuid.uuid4())
+    expires_at = (
+        datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    database.create_client_session(
+        client_id=client["id"],
+        token=token,
+        expires_at=expires_at,
+        db_path=_db,
+    )
+
+    verify_url = request.host_url.rstrip("/") + url_for("client_verify") + f"?token={token}"
+
+    try:
+        _route_send_email(
+            to_address=email,
+            subject="Your Antigravity login link",
+            body=(
+                f"Hi {client['name']},\n\n"
+                f"Click this link to access your Antigravity dashboard:\n\n"
+                f"{verify_url}\n\n"
+                f"This link expires in 24 hours and can only be used once.\n\n"
+                f"— The Antigravity Team\n"
+            ),
+        )
+    except Exception as exc:
+        return render_template(
+            "client_login.html", sent=False,
+            error=f"Could not send login email: {exc}"
+        )
+
+    return render_template("client_login.html", sent=True, error=None)
+
+
+@app.route("/client/verify")
+def client_verify():
+    """Validate a magic link token and log the client in."""
+    token = request.args.get("token", "").strip()
+    if not token:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    record = database.get_client_session(token, db_path=_db)
+    if not record:
+        return render_template("client_login.html", sent=False, error="Invalid login link.")
+
+    if record["used"]:
+        return render_template("client_login.html", sent=False, error="This link has already been used.")
+
+    expires_at = datetime.datetime.strptime(record["expires_at"], "%Y-%m-%d %H:%M:%S")
+    if datetime.datetime.utcnow() > expires_at:
+        return render_template("client_login.html", sent=False, error="This link has expired.")
+
+    database.mark_session_used(token, db_path=_db)
+    session["client_id"] = record["client_id"]
+    return redirect(url_for("client_dashboard"))
+
+
+@app.route("/client")
+def client_dashboard():
+    """
+    Client-facing pipeline dashboard.
+    Shows only data for the logged-in client's workspace.
+    """
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client    = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+
+    analytics = database.get_client_analytics(client_id, db_path=_db)
+    return render_template(
+        "client_dashboard.html",
+        client=client,
+        analytics=analytics,
+    )
+
+
+@app.route("/client/logout", methods=["POST"])
+def client_logout():
+    """Clear the client session."""
+    session.clear()
+    return redirect(url_for("client_login_page"))
+
+
+# ---------------------------------------------------------------------------
+# Import & Fire — bulk lead list → research → email → auto-send or review queue
+# ---------------------------------------------------------------------------
+
+_bulk_import_jobs: dict = {}
+
+
+def _run_research_and_email(prospect: dict, db_path: str) -> dict:
+    """
+    Lightweight pipeline: research (if website present) + email generation.
+    Skips PDF to keep bulk runs fast.  Saves a draft to the outreach table
+    and returns a result dict with keys:
+        prospect_id, company, prospect_email, outreach_id,
+        subject, body, error
+    """
+    from research_agent import research_prospect
+
+    prospect_id = prospect["id"]
+    website     = prospect.get("website", "")
+
+    result = {
+        "prospect_id":    prospect_id,
+        "company":        prospect.get("company", ""),
+        "prospect_email": prospect.get("email") or "",
+        "outreach_id":    None,
+        "subject":        "",
+        "body":           "",
+        "error":          "",
+    }
+
+    # Research — only when we have a website
+    if website:
+        try:
+            research_prospect(prospect_id, db_path=db_path)
+        except Exception as exc:
+            result["error"] = f"research: {exc}"
+
+    # Reload from DB so enriched fields are present
+    enriched = next(
+        (p for p in database.get_all_prospects(db_path=db_path) if p["id"] == prospect_id),
+        prospect,
+    )
+
+    # Auto-extract email if missing
+    if not enriched.get("email") and website:
+        extracted = _extract_email_from_website(website)
+        if extracted:
+            database.update_prospect_email(prospect_id, extracted, db_path=db_path)
+            enriched = dict(enriched)
+            enriched["email"] = extracted
+            result["prospect_email"] = extracted
+
+    # Email generation
+    try:
+        has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+        if has_api_key:
+            from ai_engine import generate_hyper_personalized_email
+            email_result = generate_hyper_personalized_email(enriched)
+        else:
+            email_result = generate_email(enriched)
+    except Exception:
+        try:
+            email_result = generate_email(enriched)
+        except Exception as exc:
+            result["error"] += f" email: {exc}"
+            return result
+
+    result["subject"] = email_result.get("subject", "")
+    result["body"]    = email_result.get("body", "")
+
+    # Save as draft in outreach table
+    if result["subject"] and result["body"]:
+        try:
+            result["outreach_id"] = database.save_outreach(
+                prospect_id=prospect_id,
+                subject=result["subject"],
+                body=result["body"],
+                db_path=db_path,
+            )
+        except Exception as exc:
+            result["error"] += f" save: {exc}"
+
+    return result
+
+
+def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> None:
+    """
+    Background thread for import-and-fire jobs.
+
+    mode: "auto_send"  — sends immediately after generation
+          "review"     — leaves draft in outreach table for manual approval
+    """
+    job = _bulk_import_jobs[job_id]
+    job["total"] = len(leads)
+
+    for i, lead in enumerate(leads):
+        name    = (lead.get("name") or "").strip()
+        company = (lead.get("company") or name or "Unknown").strip()
+        email   = (lead.get("email") or "").strip().lower()
+        website = (lead.get("website") or "").strip()
+        phone   = (lead.get("phone") or "").strip()
+        linkedin= (lead.get("linkedin_url") or "").strip()
+
+        item = {
+            "company":        company,
+            "prospect_email": email,
+            "action":         "",
+            "outreach_id":    None,
+            "subject":        "",
+            "error":          "",
+        }
+
+        try:
+            # Add prospect (skip if email already exists)
+            existing = database.get_prospect_by_email(email, db_path=db_path) if email else None
+            if existing:
+                prospect_id = existing["id"]
+            else:
+                prospect_id = database.add_prospect(
+                    name=name or company,
+                    company=company,
+                    email=email or None,
+                    website=website or None,
+                    phone=phone or None,
+                    linkedin_url=linkedin or None,
+                    status="new",
+                    db_path=db_path,
+                )
+
+            prospect = next(
+                (p for p in database.get_all_prospects(db_path=db_path) if p["id"] == prospect_id),
+                None,
+            )
+            if not prospect:
+                raise RuntimeError("Prospect record not found after insert")
+
+            pipeline_result = _run_research_and_email(prospect, db_path)
+            item.update({
+                "prospect_id":    pipeline_result["prospect_id"],
+                "prospect_email": pipeline_result["prospect_email"] or email,
+                "outreach_id":    pipeline_result["outreach_id"],
+                "subject":        pipeline_result["subject"],
+                "error":          pipeline_result["error"],
+            })
+
+            if pipeline_result["outreach_id"]:
+                if mode == "auto_send":
+                    to_addr = pipeline_result["prospect_email"]
+                    if to_addr:
+                        sent, send_err = _route_send_email(
+                            to_address=to_addr,
+                            subject=pipeline_result["subject"],
+                            body=pipeline_result["body"],
+                        )
+                        if sent:
+                            database.update_outreach_status(
+                                pipeline_result["outreach_id"], "sent", db_path=db_path
+                            )
+                            database.update_status(prospect_id, "in_sequence", db_path=db_path)
+                            item["action"] = "sent"
+                        else:
+                            item["action"] = "send_failed"
+                            item["error"]  = send_err
+                    else:
+                        item["action"] = "no_email"
+                else:
+                    item["action"] = "queued"
+            else:
+                item["action"] = "email_failed"
+
+        except Exception as exc:
+            item["error"]  = str(exc)
+            item["action"] = "error"
+
+        job["results"].append(item)
+        job["progress"] = i + 1
+
+    job["status"] = "done"
+
+
+@app.route("/api/import-and-fire", methods=["POST"])
+def api_import_and_fire():
+    """
+    Upload a CSV of leads, run research + email gen for each, then either
+    send immediately (mode=auto_send) or hold in the review queue (mode=review).
+
+    Form fields:
+        file  — CSV file upload (required)
+        mode  — "auto_send" | "review"  (default: "review")
+
+    CSV columns (header row required):
+        name, company, email, website, phone, linkedin_url
+        At minimum one of name/company is required per row.
+
+    Returns: { job_id, status, total, mode }
+    """
+    import csv
+    import io
+    import threading as _threading
+
+    uploaded = request.files.get("file")
+    if not uploaded:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    mode = (request.form.get("mode") or "review").strip()
+    if mode not in ("auto_send", "review"):
+        mode = "review"
+
+    try:
+        content = uploaded.read().decode("utf-8-sig")  # strip BOM if present
+        reader  = csv.DictReader(io.StringIO(content))
+        leads   = []
+        for row in reader:
+            # Normalise header casing
+            normalised = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
+            if not (normalised.get("name") or normalised.get("company")):
+                continue
+            leads.append(normalised)
+    except Exception as exc:
+        return jsonify({"error": f"Could not parse CSV: {exc}"}), 400
+
+    if not leads:
+        return jsonify({"error": "CSV contained no valid rows"}), 400
+
+    job_id = str(uuid.uuid4())
+    _bulk_import_jobs[job_id] = {
+        "status":   "running",
+        "progress": 0,
+        "total":    len(leads),
+        "mode":     mode,
+        "results":  [],
+        "error":    None,
+    }
+
+    db_path = database.DB_PATH
+    t = _threading.Thread(
+        target=_bulk_import_worker,
+        args=(job_id, leads, mode, db_path),
+        daemon=True,
+        name=f"bulk-import-{job_id[:8]}",
+    )
+    t.start()
+
+    return jsonify({"job_id": job_id, "status": "running", "total": len(leads), "mode": mode})
+
+
+@app.route("/api/import-and-fire/<job_id>", methods=["GET"])
+def api_import_and_fire_status(job_id):
+    """Poll the status of a bulk import-and-fire background job."""
+    job = _bulk_import_jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify({
+        "job_id":   job_id,
+        "status":   job["status"],
+        "progress": job["progress"],
+        "total":    job["total"],
+        "mode":     job["mode"],
+        "results":  job["results"],
+        "error":    job["error"],
+    })
+
+
+@app.route("/api/outreach-queue", methods=["GET"])
+def api_outreach_queue():
+    """Return all draft outreach records waiting for review."""
+    drafts = database.get_draft_outreach(client_id=1, db_path=database.DB_PATH)
+    return jsonify(drafts)
+
+
+@app.route("/api/outreach-queue/<int:outreach_id>/approve", methods=["POST"])
+def api_outreach_queue_approve(outreach_id):
+    """
+    Send a queued draft email and mark it as sent.
+    Expects optional JSON body: { "subject": "...", "body": "..." } to allow
+    inline edits before sending.
+    """
+    drafts = database.get_draft_outreach(client_id=1, db_path=database.DB_PATH)
+    record = next((d for d in drafts if d["id"] == outreach_id), None)
+    if not record:
+        return jsonify({"error": "Draft not found or already processed"}), 404
+
+    to_addr = record.get("prospect_email") or ""
+    if not to_addr:
+        return jsonify({"error": "No email address on file for this prospect"}), 400
+
+    data    = request.get_json(silent=True) or {}
+    subject = (data.get("subject") or record["subject"]).strip()
+    body    = (data.get("body")    or record["body"]).strip()
+
+    sent, err = _route_send_email(to_address=to_addr, subject=subject, body=body)
+    if not sent:
+        return jsonify({"error": err or "Send failed"}), 500
+
+    database.update_outreach_status(outreach_id, "sent", db_path=database.DB_PATH)
+    database.update_status(record["prospect_id"], "in_sequence", db_path=database.DB_PATH)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/outreach-queue/<int:outreach_id>/reject", methods=["POST"])
+def api_outreach_queue_reject(outreach_id):
+    """Remove a draft from the review queue without sending."""
+    deleted = database.delete_outreach(outreach_id, db_path=database.DB_PATH)
+    if not deleted:
+        return jsonify({"error": "Draft not found"}), 404
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

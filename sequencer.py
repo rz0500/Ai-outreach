@@ -38,6 +38,7 @@ from database import (
 )
 from outreach import OPT_OUT_LINE, generate_email
 from sendgrid_mailer import send_email
+from settings import get_sender_name
 
 # ---------------------------------------------------------------------------
 # Sequence configuration
@@ -84,7 +85,7 @@ def _build_message(prospect: dict, step: int) -> dict:
             f"Would a quick 15-minute call this week make sense?\n\n"
             f"{OPT_OUT_LINE}\n\n"
             f"Best,\n"
-            f"[Your name]"
+            f"{get_sender_name()}"
         )
         return {"subject": subject, "body": body}
 

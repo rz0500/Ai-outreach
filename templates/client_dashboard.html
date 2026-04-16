@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ client.name }} — Pipeline Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f11;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    header {
+      background: #1a1a24;
+      border-bottom: 1px solid #2d2d3a;
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { font-size: 1.2rem; font-weight: 700; color: #a78bfa; }
+    .client-name { font-size: 0.875rem; color: #94a3b8; }
+    .logout-btn {
+      background: none;
+      border: 1px solid #2d2d3a;
+      border-radius: 6px;
+      color: #94a3b8;
+      padding: 0.35rem 0.85rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .logout-btn:hover { border-color: #a78bfa; color: #a78bfa; }
+    main { max-width: 1000px; margin: 0 auto; padding: 2rem; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 1.25rem; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .metric-card {
+      background: #1a1a24;
+      border: 1px solid #2d2d3a;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .metric-card .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.5rem; }
+    .metric-card .value { font-size: 2rem; font-weight: 700; color: #e2e8f0; }
+    .metric-card.highlight .value { color: #a78bfa; }
+    .section {
+      background: #1a1a24;
+      border: 1px solid #2d2d3a;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .section-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #2d2d3a;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      padding: 0.75rem 1.25rem;
+      text-align: left;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      background: #111118;
+      border-bottom: 1px solid #2d2d3a;
+    }
+    td {
+      padding: 0.75rem 1.25rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid #1e1e2a;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: capitalize;
+    }
+    .badge-outbound { background: rgba(124,58,237,0.15); color: #a78bfa; }
+    .badge-inbound  { background: rgba(34,197,94,0.1);  color: #86efac; }
+    .badge-system   { background: rgba(148,163,184,0.1); color: #94a3b8; }
+    .empty { padding: 2rem; text-align: center; color: #475569; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Antigravity</div>
+    <span class="client-name">{{ client.name }}</span>
+    <form method="POST" action="/client/logout" style="margin:0">
+      <button type="submit" class="logout-btn">Log out</button>
+    </form>
+  </header>
+
+  <main>
+    <h2>Your pipeline</h2>
+
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="label">Prospects found</div>
+        <div class="value">{{ analytics.total_prospects }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Emails sent</div>
+        <div class="value">{{ analytics.emails_sent }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Replies</div>
+        <div class="value">{{ analytics.replies }}</div>
+      </div>
+      <div class="metric-card highlight">
+        <div class="label">Booked calls</div>
+        <div class="value">{{ analytics.booked }}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">Recent activity</div>
+      {% if analytics.recent_events %}
+      <table>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Prospect</th>
+            <th>Company</th>
+            <th>Channel</th>
+            <th>Event</th>
+            <th>Direction</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for event in analytics.recent_events %}
+          <tr>
+            <td style="color:#64748b">{{ event.created_at[:16] if event.created_at else '—' }}</td>
+            <td>{{ event.prospect_name or '—' }}</td>
+            <td>{{ event.prospect_company or '—' }}</td>
+            <td>{{ event.channel }}</td>
+            <td>{{ event.event_type }}</td>
+            <td>
+              <span class="badge badge-{{ event.direction }}">{{ event.direction }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No activity yet — your campaign will start within 24 hours.</div>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>

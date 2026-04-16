@@ -4,19 +4,23 @@ This file gives Claude Code the current working context for this repository. It 
 
 ## Project Overview
 
-`leadgen` is a Python-based AI lead generation and outreach system. Current working capabilities include:
+`leadgen` / **Antigravity** is a Python-based AI lead generation and outreach SaaS. Current working capabilities include:
 
-- prospect storage and orchestration in SQLite
+- **multi-tenant** prospect storage — every table carries `client_id`, house account = 1
+- self-booking onboarding at `/onboard` — creates client workspace automatically
+- autonomous self-prospecting via Google Maps on a daily schedule
+- client-facing dashboard at `/client` with magic-link login
+- automated weekly pipeline reports emailed to each active client
 - evidence-first outbound email generation
 - website research and enrichment via Anthropic API
 - Google Maps -> research -> email -> PDF -> send workflow
 - multi-channel sequence foundations
 - inbox reply monitoring with AI classification
-- background scheduler for inbox polling and daily sequence dispatch
+- background scheduler for inbox polling, daily sequence dispatch, self-prospecting, and weekly reports
 - settings UI for live `.env` editing
-- prospect CRUD, analytics, and CSV import in the dashboard
+- prospect CRUD, analytics, and CSV import in the operator dashboard
 
-The system is a usable internal prototype, not a fully hardened production product.
+The system is a usable internal SaaS prototype, not a fully hardened production product.
 
 ## Priority Context Files
 
@@ -30,7 +34,7 @@ If a meaningful repo-level change is made, update all three files.
 ## Module Reference
 
 ### Core Data
-- **`database.py`** - SQLite persistence for prospects, outreach, suppression, communication events, sequence enrollments, prospect research, and reply drafts
+- **`database.py`** - SQLite persistence for clients, prospects, outreach, suppression, communication events, sequence enrollments, prospect research, reply drafts, and client sessions. All data tables carry `client_id` (DEFAULT 1 = house account). New client functions: `add_client`, `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`, `update_client`, `get_client_analytics`. All query functions accept and filter by `client_id=1`.
 
 ### Outreach
 - **`outreach.py`** - Main email writer, evidence-first and angle-based
@@ -59,8 +63,14 @@ If a meaningful repo-level change is made, update all three files.
 
 ### Web
 - **`web_app.py`** - Flask dashboard and API surface. Important endpoints include:
-  - `GET /`
-  - `GET/POST /settings`
+  - `GET /` — operator dashboard (house account, all prospects)
+  - `GET/POST /settings` — Basic Auth protected
+  - `GET /onboard` / `POST /onboard` — public client onboarding form
+  - `GET /onboard/confirm` — post-signup confirmation page
+  - `GET /client/login` / `POST /client/login` — magic link request
+  - `GET /client/verify` — magic link token validation, sets session
+  - `GET /client` — client-facing dashboard (session-gated)
+  - `POST /client/logout`
   - `POST /api/full-pipeline`
   - `POST /api/generate-from-url`
   - `POST /api/generate-deck-from-url`
@@ -114,8 +124,20 @@ python -m unittest discover
 python -m compileall c:\Users\ritis\Projects\leadgen
 ```
 
+## SaaS Layer Status
+
+| Task | Status |
+|---|---|
+| 1. Per-client multi-tenancy | ✅ Done |
+| 2. Self-booking onboarding at `/onboard` | ✅ Done |
+| 3. Autonomous self-prospecting | ✅ Done |
+| 4. Client-facing dashboard (`/client`) | ✅ Done |
+| 5. Automated weekly client reports | ✅ Done |
+
 ## Planned Next Tasks
 
-1. Test suite coverage for the new endpoints and email validation
+1. Test suite coverage for new SaaS endpoints
 2. Find-and-fire progress streaming
 3. Production scheduler split / startup hardening
+4. SendGrid feature parity (attachments, thread headers)
+5. Bounce / unsubscribe webhook handling
