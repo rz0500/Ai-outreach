@@ -8,33 +8,46 @@ This file is the long-term memory for the repo. Update it when significant archi
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`
 
 **Current product shape:**
-- **Multi-tenant SaaS** — `clients` table + `client_id` on every data table; house account = id 1
-- Self-booking onboarding at `/onboard` — prospect fills form, client workspace is auto-created
-- Autonomous self-prospecting — scheduler finds new leads via Google Maps daily (house account)
-- Client-facing dashboard at `/client` — magic-link login, workspace-isolated view
+- **Multi-tenant SaaS** - `clients` table + `client_id` on every data table; house account = id 1
+- Public landing page at `/` for the Phase 1 client-facing entry point
+- Pilot checkout/pricing page at `/checkout`; real Stripe hooks still exist in code but billing is not the current focus
+- Self-booking onboarding at `/onboard` - prospect fills form, client workspace is auto-created
+- Autonomous self-prospecting - scheduler finds new leads via Google Maps daily (house account)
+- Client-facing dashboard at `/client` - magic-link login, workspace-isolated view
+- Client-facing prospects experience is live: `/client/prospects`, `/client/prospects/<id>`, filtered CSV export, bulk actions, and in-page reply handling from prospect detail
+- Client settings now store sender identity (`sender_name`, `sender_email`) in addition to niche, ICP, location, and booking link
 - Weekly pipeline reports emailed to each active client every Monday 8am UTC
 - Full automated pipeline: Google Maps -> research -> email -> PDF -> send
 - Background scheduler for inbox polling, daily sequence dispatch, self-prospecting, weekly reports
+- Operator dashboard moved off `/` and now lives at `/ops` with `/dashboard` as an alias
 - Reply classification includes `booked`
 - Settings UI at `/settings` (Basic Auth protected)
 - Prospect add/edit/delete from the operator dashboard
 - Analytics panel and bulk CSV import
 - SendGrid routing and LinkedIn dry-run config
 - Reply approval can send real email with thread headers
+- SMTP-first deliverability hardening is live: suppression enforcement, failure classification, and operator-visible deliverability summary
+- SendGrid webhook handling is live for bounce, dropped, unsubscribe, group_unsubscribe, and spamreport events
+- SendGrid webhook signature verification is supported via `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- Find-and-Fire now has additive backend job state for stage, message, current company, current index, item-level statuses, and partial results
+- Find-and-Fire operator UI now polls and renders incremental results with per-lead stage badges
+- Operator dashboard now supports per-client workspace filtering on `/ops` and client-scoped analytics refreshes
 
-**What's missing next:**
-1. Test suite coverage for new SaaS endpoints
-2. Find-and-fire progress streaming
-3. Gunicorn/production scheduler split
-4. SendGrid attachment + thread-header parity
+**Deferred / next later:**
+1. Pre-first-client hardening: onboarding sanity pass, sender verification visibility, deployment cleanup, docs/runbook cleanup
+2. Mailbox/domain verification workflow per client (current sender identity is stored and used, but verification UX is not built)
+3. More `/ops` polish and deeper workspace drilldowns
+4. Production deployment hardening and environment cleanup
 
 ---
 
 ## Architectural Decisions
 
-**Database:** SQLite `prospects.db` without ORM. `sqlite3.Row` for dict-like rows. Core tables: `clients`, `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`, `client_sessions`. Every data table has `client_id INTEGER NOT NULL DEFAULT 1`. House account (id=1) is seeded in `initialize_database()`. All query functions accept `client_id=1` as default kwarg — no callers needed updating.
+**Database:** SQLite `prospects.db` without ORM. `sqlite3.Row` for dict-like rows. Core tables: `clients`, `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`, `client_sessions`. The `clients` table now also stores `location`, `sender_name`, and `sender_email`. Every data table has `client_id INTEGER NOT NULL DEFAULT 1`. House account (id=1) is seeded in `initialize_database()`. All query functions accept `client_id=1` as default kwarg - no callers needed updating.
 
 **Multi-tenancy isolation:** Enforced at the query layer. No prospect, outreach, event, draft, or enrollment is readable across `client_id` boundaries. The operator dashboard uses `client_id=1` implicitly. Client dashboard enforces `session["client_id"]`.
+
+**Phase 1 launch routing:** `/` is now the public landing page, `/checkout` is a launch-path pricing/pilot step, `/onboard` handles real signup, and `/ops` is the internal operator dashboard. This keeps the public product path separate from the internal workspace.
 
 **Client session auth:** Magic-link only. `client_sessions` table stores UUID token with 24h TTL. `POST /client/login` generates token and emails link. `GET /client/verify` validates, marks used, sets Flask session. No passwords.
 
@@ -47,6 +60,18 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Inbox polling hardening:** `inbox_monitor.py` now uses `UNSEEN` for IMAP search, normalizes odd MIME charsets like `unknown-8bit`, and limits each run to `IMAP_MAX_MESSAGES_PER_POLL` messages by default.
 
 **Outbound email routing:** `_route_send_email()` in `web_app.py` is the single send router. SMTP supports attachments and thread headers. SendGrid currently does not.
+
+**Deliverability layer:** `deliverability.py` centralizes outbound suppression checks, SMTP-first outcome mapping (`sent`, `invalid_recipient`, `auth_or_config_error`, `transient_send_error`, `suppressed_skip`), hard-failure auto-suppression, and communication event logging. Operator dashboard context now includes a deliverability summary.
+
+**Find-and-Fire job model:** `_find_fire_jobs` in `web_app.py` now stores richer polling state: `status`, `stage`, `progress`, `total`, `results`, `items`, `message`, `current_company`, `current_index`, and `error`. The backend worker reports explicit `finding -> research -> email -> pdf -> done/error` transitions, appends partial results as each lead completes, and the `/ops` frontend now renders incremental cards with stage badges.
+
+**Client prospect workflow:** `/client/prospects` supports search, filtering, sorting, pagination, CSV export, and bulk actions. `/client/prospects/<id>` shows research, outreach history, reply history, and lets the client approve or dismiss pending reply drafts in place.
+
+**Per-client sender identity:** `client.sender_name` and `client.sender_email` are now persisted and used by `deliverability.py` when routing outbound email through SMTP or SendGrid. Full mailbox/domain verification status is still not built.
+
+**SendGrid webhook security:** `/webhook/sendgrid` can verify signed webhook requests using `SENDGRID_WEBHOOK_PUBLIC_KEY`. If the key is unset, the route remains permissive for local/dev use.
+
+**Operator workspace filtering:** `/ops` now accepts `client_id` and renders stats, pipeline rows, deliverability summary, reply drafts, outreach tracker, and analytics refreshes for the selected client workspace instead of always forcing house account data. Operator-side AJAX calls append the selected `client_id`.
 
 **Compliance copy:** `outreach.py` again exposes `OPT_OUT_LINE` so both the modern generator and the legacy sequencer/compliance paths share the same opt-out language.
 
@@ -66,6 +91,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 - **SMTP:** configured and working locally
 - **Google Maps API:** configured and working locally
 - **SendGrid:** wired behind `USE_SENDGRID`, not fully feature-parity with SMTP
+- **SendGrid signed webhooks:** optional verification via `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - **IMAP:** used by the background scheduler, live monitoring path present
 - **Calendly / booking link:** `CALENDAR_LINK` in `.env`
 

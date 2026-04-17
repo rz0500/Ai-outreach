@@ -7,8 +7,8 @@ delivery channel and logs the result.
 
 from datetime import date
 
-from database import DB_PATH, log_communication_event, update_sequence_enrollment_status
-from sendgrid_mailer import send_email
+from database import DB_PATH, log_communication_event, update_sequence_enrollment_status, get_client
+from deliverability import deliver_prospect_email
 from sms_agent import send_sms
 from social_agent import send_instagram_dm, send_linkedin_connection
 from settings import get_linkedin_dry_run
@@ -57,10 +57,32 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
         email = item.get("email") or ""
         if not email:
             result["error"] = "No email address on file."
+            result["event_status"] = "skipped"
+            log_communication_event(
+                prospect_id,
+                channel,
+                "outbound",
+                "sequence_step",
+                "skipped",
+                content_excerpt=message.get("subject", message.get("body", ""))[:120],
+                metadata=_safe_metadata(sequence_name, step, channel, result["error"]),
+                db_path=db_path,
+            )
         else:
-            ok, err = send_email(email, message["subject"], message["body"])
-            result["sent"] = ok
-            result["error"] = err
+            delivery = deliver_prospect_email(
+                to_address=email,
+                subject=message["subject"],
+                body=message["body"],
+                prospect_id=prospect_id,
+                event_type="sequence_step",
+                client_id=item.get("client_id", 1),
+                db_path=db_path,
+                content_excerpt=message.get("subject", message.get("body", ""))[:120],
+                metadata=_safe_metadata(sequence_name, step, channel),
+            )
+            result["sent"] = delivery["sent"]
+            result["error"] = delivery["error"]
+            result["event_status"] = delivery["event_status"]
 
     elif channel == "linkedin":
         profile_url = item.get("linkedin_url") or ""
@@ -95,17 +117,18 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
     else:
         result["error"] = f"Unsupported channel '{channel}'."
 
-    status = "sent" if result["sent"] else "failed"
-    log_communication_event(
-        prospect_id,
-        channel,
-        "outbound",
-        "sequence_step",
-        status,
-        content_excerpt=message.get("subject", message.get("body", ""))[:120],
-        metadata=_safe_metadata(sequence_name, step, channel, result["error"]),
-        db_path=db_path,
-    )
+    if channel != "email":
+        status = "sent" if result["sent"] else "failed"
+        log_communication_event(
+            prospect_id,
+            channel,
+            "outbound",
+            "sequence_step",
+            status,
+            content_excerpt=message.get("subject", message.get("body", ""))[:120],
+            metadata=_safe_metadata(sequence_name, step, channel, result["error"]),
+            db_path=db_path,
+        )
 
     if result["sent"] and step == get_sequence_definition(sequence_name)[-1]["step"]:
         update_sequence_enrollment_status(prospect_id, "completed", db_path=db_path)
@@ -121,13 +144,39 @@ def run_multichannel_sequence(
 ) -> list:
     """
     Dispatch all currently due touchpoints for the given sequence.
+    Skips any prospects whose client workspace has campaign_paused=1.
     """
     due = get_due_touchpoints(
         db_path=db_path,
         sequence_name=sequence_name,
         today=today,
     )
-    return [
-        _dispatch_single_touchpoint(item, dry_run=dry_run, db_path=db_path)
-        for item in due
-    ]
+
+    # Cache client pause state so we only query each client once per run
+    _client_pause_cache: dict[int, bool] = {}
+
+    def _is_client_paused(client_id: int) -> bool:
+        if client_id not in _client_pause_cache:
+            client = get_client(client_id, db_path=db_path)
+            _client_pause_cache[client_id] = bool((client or {}).get("campaign_paused"))
+        return _client_pause_cache[client_id]
+
+    results = []
+    for item in due:
+        cid = item.get("client_id", 1)
+        if _is_client_paused(cid):
+            results.append({
+                "prospect_id": item["id"],
+                "name": item.get("name", ""),
+                "channel": item.get("next_touchpoint", {}).get("channel", ""),
+                "step": item.get("next_touchpoint", {}).get("step", 0),
+                "label": item.get("next_touchpoint", {}).get("label", ""),
+                "sent": False,
+                "error": "Campaign paused.",
+                "dry_run": dry_run,
+            })
+        else:
+            results.append(
+                _dispatch_single_touchpoint(item, dry_run=dry_run, db_path=db_path)
+            )
+    return results

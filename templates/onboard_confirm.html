@@ -4,75 +4,172 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>You're in — Antigravity</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f11;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
       color: #e2e8f0;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2rem;
+      padding: 2rem 1rem;
     }
+
     .card {
-      background: #1a1a24;
-      border: 1px solid #2d2d3a;
-      border-radius: 12px;
-      padding: 2.5rem;
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 2.75rem 2.25rem;
       text-align: center;
     }
-    .icon { font-size: 3rem; margin-bottom: 1.25rem; }
-    .logo { font-size: 1.1rem; font-weight: 700; color: #a78bfa; margin-bottom: 1.5rem; }
-    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.75rem; }
-    p { color: #94a3b8; line-height: 1.65; margin-bottom: 1rem; }
-    .steps {
-      background: rgba(124,58,237,0.08);
-      border: 1px solid rgba(124,58,237,0.2);
-      border-radius: 8px;
-      padding: 1.25rem 1.5rem;
-      text-align: left;
-      margin: 1.5rem 0;
+
+    .brand {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #7c3aed;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
     }
-    .steps h3 { font-size: 0.85rem; color: #a78bfa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
-    .steps li { color: #cbd5e1; font-size: 0.9rem; margin-bottom: 0.5rem; padding-left: 0.25rem; list-style: none; }
-    .steps li::before { content: "✓  "; color: #a78bfa; }
-    a.btn {
-      display: inline-block;
-      margin-top: 0.5rem;
-      padding: 0.7rem 1.5rem;
+
+    .check-wrap {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(124,58,237,0.12);
+      border: 2px solid rgba(124,58,237,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 0.6rem;
+    }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    .timeline {
+      text-align: left;
+      border-left: 2px solid rgba(124,58,237,0.25);
+      padding-left: 1.5rem;
+      margin-bottom: 2.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .tl-item { position: relative; }
+
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -1.65rem;
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
       background: #7c3aed;
+      border: 2px solid #111827;
+    }
+
+    .tl-when {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #7c3aed;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 0.2rem;
+    }
+
+    .tl-what {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #e2e8f0;
+      margin-bottom: 0.15rem;
+    }
+
+    .tl-desc {
+      font-size: 0.82rem;
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.8rem 1.8rem;
+      background: linear-gradient(135deg, #7c3aed, #6366f1);
       color: #fff;
-      border-radius: 8px;
+      border-radius: 10px;
       text-decoration: none;
       font-weight: 600;
       font-size: 0.95rem;
+      transition: opacity 0.15s, transform 0.1s;
     }
-    a.btn:hover { background: #6d28d9; }
+
+    .cta:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .foot {
+      margin-top: 1.25rem;
+      font-size: 0.8rem;
+      color: #4b5563;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">Antigravity</div>
-    <div class="icon">🚀</div>
-    <h1>You're in.</h1>
-    <p>Your first campaign will start within 24 hours.</p>
+    <div class="brand">Antigravity</div>
 
-    <div class="steps">
-      <h3>What happens next</h3>
-      <ul>
-        <li>We research your website and build your target list</li>
-        <li>Personalised emails go out to qualified prospects</li>
-        <li>Replies are monitored and surfaced for your review</li>
-        <li>You receive a weekly pipeline update by email</li>
-      </ul>
+    <div class="check-wrap">✓</div>
+
+    <h1>You're in.</h1>
+    <p class="subtitle">Your workspace is created. Here's what happens over the next 24 hours.</p>
+
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-when">Right now</div>
+        <div class="tl-what">Research starts</div>
+        <div class="tl-desc">We're enriching your website, building your target list, and drafting the first wave of outreach.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-when">Within a few hours</div>
+        <div class="tl-what">First emails go out</div>
+        <div class="tl-desc">Personalised cold emails land in prospect inboxes — no generic templates.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-when">Ongoing</div>
+        <div class="tl-what">Replies surface in your dashboard</div>
+        <div class="tl-desc">Warm replies are flagged automatically. You review and book calls directly.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-when">Every Monday</div>
+        <div class="tl-what">Weekly pipeline report</div>
+        <div class="tl-desc">A summary of sent emails, replies, and booked calls lands in your inbox.</div>
+      </div>
     </div>
 
-    <p>Track your pipeline any time by logging into your dashboard.</p>
-    <a class="btn" href="/client/login">Go to my dashboard &rarr;</a>
+    <a class="cta" href="/client/login">Access my dashboard &rarr;</a>
+
+    <p class="foot">Check your email for your login link once the campaign is live.</p>
   </div>
 </body>
 </html>

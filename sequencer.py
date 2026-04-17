@@ -29,15 +29,18 @@ Usage:
 
 from datetime import date, timedelta
 
+from deliverability import deliver_prospect_email
 from database import (
     DB_PATH,
     get_prospects_in_sequence,
+    get_client,
     log_communication_event,
+    save_outreach,
+    update_outreach_status,
     update_sequence_progress,
     update_status,
 )
 from outreach import OPT_OUT_LINE, generate_email
-from sendgrid_mailer import send_email
 from settings import get_sender_name
 
 # ---------------------------------------------------------------------------
@@ -100,7 +103,7 @@ def _build_message(prospect: dict, step: int) -> dict:
         f"{OPT_OUT_LINE}\n\n"
         f"Either way, thanks for your time.\n\n"
         f"Best,\n"
-        f"[Your name]"
+        f"{get_sender_name()}"
     )
     return {"subject": subject, "body": body}
 
@@ -234,25 +237,52 @@ def run_sequence(dry_run: bool = True, db_path: str = DB_PATH) -> list:
             )
             print(f"\n  SKIPPED: {error}")
         else:
-            sent, error = send_email(email, subject, body)
-            if sent:
-                update_sequence_progress(prospect["id"], step, today_str, db_path)
-                log_communication_event(
-                    prospect["id"], "email", "outbound", "sequence_step", "sent",
-                    content_excerpt=subject, metadata=f"step={step}", db_path=db_path
+            # Check if the client has outreach review mode on
+            _cid = prospect.get("client_id", 1)
+            _client = get_client(_cid, db_path=db_path)
+            _review_mode = bool((_client or {}).get("outreach_review_mode"))
+
+            if _review_mode:
+                # Hold for client review instead of sending
+                outreach_id = save_outreach(
+                    prospect_id=prospect["id"],
+                    subject=subject,
+                    body=body,
+                    client_id=_cid,
+                    db_path=db_path,
                 )
-                # After the final step, move the prospect out of the sequence
-                if step == SEQUENCE[-1]["step"]:
-                    update_status(prospect["id"], SEQUENCE_COMPLETE_STATUS, db_path)
-                    print(f"\n  Sent. Sequence complete — status set to '{SEQUENCE_COMPLETE_STATUS}'.")
-                else:
-                    print(f"\n  Sent. Next step due in {SEQUENCE[step]['day']} day(s).")
+                update_outreach_status(outreach_id, "pending_review", db_path=db_path)
+                log_communication_event(
+                    prospect["id"], "email", "outbound", "sequence_step", "pending_review",
+                    content_excerpt=subject,
+                    metadata=f"step={step};label={label};outreach_id={outreach_id};review_mode=1",
+                    db_path=db_path,
+                )
+                print(f"\n  QUEUED FOR REVIEW (outreach_id={outreach_id}).")
             else:
-                log_communication_event(
-                    prospect["id"], "email", "outbound", "sequence_step", "failed",
-                    content_excerpt=subject, metadata=error, db_path=db_path
+                delivery = deliver_prospect_email(
+                    to_address=email,
+                    subject=subject,
+                    body=body,
+                    prospect_id=prospect["id"],
+                    event_type="sequence_step",
+                    client_id=_cid,
+                    db_path=db_path,
+                    content_excerpt=subject,
+                    metadata=f"step={step};label={label}",
                 )
-                print(f"\n  FAILED: {error}")
+                sent = delivery["sent"]
+                error = delivery["error"]
+                if sent:
+                    update_sequence_progress(prospect["id"], step, today_str, db_path)
+                    # After the final step, move the prospect out of the sequence
+                    if step == SEQUENCE[-1]["step"]:
+                        update_status(prospect["id"], SEQUENCE_COMPLETE_STATUS, db_path)
+                        print(f"\n  Sent. Sequence complete — status set to '{SEQUENCE_COMPLETE_STATUS}'.")
+                    else:
+                        print(f"\n  Sent. Next step due in {SEQUENCE[step]['day']} day(s).")
+                else:
+                    print(f"\n  FAILED: {error}")
 
         results.append({
             "prospect_id": prospect["id"],

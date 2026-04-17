@@ -26,7 +26,9 @@ from dotenv import load_dotenv
 import database
 from database import save_reply_draft
 from ai_engine import classify_reply
-from settings import get_imap_max_messages_per_poll
+from settings import get_imap_max_messages_per_poll, get_warmup_addresses, get_app_base_url
+import warmup_engine
+import mailer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -103,6 +105,56 @@ def extract_body(msg: email.message.Message) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Client notification
+# ---------------------------------------------------------------------------
+
+def _notify_client_of_warm_reply(
+    prospect: dict,
+    classification: str,
+    inbound_body: str,
+) -> None:
+    """Send a transactional email to the client when a prospect replies warmly."""
+    client_id = prospect.get("client_id")
+    if not client_id:
+        return
+    client = database.get_client(client_id)
+    if not client:
+        return
+    client_email = (client.get("email") or "").strip()
+    if not client_email:
+        return
+
+    prospect_name    = (prospect.get("name") or "a prospect").strip()
+    company          = (prospect.get("company") or "their company").strip()
+    label            = "booked a meeting" if classification == "booked" else "expressed interest"
+    base_url         = get_app_base_url().rstrip("/")
+    dashboard_link   = f"{base_url}/client" if base_url else "/client"
+
+    subject = f"Warm reply from {company} — {classification}"
+    body = (
+        f"Good news — {prospect_name} at {company} has {label}.\n\n"
+        f"Their message:\n"
+        f"---\n"
+        f"{(inbound_body or '').strip()}\n"
+        f"---\n\n"
+        f"Log in to review and send your reply:\n{dashboard_link}\n"
+    )
+
+    try:
+        ok, err = mailer.send_email(
+            to_address=client_email,
+            subject=subject,
+            body=body,
+        )
+        if ok:
+            logging.info(f"  Client notified at {client_email} (classification={classification}).")
+        else:
+            logging.warning(f"  Client notification failed: {err}")
+    except Exception as exc:
+        logging.warning(f"  Client notification error: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Classification handler
 # ---------------------------------------------------------------------------
 
@@ -171,6 +223,7 @@ def _handle_classified_reply(
                 inbound_subject=inbound_subject,
             )
             logging.info(f"  Booking confirmation draft saved.")
+        _notify_client_of_warm_reply(prospect, classification, inbound_body)
 
     elif classification == "interested":
         logging.info(f"  INTERESTED reply from {sender_email} — pausing sequence, drafting response.")
@@ -200,6 +253,7 @@ def _handle_classified_reply(
                 metadata="source=inbox_monitor;status=awaiting_review",
             )
             logging.info(f"  Drafted reply saved to reply_drafts table.")
+        _notify_client_of_warm_reply(prospect, classification, inbound_body)
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +319,33 @@ def check_for_replies(mark_as_read: bool = True) -> int:
 
                 if not sender_email:
                     continue
+
+                # ── Warmup auto-reply ─────────────────────────────────────
+                # If the message came from a warmup partner (sender in our
+                # WARMUP_ADDRESSES list, or it carries our custom warmup header)
+                # auto-reply immediately and skip prospect classification.
+                raw_headers = {k: v for k, v in msg.items()}
+                _warmup_addrs = get_warmup_addresses()
+                if (
+                    sender_email in [a.lower() for a in _warmup_addrs]
+                    or warmup_engine.is_warmup_email(inbound_subject, raw_headers)
+                ):
+                    reply_body = warmup_engine.warmup_reply_body()
+                    reply_subject = (
+                        inbound_subject
+                        if inbound_subject.lower().startswith("re:")
+                        else f"Re: {inbound_subject}"
+                    )
+                    try:
+                        warmup_engine._send_warmup_smtp(sender_email, reply_subject, reply_body)
+                        database.log_warmup_email(
+                            sender_email, reply_subject,
+                            direction="outbound", status="sent",
+                        )
+                        logging.info(f"  Warmup auto-reply sent to {sender_email}.")
+                    except Exception as exc:
+                        logging.warning(f"  Warmup auto-reply failed for {sender_email}: {exc}")
+                    continue  # do not classify as a real prospect reply
 
                 prospect = database.get_prospect_by_email(sender_email)
                 if not prospect:

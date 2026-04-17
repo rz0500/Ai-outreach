@@ -4,104 +4,297 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Get Started — Antigravity</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f11;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
       color: #e2e8f0;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2rem;
+      padding: 2rem 1rem;
     }
-    .card {
-      background: #1a1a24;
-      border: 1px solid #2d2d3a;
-      border-radius: 12px;
-      padding: 2.5rem;
+
+    .wrap {
       width: 100%;
-      max-width: 520px;
+      max-width: 960px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2.5rem;
+      align-items: start;
     }
-    .logo { font-size: 1.5rem; font-weight: 700; color: #a78bfa; margin-bottom: 0.5rem; }
-    h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.5rem; }
-    .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 2rem; }
-    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.35rem; margin-top: 1.1rem; }
-    input, textarea {
-      width: 100%;
-      background: #0f0f11;
-      border: 1px solid #2d2d3a;
-      border-radius: 6px;
-      padding: 0.65rem 0.9rem;
-      color: #e2e8f0;
+
+    @media (max-width: 700px) {
+      .wrap { grid-template-columns: 1fr; }
+      .left-panel { display: none; }
+    }
+
+    /* ── Left panel ── */
+    .left-panel { padding-top: 0.5rem; }
+
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.04em;
+      margin-bottom: 2.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .brand::before {
+      content: '';
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: #a78bfa;
+      border-radius: 50%;
+    }
+
+    .left-panel h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+      color: #f1f5f9;
+    }
+
+    .left-panel p {
+      color: #94a3b8;
       font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 2rem;
     }
-    input:focus, textarea:focus {
-      outline: none;
-      border-color: #a78bfa;
+
+    .steps { list-style: none; display: flex; flex-direction: column; gap: 1.1rem; }
+
+    .steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      font-size: 0.9rem;
+      color: #94a3b8;
     }
-    textarea { resize: vertical; min-height: 70px; }
+
+    .step-num {
+      flex-shrink: 0;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: rgba(124,58,237,0.18);
+      border: 1px solid rgba(124,58,237,0.4);
+      color: #a78bfa;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .steps li strong { color: #e2e8f0; display: block; margin-bottom: 0.1rem; }
+
+    /* ── Right panel (form) ── */
+    .card {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 16px;
+      padding: 2.25rem 2rem;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-sub {
+      color: #64748b;
+      font-size: 0.85rem;
+      margin-bottom: 1.75rem;
+    }
+
     .error {
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.3);
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
       color: #fca5a5;
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 0.75rem 1rem;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
       margin-bottom: 1.25rem;
     }
-    button[type="submit"] {
+
+    .field { margin-bottom: 1rem; }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4rem;
+    }
+
+    input, textarea {
       width: 100%;
-      margin-top: 1.75rem;
-      padding: 0.8rem;
-      background: #7c3aed;
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: rgba(124,58,237,0.55);
+      background: #0d1117;
+    }
+
+    input::placeholder, textarea::placeholder { color: #374151; }
+
+    textarea { resize: vertical; min-height: 72px; }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 480px) { .row-2 { grid-template-columns: 1fr; } }
+
+    .required-note {
+      font-size: 0.75rem;
+      color: #4b5563;
+      margin-bottom: 1.5rem;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 0.85rem;
+      background: linear-gradient(135deg, #7c3aed, #6366f1);
       color: #fff;
       border: none;
-      border-radius: 8px;
-      font-size: 1rem;
+      border-radius: 10px;
+      font-size: 0.95rem;
       font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
-      transition: background 0.15s;
+      transition: opacity 0.15s, transform 0.1s;
+      margin-top: 0.5rem;
     }
-    button[type="submit"]:hover { background: #6d28d9; }
-    .footer { margin-top: 1.5rem; text-align: center; font-size: 0.8rem; color: #64748b; }
-    .footer a { color: #a78bfa; text-decoration: none; }
+
+    .submit-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+    .submit-btn:active { transform: translateY(0); }
+
+    .footer-note {
+      margin-top: 1.25rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #4b5563;
+    }
+
+    .footer-note a { color: #7c3aed; text-decoration: none; }
+    .footer-note a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo">Antigravity</div>
-    <h1>Start your first campaign</h1>
-    <p class="subtitle">Fill in a few details and your pipeline will be up and running within 24 hours.</p>
+  <div class="wrap">
 
-    {% if error %}
-    <div class="error">{{ error }}</div>
-    {% endif %}
+    <!-- Left: value prop + steps -->
+    <div class="left-panel">
+      <div class="brand">Antigravity</div>
+      <h2>Your outbound pipeline,<br>running in 24 hours.</h2>
+      <p>Tell us about your business and we'll set up a personalised cold outreach campaign — researched, written, and sent for you.</p>
 
-    <form method="POST" action="/onboard">
-      <label for="name">Business name *</label>
-      <input type="text" id="name" name="name" placeholder="e.g. Apex Digital" required />
+      <ul class="steps">
+        <li>
+          <span class="step-num">1</span>
+          <div>
+            <strong>We research your market</strong>
+            Find businesses that match your ideal customer using Google Maps + AI enrichment.
+          </div>
+        </li>
+        <li>
+          <span class="step-num">2</span>
+          <div>
+            <strong>We write the emails</strong>
+            Every message is personalised to the prospect — no generic templates.
+          </div>
+        </li>
+        <li>
+          <span class="step-num">3</span>
+          <div>
+            <strong>We send and follow up</strong>
+            Automated multi-step sequences with real replies landing in your inbox.
+          </div>
+        </li>
+        <li>
+          <span class="step-num">4</span>
+          <div>
+            <strong>You get booked calls</strong>
+            Replies are classified and warm leads are flagged for your calendar.
+          </div>
+        </li>
+      </ul>
+    </div>
 
-      <label for="niche">Your niche / what you do</label>
-      <input type="text" id="niche" name="niche" placeholder="e.g. B2B SaaS for construction firms" />
+    <!-- Right: form -->
+    <div class="card">
+      <div class="card-title">Start your campaign</div>
+      <div class="card-sub">Takes 2 minutes. No card required.</div>
 
-      <label for="icp">Your ideal customer</label>
-      <textarea id="icp" name="icp" placeholder="e.g. Mid-sized UK construction firms with 5+ projects running"></textarea>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
 
-      <label for="website">Your website</label>
-      <input type="url" id="website" name="website" placeholder="https://yoursite.com" />
+      <form method="POST" action="/onboard">
 
-      <label for="calendar_link">Booking / calendar link</label>
-      <input type="url" id="calendar_link" name="calendar_link" placeholder="https://calendly.com/you/30min" />
+        <div class="row-2">
+          <div class="field">
+            <label for="name">Business name *</label>
+            <input type="text" id="name" name="name" placeholder="Apex Digital" required autocomplete="organization" />
+          </div>
+          <div class="field">
+            <label for="email">Your email *</label>
+            <input type="email" id="email" name="email" placeholder="you@domain.com" required autocomplete="email" />
+          </div>
+        </div>
 
-      <label for="email">Your email address *</label>
-      <input type="email" id="email" name="email" placeholder="you@yourdomain.com" required />
+        <div class="field">
+          <label for="niche">What you do</label>
+          <input type="text" id="niche" name="niche" placeholder="e.g. B2B SaaS for construction project managers" />
+        </div>
 
-      <button type="submit">Start my campaign &rarr;</button>
-    </form>
+        <div class="field">
+          <label for="icp">Your ideal customer</label>
+          <textarea id="icp" name="icp" placeholder="e.g. Mid-sized UK construction firms running 5+ concurrent projects"></textarea>
+        </div>
 
-    <div class="footer">Already signed up? <a href="/client/login">Log in &rarr;</a></div>
+        <div class="row-2">
+          <div class="field">
+            <label for="website">Your website</label>
+            <input type="url" id="website" name="website" placeholder="https://yoursite.com" autocomplete="url" />
+          </div>
+          <div class="field">
+            <label for="location">Target location</label>
+            <input type="text" id="location" name="location" placeholder="e.g. London, UK" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="calendar_link">Booking link</label>
+          <input type="url" id="calendar_link" name="calendar_link" placeholder="https://calendly.com/you/30min" />
+        </div>
+
+        <p class="required-note">* Required fields</p>
+
+        <button type="submit" class="submit-btn">Start my campaign &rarr;</button>
+      </form>
+
+      <div class="footer-note">Already signed up? <a href="/client/login">Log in &rarr;</a></div>
+    </div>
+
   </div>
 </body>
 </html>

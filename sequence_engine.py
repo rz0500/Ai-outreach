@@ -197,7 +197,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
     if message_type == "sms_followup":
         return {
             "body": (
-                f"Hi {first}, this is [Your name]. We help businesses like {company} automate outbound. "
+                f"Hi {first}, this is {get_sender_name()}. We help businesses like {company} automate outbound. "
                 f"Happy to share a quick idea if useful."
             )
         }

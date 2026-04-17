@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ prospect.name }} - {{ client.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    header {
+      background: #0d1117;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 0 2rem;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .nav-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.82rem;
+    }
+    .nav-link:hover { color: #c4b5fd; }
+    .logout-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: #64748b;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    main {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    .back-link {
+      display: inline-block;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.84rem;
+      margin-bottom: 1rem;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
+    .card, .panel {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+    }
+    .card { padding: 1.25rem 1.35rem; }
+    .eyebrow {
+      font-size: 0.72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.45rem;
+    }
+    .title {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0 0 0.35rem;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.9rem;
+      margin-top: 1rem;
+    }
+    .meta-item {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+    .meta-label {
+      font-size: 0.7rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.35rem;
+    }
+    .meta-value {
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+    .score, .status {
+      display: inline-block;
+      padding: 0.3rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      margin-right: 0.5rem;
+    }
+    .score { background: rgba(124,58,237,0.15); color: #c4b5fd; }
+    .status { background: rgba(99,102,241,0.14); color: #c4b5fd; text-transform: uppercase; }
+    .panel-head {
+      padding: 0.95rem 1.2rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.76rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+    .panel-body { padding: 1.1rem 1.2rem; }
+    .stack { display: grid; gap: 1rem; }
+    .section-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 860px) { .section-grid { grid-template-columns: 1fr; } }
+    .item {
+      padding: 0.95rem 1rem;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+    }
+    .item-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 0.3rem;
+    }
+    .item-meta {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-bottom: 0.55rem;
+    }
+    .item-body {
+      font-size: 0.84rem;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      line-height: 1.65;
+    }
+    .draft-label {
+      font-size: 0.72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.45rem;
+      font-weight: 600;
+    }
+    .draft-editor {
+      width: 100%;
+      min-height: 120px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: #e2e8f0;
+      padding: 0.85rem 0.95rem;
+      font: inherit;
+      line-height: 1.6;
+    }
+    .draft-editor:focus {
+      outline: none;
+      border-color: rgba(167,139,250,0.4);
+      box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
+    }
+    .draft-actions {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin-top: 0.9rem;
+      align-items: center;
+    }
+    .action-btn {
+      border: none;
+      border-radius: 10px;
+      padding: 0.62rem 0.95rem;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .action-btn.primary {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      color: #fff;
+    }
+    .action-btn.secondary {
+      background: rgba(255,255,255,0.04);
+      color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .action-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .draft-status {
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    .empty {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+    a.inline-link { color: #a78bfa; text-decoration: none; }
+    .status-actions {
+      display: flex;
+      gap: 0.55rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    .status-btn {
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .status-btn.booked {
+      background: rgba(52,211,153,0.12);
+      color: #6ee7b7;
+      border: 1px solid rgba(52,211,153,0.2);
+    }
+    .status-btn.booked:hover { background: rgba(52,211,153,0.2); }
+    .status-btn.rejected {
+      background: rgba(248,113,113,0.1);
+      color: #fca5a5;
+      border: 1px solid rgba(248,113,113,0.2);
+    }
+    .status-btn.rejected:hover { background: rgba(248,113,113,0.18); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/client">Antigravity</a>
+    <div class="header-right">
+      <a class="nav-link" href="/client">Dashboard</a>
+      <a class="nav-link" href="/client/prospects">Prospects</a>
+      <a class="nav-link" href="/client/settings">Settings</a>
+      <form method="post" action="/client/logout" style="margin:0;">
+        <button class="logout-btn" type="submit">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <a class="back-link" href="/client/prospects">&larr; Back to prospects</a>
+
+    <div class="hero">
+      <div class="card">
+        <div class="eyebrow">Prospect Detail</div>
+        <h1 class="title">{{ prospect.name }}</h1>
+        <div class="subtitle">{{ prospect.company }}</div>
+        <div>
+          <span class="score">Score {{ prospect.lead_score }}</span>
+          <span class="status">{{ prospect.status }}</span>
+        </div>
+
+        {% if prospect.status not in ('booked', 'rejected') %}
+        <div class="status-actions">
+          <form method="POST" action="/client/prospects/{{ prospect.id }}/update-status" style="margin:0;">
+            <input type="hidden" name="new_status" value="booked">
+            <button class="status-btn booked" type="submit">Mark as booked</button>
+          </form>
+          <form method="POST" action="/client/prospects/{{ prospect.id }}/update-status" style="margin:0;">
+            <input type="hidden" name="new_status" value="rejected">
+            <button class="status-btn rejected" type="submit">Mark as rejected</button>
+          </form>
+        </div>
+        {% endif %}
+
+        <div class="meta-grid">
+          <div class="meta-item">
+            <div class="meta-label">Email</div>
+            <div class="meta-value">{{ prospect.email or 'Not captured yet' }}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Sequence</div>
+            <div class="meta-value">{{ prospect.sequence_day_label }}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Website</div>
+            <div class="meta-value">
+              {% if prospect.website %}
+              <a class="inline-link" href="{{ prospect.website }}" target="_blank">{{ prospect.website }}</a>
+              {% else %}
+              Not captured yet
+              {% endif %}
+            </div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Last Contacted</div>
+            <div class="meta-value">{{ prospect.last_contacted_date or 'Not yet contacted' }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow">Latest Research</div>
+        {% if latest_research %}
+        <div class="stack">
+          <div>
+            <div class="meta-label">Niche</div>
+            <div class="meta-value">{{ latest_research.niche or 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="meta-label">Pain Point</div>
+            <div class="meta-value">{{ latest_research.pain_point or 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="meta-label">Growth Signal</div>
+            <div class="meta-value">{{ latest_research.growth_signal or 'N/A' }}</div>
+          </div>
+          <div>
+            <div class="meta-label">Hook</div>
+            <div class="meta-value">{{ latest_research.hook or 'N/A' }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty">No research captured for this prospect yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="section-grid">
+      <div class="panel">
+        <div class="panel-head">Outreach History</div>
+        <div class="panel-body">
+          {% if outreach_history %}
+          <div class="stack">
+            {% for item in outreach_history %}
+            <div class="item">
+              <div class="item-title">{{ item.subject }}</div>
+              <div class="item-meta">{{ item.status|upper }} · {{ item.sent_at or item.date_created }}</div>
+              <div class="item-body">{{ item.body[:400] }}{% if item.body|length > 400 %}...{% endif %}</div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="empty">No outreach history yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">Reply History</div>
+        <div class="panel-body">
+          {% if reply_history %}
+          <div class="stack">
+            {% for item in reply_history %}
+            <div class="item" id="reply-draft-{{ item.id }}">
+              <div class="item-title">{{ item.classification or 'Reply draft' }}</div>
+              <div class="item-meta">{{ item.status|upper }} · {{ item.created_at }}</div>
+              {% if item.inbound_body %}
+              <div class="draft-label">Inbound message</div>
+              <div class="item-body" style="margin-bottom:0.85rem;">{{ item.inbound_body[:400] }}{% if item.inbound_body|length > 400 %}...{% endif %}</div>
+              {% endif %}
+              {% if item.status in ('pending', 'pending_review') %}
+              <div class="draft-label">Suggested reply</div>
+              <textarea class="draft-editor" id="reply-body-{{ item.id }}">{{ item.drafted_reply or '' }}</textarea>
+              <div class="draft-actions">
+                <button class="action-btn primary" id="reply-send-{{ item.id }}" onclick="sendProspectReply({{ item.id }})">Send reply</button>
+                <button class="action-btn secondary" id="reply-dismiss-{{ item.id }}" onclick="dismissProspectReply({{ item.id }})">Dismiss</button>
+                <span class="draft-status" id="reply-status-{{ item.id }}"></span>
+              </div>
+              {% else %}
+              <div class="draft-label">Reply content</div>
+              <div class="item-body">{{ (item.drafted_reply or item.inbound_body or '')[:400] }}{% if (item.drafted_reply or item.inbound_body or '')|length > 400 %}...{% endif %}</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="empty">No reply history yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </main>
+  <script>
+    async function runReplyDraftAction(draftId, action) {
+      const statusEl = document.getElementById(`reply-status-${draftId}`);
+      const sendBtn = document.getElementById(`reply-send-${draftId}`);
+      const dismissBtn = document.getElementById(`reply-dismiss-${draftId}`);
+      const bodyEl = document.getElementById(`reply-body-${draftId}`);
+      const body = bodyEl ? bodyEl.value : '';
+
+      if (action === 'approve' && bodyEl && !body.trim()) {
+        statusEl.textContent = 'Add a reply before sending.';
+        statusEl.style.color = '#fca5a5';
+        bodyEl.focus();
+        return;
+      }
+
+      if (statusEl) {
+        statusEl.textContent = action === 'approve' ? 'Sending...' : 'Dismissing...';
+        statusEl.style.color = '#94a3b8';
+      }
+      if (sendBtn) sendBtn.disabled = true;
+      if (dismissBtn) dismissBtn.disabled = true;
+
+      try {
+        const resp = await fetch(`/client/reply-drafts/${draftId}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, body }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || 'Request failed.');
+        }
+
+        const card = document.getElementById(`reply-draft-${draftId}`);
+        if (statusEl) {
+          statusEl.textContent = action === 'approve'
+            ? `Sent to ${data.recipient || 'prospect'}`
+            : 'Draft dismissed.';
+          statusEl.style.color = '#6ee7b7';
+        }
+        if (card) {
+          const metaEl = card.querySelector('.item-meta');
+          if (metaEl) {
+            metaEl.textContent = `${(data.status || action).toUpperCase()} · just now`;
+          }
+        }
+        if (bodyEl) bodyEl.disabled = true;
+        if (sendBtn) sendBtn.remove();
+        if (dismissBtn) dismissBtn.remove();
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = err.message || 'Action failed.';
+          statusEl.style.color = '#fca5a5';
+        }
+        if (sendBtn) sendBtn.disabled = false;
+        if (dismissBtn) dismissBtn.disabled = false;
+      }
+    }
+
+    function sendProspectReply(draftId) {
+      runReplyDraftAction(draftId, 'approve');
+    }
+
+    function dismissProspectReply(draftId) {
+      runReplyDraftAction(draftId, 'dismiss');
+    }
+  </script>
+</body>
+</html>

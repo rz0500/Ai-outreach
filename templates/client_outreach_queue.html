@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Outreach Queue — {{ client.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    header {
+      background: #0d1117;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 0 2rem;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .nav-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.82rem;
+    }
+    .nav-link:hover { color: #c4b5fd; }
+    .logout-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: #64748b;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    .page-head {
+      margin-bottom: 1.5rem;
+    }
+    .page-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0 0 0.25rem;
+    }
+    .page-sub {
+      color: #64748b;
+      font-size: 0.88rem;
+    }
+    .empty {
+      color: #64748b;
+      font-size: 0.95rem;
+      padding: 2.5rem 0;
+      text-align: center;
+    }
+    .queue-item {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 14px;
+      margin-bottom: 1.1rem;
+      overflow: hidden;
+    }
+    .qi-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.9rem 1.2rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .qi-prospect {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #f8fafc;
+    }
+    .qi-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 0.15rem;
+    }
+    .qi-date {
+      font-size: 0.76rem;
+      color: #475569;
+    }
+    .qi-body {
+      padding: 1rem 1.2rem;
+    }
+    .qi-subject {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      margin-bottom: 0.55rem;
+    }
+    .qi-subject strong { color: #e2e8f0; }
+    .draft-editor {
+      width: 100%;
+      min-height: 140px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: #e2e8f0;
+      padding: 0.85rem 0.95rem;
+      font: inherit;
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+    .draft-editor:focus {
+      outline: none;
+      border-color: rgba(167,139,250,0.4);
+      box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
+    }
+    .qi-actions {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 0.8rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      border: none;
+      border-radius: 9px;
+      padding: 0.55rem 1rem;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .action-btn.approve {
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      color: #fff;
+    }
+    .action-btn.reject {
+      background: rgba(255,255,255,0.04);
+      color: #94a3b8;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .qi-status {
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/client">Antigravity</a>
+    <div class="header-right">
+      <a class="nav-link" href="/client">Dashboard</a>
+      <a class="nav-link" href="/client/prospects">Prospects</a>
+      <a class="nav-link" href="/client/settings">Settings</a>
+      <form method="post" action="/client/logout" style="margin:0;">
+        <button class="logout-btn" type="submit">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-head">
+      <h1 class="page-title">Outreach Queue</h1>
+      <div class="page-sub">Review and approve emails before they go out to your prospects.</div>
+    </div>
+
+    {% if not pending %}
+    <div class="empty">No emails pending review — you're all caught up.</div>
+    {% else %}
+    {% for item in pending %}
+    <div class="queue-item" id="qi-{{ item.id }}">
+      <div class="qi-head">
+        <div>
+          <div class="qi-prospect">{{ item.prospect_name }} · {{ item.prospect_company }}</div>
+          <div class="qi-meta">{{ item.prospect_email or 'No email on file' }}</div>
+        </div>
+        <div class="qi-date">{{ item.date_created }}</div>
+      </div>
+      <div class="qi-body">
+        <div class="qi-subject">Subject: <strong>{{ item.subject }}</strong></div>
+        <textarea class="draft-editor" id="qi-body-{{ item.id }}">{{ item.body }}</textarea>
+        <div class="qi-actions">
+          <button class="action-btn approve" id="qi-approve-{{ item.id }}"
+                  onclick="queueAction({{ item.id }}, 'approve')">Send email</button>
+          <button class="action-btn reject" id="qi-reject-{{ item.id }}"
+                  onclick="queueAction({{ item.id }}, 'reject')">Reject</button>
+          <span class="qi-status" id="qi-status-{{ item.id }}"></span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </main>
+
+  <script>
+    async function queueAction(id, action) {
+      const approveBtn = document.getElementById(`qi-approve-${id}`);
+      const rejectBtn  = document.getElementById(`qi-reject-${id}`);
+      const statusEl   = document.getElementById(`qi-status-${id}`);
+      const bodyEl     = document.getElementById(`qi-body-${id}`);
+
+      if (approveBtn) approveBtn.disabled = true;
+      if (rejectBtn)  rejectBtn.disabled  = true;
+      if (statusEl)   statusEl.textContent = action === 'approve' ? 'Sending...' : 'Rejecting...';
+
+      try {
+        const resp = await fetch(`/client/outreach-queue/${id}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, body: bodyEl ? bodyEl.value : '' }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) throw new Error(data.error || 'Request failed.');
+
+        if (statusEl) {
+          statusEl.textContent = action === 'approve'
+            ? `Sent to ${data.sent_to || 'prospect'}`
+            : 'Rejected.';
+          statusEl.style.color = '#6ee7b7';
+        }
+        if (bodyEl)    bodyEl.disabled = true;
+        if (approveBtn) approveBtn.remove();
+        if (rejectBtn)  rejectBtn.remove();
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = err.message || 'Action failed.';
+          statusEl.style.color = '#fca5a5';
+        }
+        if (approveBtn) approveBtn.disabled = false;
+        if (rejectBtn)  rejectBtn.disabled  = false;
+      }
+    }
+  </script>
+</body>
+</html>

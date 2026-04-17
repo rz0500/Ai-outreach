@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unsubscribed — Antigravity</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 2.75rem 2.25rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+    }
+    .brand {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+    }
+    .icon {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+      font-size: 1.5rem;
+    }
+    .icon-ok  { background: rgba(52,211,153,0.1); border: 2px solid rgba(52,211,153,0.3); }
+    .icon-err { background: rgba(239,68,68,0.08); border: 2px solid rgba(239,68,68,0.25); }
+    h1 { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.6rem; }
+    p  { color: #64748b; font-size: 0.9rem; line-height: 1.65; }
+    .error-msg {
+      margin-top: 1rem;
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: #fca5a5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">Antigravity</div>
+
+    {% if success %}
+      <div class="icon icon-ok">✓</div>
+      <h1>You're unsubscribed.</h1>
+      <p>You won't receive any further emails from this campaign. If this was a mistake, please contact us directly.</p>
+    {% else %}
+      <div class="icon icon-err">✕</div>
+      <h1>Link not valid.</h1>
+      <p>This unsubscribe link is invalid or has already been used.</p>
+      {% if error %}
+      <div class="error-msg">{{ error }}</div>
+      {% endif %}
+    {% endif %}
+  </div>
+</body>
+</html>

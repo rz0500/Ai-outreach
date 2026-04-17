@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ client.name }} - Prospects</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    header {
+      background: #0d1117;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 0 2rem;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .nav-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.82rem;
+    }
+    .nav-link.active, .nav-link:hover { color: #c4b5fd; }
+    .logout-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: #64748b;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    .page-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0 0 0.35rem;
+    }
+    .page-sub {
+      color: #64748b;
+      font-size: 0.9rem;
+      margin: 0 0 1.5rem;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 760px) {
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .stat {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .stat-label {
+      font-size: 0.72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.45rem;
+    }
+    .stat-value {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .panel {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .filters {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.2rem;
+      align-items: end;
+    }
+    .filter-field {
+      min-width: 180px;
+      flex: 1;
+    }
+    .filter-field.small {
+      max-width: 180px;
+      flex: 0 0 180px;
+    }
+    .filter-label {
+      display: block;
+      font-size: 0.72rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.35rem;
+    }
+    .filter-input, .filter-select {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 0.75rem 0.85rem;
+      color: #e2e8f0;
+      font-family: inherit;
+      font-size: 0.88rem;
+    }
+    .filter-actions {
+      display: flex;
+      gap: 0.6rem;
+    }
+    .filter-btn {
+      background: rgba(124,58,237,0.16);
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: #c4b5fd;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .filter-btn.secondary {
+      background: transparent;
+      border-color: rgba(255,255,255,0.08);
+      color: #94a3b8;
+    }
+    .results-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      color: #94a3b8;
+      font-size: 0.82rem;
+      margin: 0 0 0.9rem;
+    }
+    .bulk-bar {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 0 1rem;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .bulk-controls {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .bulk-msg {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      min-height: 1.2rem;
+    }
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      padding: 1rem 0 0;
+    }
+    .pagination-links {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .page-link {
+      color: #c4b5fd;
+      text-decoration: none;
+      border: 1px solid rgba(124,58,237,0.28);
+      background: rgba(124,58,237,0.12);
+      border-radius: 9px;
+      padding: 0.55rem 0.8rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .page-link.secondary {
+      color: #94a3b8;
+      border-color: rgba(255,255,255,0.08);
+      background: transparent;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.9rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.85rem;
+    }
+    th {
+      color: #64748b;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(255,255,255,0.02);
+    }
+    tr:last-child td { border-bottom: none; }
+    .muted { color: #94a3b8; }
+    .score {
+      display: inline-block;
+      min-width: 44px;
+      text-align: center;
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .score.hot { background: rgba(16,185,129,0.14); color: #6ee7b7; }
+    .score.warm { background: rgba(251,191,36,0.14); color: #fbbf24; }
+    .score.cold { background: rgba(148,163,184,0.14); color: #cbd5e1; }
+    .status {
+      display: inline-block;
+      padding: 0.24rem 0.58rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(99,102,241,0.14);
+      color: #c4b5fd;
+    }
+    .empty {
+      padding: 1.6rem;
+      color: #94a3b8;
+      font-size: 0.92rem;
+    }
+    .check-cell {
+      width: 42px;
+      text-align: center;
+    }
+    .row-check, #select-all-prospects {
+      width: 16px;
+      height: 16px;
+      accent-color: #8b5cf6;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/client">Antigravity</a>
+    <div class="header-right">
+      <a class="nav-link" href="/client">Dashboard</a>
+      <a class="nav-link active" href="/client/prospects">Prospects</a>
+      <a class="nav-link" href="/client/settings">Settings</a>
+      <form method="post" action="/client/logout" style="margin:0;">
+        <button class="logout-btn" type="submit">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <main>
+    <h1 class="page-title">{{ client.name }} Prospects</h1>
+    <p class="page-sub">Every lead currently in your workspace, with status, score, and sequence progress.</p>
+
+    <div class="summary-grid">
+      <div class="stat">
+        <div class="stat-label">Total Prospects</div>
+        <div class="stat-value">{{ all_prospects|length }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">In Sequence</div>
+        <div class="stat-value">{{ all_prospects|selectattr('status', 'equalto', 'in_sequence')|list|length }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Replies</div>
+        <div class="stat-value">{{ all_prospects|selectattr('status', 'equalto', 'replied')|list|length }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Booked</div>
+        <div class="stat-value">{{ all_prospects|selectattr('status', 'equalto', 'booked')|list|length }}</div>
+      </div>
+    </div>
+
+    <form method="get" action="/client/prospects" class="filters">
+      <div class="filter-field">
+        <label class="filter-label" for="prospect-search">Search</label>
+        <input class="filter-input" id="prospect-search" name="q" value="{{ search_query }}" placeholder="Name, company, or email">
+      </div>
+      <div class="filter-field" style="max-width:220px;">
+        <label class="filter-label" for="prospect-status">Status</label>
+        <select class="filter-select" id="prospect-status" name="status">
+          <option value="">All statuses</option>
+          {% for status in available_statuses %}
+          <option value="{{ status }}" {% if status == status_filter %}selected{% endif %}>{{ status.replace('_', ' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-field small">
+        <label class="filter-label" for="prospect-sort">Sort</label>
+        <select class="filter-select" id="prospect-sort" name="sort">
+          <option value="score" {% if sort_key == 'score' %}selected{% endif %}>Lead score</option>
+          <option value="name" {% if sort_key == 'name' %}selected{% endif %}>Lead name</option>
+          <option value="company" {% if sort_key == 'company' %}selected{% endif %}>Company</option>
+          <option value="status" {% if sort_key == 'status' %}selected{% endif %}>Status</option>
+        </select>
+      </div>
+      <div class="filter-field small">
+        <label class="filter-label" for="prospect-dir">Direction</label>
+        <select class="filter-select" id="prospect-dir" name="dir">
+          <option value="desc" {% if sort_dir == 'desc' %}selected{% endif %}>Descending</option>
+          <option value="asc" {% if sort_dir == 'asc' %}selected{% endif %}>Ascending</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="submit" class="filter-btn">Apply</button>
+        {% if search_query or status_filter %}
+        <a href="/client/prospects" class="filter-btn secondary">Clear</a>
+        {% endif %}
+        <a
+          href="{{ url_for('client_prospects_export', q=search_query, status=status_filter, sort=sort_key, dir=sort_dir) }}"
+          class="filter-btn secondary"
+        >Export CSV</a>
+      </div>
+    </form>
+
+    <div class="results-meta">
+      <div>Showing {{ prospects|length }} of {{ total_filtered }} filtered prospects</div>
+      <div>Page {{ current_page }} of {{ total_pages }}</div>
+    </div>
+
+    <div class="panel">
+      {% if prospects %}
+      <div class="bulk-bar">
+        <div class="bulk-controls">
+          <span id="bulk-selection-count" class="muted">0 selected</span>
+          <select class="filter-select" id="bulk-status-select" style="min-width:180px;">
+            <option value="">Set status...</option>
+            {% for status in available_statuses %}
+            <option value="{{ status }}">{{ status.replace('_', ' ')|title }}</option>
+            {% endfor %}
+            <option value="qualified">Qualified</option>
+            <option value="contacted">Contacted</option>
+            <option value="in_sequence">In Sequence</option>
+            <option value="replied">Replied</option>
+            <option value="booked">Booked</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <button type="button" class="filter-btn secondary" onclick="applyBulkStatus()">Apply status</button>
+          <button type="button" class="filter-btn" onclick="bulkEnrolProspects()">Enroll in sequence</button>
+        </div>
+        <div id="bulk-action-msg" class="bulk-msg"></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th class="check-cell"><input type="checkbox" id="select-all-prospects" onchange="toggleAllProspects(this.checked)"></th>
+            <th>Lead</th>
+            <th>Company</th>
+            <th>Email</th>
+            <th>Sequence</th>
+            <th>Score</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in prospects %}
+          <tr>
+            <td class="check-cell"><input type="checkbox" class="row-check" value="{{ p.id }}" onchange="updateBulkSelection()"></td>
+            <td><a href="/client/prospects/{{ p.id }}" style="color:#e2e8f0;text-decoration:none;font-weight:600;">{{ p.name }}</a></td>
+            <td class="muted">{{ p.company }}</td>
+            <td class="muted">{{ p.email or 'N/A' }}</td>
+            <td class="muted">{{ p.sequence_day_label }}</td>
+            <td>
+              <span class="score {% if p.lead_score >= 71 %}hot{% elif p.lead_score >= 41 %}warm{% else %}cold{% endif %}">
+                {{ p.lead_score }}
+              </span>
+            </td>
+            <td><span class="status">{{ p.status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">
+        {% if search_query or status_filter %}
+        No prospects matched your current filters.
+        {% else %}
+        No prospects yet. Once your workspace starts finding or importing leads, they’ll show up here.
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+      <div class="muted">10 prospects per page</div>
+      <div class="pagination-links">
+        {% if current_page > 1 %}
+        <a class="page-link secondary" href="{{ url_for('client_prospects_page', q=search_query, status=status_filter, sort=sort_key, dir=sort_dir, page=current_page - 1) }}">Previous</a>
+        {% endif %}
+        {% if current_page < total_pages %}
+        <a class="page-link" href="{{ url_for('client_prospects_page', q=search_query, status=status_filter, sort=sort_key, dir=sort_dir, page=current_page + 1) }}">Next</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </main>
+  <script>
+    function selectedProspectIds() {
+      return Array.from(document.querySelectorAll('.row-check:checked')).map((el) => Number(el.value));
+    }
+
+    function updateBulkSelection() {
+      const selected = selectedProspectIds();
+      const countEl = document.getElementById('bulk-selection-count');
+      const allChecks = Array.from(document.querySelectorAll('.row-check'));
+      const selectAll = document.getElementById('select-all-prospects');
+      if (countEl) {
+        countEl.textContent = `${selected.length} selected`;
+      }
+      if (selectAll) {
+        selectAll.checked = allChecks.length > 0 && selected.length === allChecks.length;
+      }
+    }
+
+    function toggleAllProspects(checked) {
+      document.querySelectorAll('.row-check').forEach((el) => {
+        el.checked = checked;
+      });
+      updateBulkSelection();
+    }
+
+    async function runBulkProspectAction(payload, successMessage) {
+      const msgEl = document.getElementById('bulk-action-msg');
+      const ids = selectedProspectIds();
+      if (!ids.length) {
+        msgEl.textContent = 'Select at least one prospect first.';
+        msgEl.style.color = '#fca5a5';
+        return;
+      }
+
+      msgEl.textContent = 'Applying bulk action...';
+      msgEl.style.color = '#94a3b8';
+
+      try {
+        const resp = await fetch('/client/prospects/bulk-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, prospect_ids: ids }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || 'Bulk action failed.');
+        }
+        msgEl.textContent = successMessage.replace('{count}', data.updated);
+        msgEl.style.color = '#6ee7b7';
+        window.location.reload();
+      } catch (err) {
+        msgEl.textContent = err.message || 'Bulk action failed.';
+        msgEl.style.color = '#fca5a5';
+      }
+    }
+
+    function bulkEnrolProspects() {
+      runBulkProspectAction({ action: 'enrol' }, 'Enrolled {count} prospects.');
+    }
+
+    function applyBulkStatus() {
+      const status = document.getElementById('bulk-status-select').value;
+      const msgEl = document.getElementById('bulk-action-msg');
+      if (!status) {
+        msgEl.textContent = 'Choose a status first.';
+        msgEl.style.color = '#fca5a5';
+        return;
+      }
+      runBulkProspectAction({ action: 'status', status }, `Updated {count} prospects to ${status.replace('_', ' ')}.`);
+    }
+
+    updateBulkSelection();
+  </script>
+</body>
+</html>

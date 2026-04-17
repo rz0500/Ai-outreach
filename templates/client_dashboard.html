@@ -3,163 +3,819 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{{ client.name }} — Pipeline Dashboard</title>
+  <title>{{ client.name }} — Pipeline</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f11;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
       color: #e2e8f0;
       min-height: 100vh;
     }
+
+    /* ── Header ── */
     header {
-      background: #1a1a24;
-      border-bottom: 1px solid #2d2d3a;
+      background: #0d1117;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
       padding: 0 2rem;
-      height: 56px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .client-badge {
+      font-size: 0.8rem;
+      color: #64748b;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 20px;
+      padding: 0.25rem 0.75rem;
+    }
+    .logout-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      color: #64748b;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .logout-btn:hover { border-color: #a78bfa; color: #a78bfa; }
+    .nav-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.82rem;
+    }
+    .nav-link:hover { color: #c4b5fd; }
+
+    /* ── Layout ── */
+    main { max-width: 1080px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    .page-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 0.35rem;
+    }
+    .page-sub {
+      font-size: 0.875rem;
+      color: #475569;
+      margin-bottom: 2rem;
+    }
+
+    /* ── Stat cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.875rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 860px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 560px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .stat {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 1.25rem 1.25rem 1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: rgba(124,58,237,0.2);
+    }
+    .stat.accent::after { background: linear-gradient(90deg, #7c3aed, #6366f1); }
+    .stat.green::after  { background: linear-gradient(90deg, #059669, #10b981); }
+
+    .stat-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+      margin-bottom: 0.5rem;
+    }
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #e2e8f0;
+    }
+    .stat.accent .stat-value { color: #a78bfa; }
+    .stat.green  .stat-value { color: #34d399; }
+    .stat.amber  .stat-value { color: #fbbf24; }
+
+    .stat-sub {
+      font-size: 0.72rem;
+      color: #334155;
+      margin-top: 0.35rem;
+    }
+
+    /* ── Funnel bar ── */
+    .funnel-card {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.75rem;
+    }
+    .funnel-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
+      margin-bottom: 1.25rem;
+    }
+    .funnel-steps {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+    }
+    .funnel-step {
+      flex: 1;
+      text-align: center;
+      position: relative;
+    }
+    .funnel-step + .funnel-step::before {
+      content: '→';
+      position: absolute;
+      left: -8px;
+      top: 10px;
+      font-size: 0.75rem;
+      color: #1e293b;
+    }
+    .funnel-track {
+      height: 6px;
+      background: #1e293b;
+      border-radius: 3px;
+      margin: 0 4px 0.6rem;
+      overflow: hidden;
+    }
+    .funnel-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.6s ease;
+    }
+    .funnel-fill.f1 { background: #4c1d95; width: var(--pct); }
+    .funnel-fill.f2 { background: #7c3aed; width: var(--pct); }
+    .funnel-fill.f3 { background: #a78bfa; width: var(--pct); }
+    .funnel-fill.f4 { background: #34d399; width: var(--pct); }
+    .funnel-num {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+    .funnel-lbl {
+      font-size: 0.7rem;
+      color: #475569;
+      margin-top: 0.2rem;
+    }
+
+    /* ── Two column lower ── */
+    .lower-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 720px) { .lower-grid { grid-template-columns: 1fr; } }
+
+    /* ── Section panels ── */
+    .panel {
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel.wide { grid-column: span 2; }
+    @media (max-width: 720px) { .panel.wide { grid-column: span 1; } }
+
+    .panel-head {
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
-    .logo { font-size: 1.2rem; font-weight: 700; color: #a78bfa; }
-    .client-name { font-size: 0.875rem; color: #94a3b8; }
-    .logout-btn {
-      background: none;
-      border: 1px solid #2d2d3a;
-      border-radius: 6px;
-      color: #94a3b8;
-      padding: 0.35rem 0.85rem;
-      font-size: 0.8rem;
-      cursor: pointer;
+    .panel-head-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #475569;
     }
-    .logout-btn:hover { border-color: #a78bfa; color: #a78bfa; }
-    main { max-width: 1000px; margin: 0 auto; padding: 2rem; }
-    h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 1.25rem; }
-    .metrics {
+    .panel-count {
+      font-size: 0.72rem;
+      color: #334155;
+      background: rgba(255,255,255,0.04);
+      border-radius: 20px;
+      padding: 0.15rem 0.55rem;
+    }
+
+    /* ── Warm leads table ── */
+    .warm-list { list-style: none; }
+    .warm-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .warm-item:last-child { border-bottom: none; }
+    .warm-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7c3aed33, #6366f133);
+      border: 1px solid rgba(124,58,237,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #a78bfa;
+      flex-shrink: 0;
+    }
+    .warm-info { flex: 1; min-width: 0; }
+    .warm-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .warm-company {
+      font-size: 0.75rem;
+      color: #475569;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-pill {
+      flex-shrink: 0;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .pill-replied { background: rgba(124,58,237,0.12); color: #a78bfa; }
+    .pill-booked  { background: rgba(52,211,153,0.12);  color: #34d399; }
+
+    .empty-state {
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      color: #334155;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .empty-state strong { display: block; color: #475569; margin-bottom: 0.3rem; font-size: 0.9rem; }
+
+    /* ── Activity feed ── */
+    .activity-feed { list-style: none; }
+    .activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.875rem;
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .act-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .dot-outbound { background: #7c3aed; }
+    .dot-inbound  { background: #34d399; }
+    .dot-internal { background: #475569; }
+    .act-body { flex: 1; min-width: 0; }
+    .act-main {
+      font-size: 0.82rem;
+      color: #cbd5e1;
+      line-height: 1.4;
+    }
+    .act-main strong { color: #e2e8f0; }
+    .act-time {
+      font-size: 0.72rem;
+      color: #334155;
+      margin-top: 0.15rem;
+    }
+    .act-tag {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      text-transform: capitalize;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .tag-email    { background: rgba(99,102,241,0.12); color: #818cf8; }
+    .tag-linkedin { background: rgba(14,165,233,0.12); color: #38bdf8; }
+    .tag-sms      { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .tag-system   { background: rgba(148,163,184,0.08); color: #64748b; }
+
+    /* ── Account card ── */
+    .account-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0;
     }
-    .metric-card {
-      background: #1a1a24;
-      border: 1px solid #2d2d3a;
-      border-radius: 10px;
-      padding: 1.25rem 1.5rem;
+    .account-field {
+      padding: 0.875rem 1.25rem;
+      border-right: 1px solid rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
-    .metric-card .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.5rem; }
-    .metric-card .value { font-size: 2rem; font-weight: 700; color: #e2e8f0; }
-    .metric-card.highlight .value { color: #a78bfa; }
-    .section {
-      background: #1a1a24;
-      border: 1px solid #2d2d3a;
-      border-radius: 10px;
+    .account-field:last-child { border-right: none; }
+    .account-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #334155;
+      margin-bottom: 0.3rem;
+    }
+    .account-val {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .account-val.link a {
+      color: #818cf8;
+      text-decoration: none;
+    }
+    .account-val.link a:hover { text-decoration: underline; }
+    .account-val.empty-val { color: #334155; font-style: italic; }
+
+    /* ── Reply inbox ── */
+    .reply-inbox { margin-bottom: 1.75rem; }
+
+    .draft-card {
+      background: #0d1117;
+      border: 1px solid rgba(251,191,36,0.15);
+      border-radius: 12px;
+      margin-bottom: 0.875rem;
       overflow: hidden;
     }
-    .section-header {
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid #2d2d3a;
-      font-size: 0.875rem;
+    .draft-card:last-child { margin-bottom: 0; }
+
+    .draft-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      gap: 1rem;
+    }
+    .draft-from { font-size: 0.875rem; font-weight: 600; color: #e2e8f0; }
+    .draft-company { font-size: 0.75rem; color: #475569; margin-top: 0.1rem; }
+    .draft-time { font-size: 0.72rem; color: #334155; flex-shrink: 0; }
+
+    .draft-body { padding: 0.875rem 1.25rem; }
+
+    .draft-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #334155;
+      margin-bottom: 0.4rem;
+    }
+
+    .inbound-quote {
+      font-size: 0.8rem;
+      color: #475569;
+      line-height: 1.5;
+      border-left: 2px solid #1e293b;
+      padding-left: 0.75rem;
+      margin-bottom: 1rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .draft-reply-text {
+      width: 100%;
+      background: #080c14;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      color: #cbd5e1;
+      font-size: 0.82rem;
+      font-family: inherit;
+      line-height: 1.6;
+      resize: vertical;
+      min-height: 90px;
+      transition: border-color 0.15s;
+    }
+    .draft-reply-text:focus { outline: none; border-color: rgba(124,58,237,0.45); }
+
+    .draft-actions {
+      display: flex;
+      gap: 0.6rem;
+      padding: 0.75rem 1.25rem;
+      border-top: 1px solid rgba(255,255,255,0.04);
+      background: rgba(0,0,0,0.2);
+    }
+
+    .btn-approve {
+      flex: 1;
+      padding: 0.6rem 1rem;
+      background: linear-gradient(135deg, #7c3aed, #6366f1);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.82rem;
       font-weight: 600;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.15s;
     }
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      padding: 0.75rem 1.25rem;
-      text-align: left;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #64748b;
-      background: #111118;
-      border-bottom: 1px solid #2d2d3a;
+    .btn-approve:hover { opacity: 0.88; }
+    .btn-approve:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-dismiss {
+      padding: 0.6rem 0.9rem;
+      background: none;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: #475569;
+      font-size: 0.82rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
     }
-    td {
-      padding: 0.75rem 1.25rem;
-      font-size: 0.875rem;
-      border-bottom: 1px solid #1e1e2a;
+    .btn-dismiss:hover { border-color: rgba(239,68,68,0.3); color: #f87171; }
+
+    .draft-status-msg {
+      font-size: 0.78rem;
+      padding: 0.35rem 0;
+      display: none;
     }
-    tr:last-child td { border-bottom: none; }
-    .badge {
-      display: inline-block;
-      padding: 0.2rem 0.6rem;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: 500;
-      text-transform: capitalize;
-    }
-    .badge-outbound { background: rgba(124,58,237,0.15); color: #a78bfa; }
-    .badge-inbound  { background: rgba(34,197,94,0.1);  color: #86efac; }
-    .badge-system   { background: rgba(148,163,184,0.1); color: #94a3b8; }
-    .empty { padding: 2rem; text-align: center; color: #475569; font-size: 0.875rem; }
+    .draft-status-msg.sent     { color: #34d399; display: block; }
+    .draft-status-msg.error    { color: #f87171; display: block; }
+    .draft-status-msg.dismissed { color: #475569; display: block; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="logo">Antigravity</div>
-    <span class="client-name">{{ client.name }}</span>
+
+<header>
+  <div class="logo">Antigravity</div>
+  <div class="header-right">
+    <span class="client-badge">{{ client.name }}</span>
+    <a class="nav-link" href="/client/prospects">Prospects</a>
+    <a href="/client/settings" style="font-size:0.78rem;color:#64748b;text-decoration:none;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.3rem 0.75rem;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='#a78bfa';this.style.borderColor='rgba(124,58,237,0.4)'" onmouseout="this.style.color='#64748b';this.style.borderColor='rgba(255,255,255,0.08)'">Settings</a>
     <form method="POST" action="/client/logout" style="margin:0">
       <button type="submit" class="logout-btn">Log out</button>
     </form>
-  </header>
+  </div>
+</header>
 
-  <main>
-    <h2>Your pipeline</h2>
-
-    <div class="metrics">
-      <div class="metric-card">
-        <div class="label">Prospects found</div>
-        <div class="value">{{ analytics.total_prospects }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Emails sent</div>
-        <div class="value">{{ analytics.emails_sent }}</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Replies</div>
-        <div class="value">{{ analytics.replies }}</div>
-      </div>
-      <div class="metric-card highlight">
-        <div class="label">Booked calls</div>
-        <div class="value">{{ analytics.booked }}</div>
-      </div>
+<main>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.25rem;">
+    <div>
+      <div class="page-title">Your pipeline</div>
+      <div class="page-sub">Live view of your outreach campaign.</div>
     </div>
-
-    <div class="section">
-      <div class="section-header">Recent activity</div>
-      {% if analytics.recent_events %}
-      <table>
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Prospect</th>
-            <th>Company</th>
-            <th>Channel</th>
-            <th>Event</th>
-            <th>Direction</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for event in analytics.recent_events %}
-          <tr>
-            <td style="color:#64748b">{{ event.created_at[:16] if event.created_at else '—' }}</td>
-            <td>{{ event.prospect_name or '—' }}</td>
-            <td>{{ event.prospect_company or '—' }}</td>
-            <td>{{ event.channel }}</td>
-            <td>{{ event.event_type }}</td>
-            <td>
-              <span class="badge badge-{{ event.direction }}">{{ event.direction }}</span>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.25rem;flex-wrap:wrap;">
+      {% if client.campaign_paused %}
+      <span style="font-size:0.75rem;font-weight:600;color:#fbbf24;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:20px;padding:0.25rem 0.75rem;">⏸ Campaign paused</span>
+      <form method="POST" action="/client/campaign/resume" style="margin:0">
+        <button type="submit" style="font-size:0.8rem;font-weight:600;font-family:inherit;background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;border:none;border-radius:8px;padding:0.4rem 1rem;cursor:pointer;">Resume campaign</button>
+      </form>
       {% else %}
-      <div class="empty">No activity yet — your campaign will start within 24 hours.</div>
+      <span style="font-size:0.75rem;font-weight:600;color:#34d399;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:20px;padding:0.25rem 0.75rem;">▶ Campaign active</span>
+      <form method="POST" action="/client/campaign/pause" style="margin:0">
+        <button type="submit" style="font-size:0.8rem;font-weight:600;font-family:inherit;background:none;color:#64748b;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.4rem 1rem;cursor:pointer;">Pause campaign</button>
+      </form>
+      {% endif %}
+
+      {% if client.outreach_review_mode %}
+      <span style="font-size:0.75rem;font-weight:600;color:#a78bfa;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.25);border-radius:20px;padding:0.25rem 0.75rem;">Review mode on</span>
+      <form method="POST" action="/client/campaign/review-mode/disable" style="margin:0">
+        <button type="submit" style="font-size:0.8rem;font-weight:600;font-family:inherit;background:none;color:#64748b;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.4rem 1rem;cursor:pointer;">Turn off review mode</button>
+      </form>
+      {% else %}
+      <form method="POST" action="/client/campaign/review-mode/enable" style="margin:0">
+        <button type="submit" style="font-size:0.8rem;font-weight:600;font-family:inherit;background:none;color:#64748b;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:0.4rem 1rem;cursor:pointer;">Enable review mode</button>
+      </form>
+      {% endif %}
+
+      {% if outreach_queue_count %}
+      <a href="/client/outreach-queue" style="font-size:0.8rem;font-weight:600;color:#f8fafc;background:rgba(167,139,250,0.18);border:1px solid rgba(167,139,250,0.3);border-radius:8px;padding:0.4rem 1rem;text-decoration:none;">
+        {{ outreach_queue_count }} pending approval
+      </a>
       {% endif %}
     </div>
-  </main>
+  </div>
+
+  <!-- ── Stats ── -->
+  <div class="stats-grid">
+    <div class="stat">
+      <div class="stat-label">Prospects found</div>
+      <div class="stat-value">{{ analytics.total_prospects }}</div>
+      <div class="stat-sub">in your workspace</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">In sequence</div>
+      <div class="stat-value">{{ analytics.in_sequence }}</div>
+      <div class="stat-sub">active outreach</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Emails sent</div>
+      <div class="stat-value">{{ analytics.emails_sent }}</div>
+      <div class="stat-sub">total sent</div>
+    </div>
+    <div class="stat accent">
+      <div class="stat-label">Replies</div>
+      <div class="stat-value">{{ analytics.replies }}</div>
+      <div class="stat-sub">{% if analytics.reply_rate > 0 %}{{ analytics.reply_rate }}% rate{% else %}—{% endif %}</div>
+    </div>
+    <div class="stat green">
+      <div class="stat-label">Booked calls</div>
+      <div class="stat-value">{{ analytics.booked }}</div>
+      <div class="stat-sub">meetings booked</div>
+    </div>
+    {% if analytics.pending_drafts %}
+    <div class="stat amber">
+      <div class="stat-label">To review</div>
+      <div class="stat-value">{{ analytics.pending_drafts|length }}</div>
+      <div class="stat-sub">reply drafts</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Funnel ── -->
+  {% set total = analytics.total_prospects or 1 %}
+  {% set sent  = analytics.emails_sent or 0 %}
+  <div class="funnel-card">
+    <div class="funnel-title">Conversion funnel</div>
+    <div class="funnel-steps">
+
+      <div class="funnel-step">
+        <div class="funnel-track">
+          <div class="funnel-fill f1" style="--pct: 100%"></div>
+        </div>
+        <div class="funnel-num">{{ analytics.total_prospects }}</div>
+        <div class="funnel-lbl">Found</div>
+      </div>
+
+      <div class="funnel-step">
+        <div class="funnel-track">
+          {% set pct = [((analytics.in_sequence + analytics.emails_sent) / total * 100)|round(0)|int, 100]|min %}
+          <div class="funnel-fill f2" style="--pct: {{ pct }}%"></div>
+        </div>
+        <div class="funnel-num">{{ analytics.in_sequence }}</div>
+        <div class="funnel-lbl">In sequence</div>
+      </div>
+
+      <div class="funnel-step">
+        <div class="funnel-track">
+          {% set pct2 = [(sent / total * 100)|round(0)|int, 100]|min %}
+          <div class="funnel-fill f3" style="--pct: {{ pct2 }}%"></div>
+        </div>
+        <div class="funnel-num">{{ analytics.emails_sent }}</div>
+        <div class="funnel-lbl">Emailed</div>
+      </div>
+
+      <div class="funnel-step">
+        <div class="funnel-track">
+          {% set pct3 = [((analytics.replies) / (sent if sent > 0 else 1) * 100)|round(0)|int, 100]|min %}
+          <div class="funnel-fill f4" style="--pct: {{ pct3 }}%"></div>
+        </div>
+        <div class="funnel-num">{{ analytics.replies }}</div>
+        <div class="funnel-lbl">Replied</div>
+      </div>
+
+      <div class="funnel-step">
+        <div class="funnel-track">
+          {% set pct4 = [((analytics.booked) / (sent if sent > 0 else 1) * 100)|round(0)|int, 100]|min %}
+          <div class="funnel-fill f4" style="--pct: {{ pct4 }}%"></div>
+        </div>
+        <div class="funnel-num">{{ analytics.booked }}</div>
+        <div class="funnel-lbl">Booked</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Reply inbox ── -->
+  {% if analytics.pending_drafts %}
+  <div class="reply-inbox">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#475569;margin-bottom:0.875rem;">
+      Reply inbox &mdash; {{ analytics.pending_drafts|length }} to review
+    </div>
+    {% for draft in analytics.pending_drafts %}
+    <div class="draft-card" id="draft-{{ draft.id }}">
+      <div class="draft-head">
+        <div>
+          <div class="draft-from">{{ draft.prospect_name or draft.prospect_email or 'Unknown' }}</div>
+          <div class="draft-company">{{ draft.prospect_company or '' }}</div>
+        </div>
+        <div class="draft-time">{{ draft.created_at[:16] if draft.created_at else '' }}</div>
+      </div>
+      <div class="draft-body">
+        {% if draft.inbound_body %}
+        <div class="draft-label">Their message</div>
+        <div class="inbound-quote">{{ draft.inbound_body[:400] }}{% if draft.inbound_body|length > 400 %}&hellip;{% endif %}</div>
+        {% endif %}
+        <div class="draft-label">Suggested reply — edit before sending</div>
+        <textarea class="draft-reply-text" id="reply-body-{{ draft.id }}">{{ draft.drafted_reply or '' }}</textarea>
+        <div class="draft-status-msg" id="draft-status-{{ draft.id }}"></div>
+      </div>
+      <div class="draft-actions">
+        <button class="btn-approve" id="approve-{{ draft.id }}" onclick="sendReply({{ draft.id }})">Send reply &rarr;</button>
+        <button class="btn-dismiss" onclick="dismissDraft({{ draft.id }})">Dismiss</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Warm leads + Activity ── -->
+  <div class="lower-grid">
+
+    <!-- Warm leads -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-head-label">Warm leads</span>
+        {% if analytics.warm_leads %}
+        <span class="panel-count">{{ analytics.warm_leads|length }}</span>
+        {% endif %}
+      </div>
+      {% if analytics.warm_leads %}
+      <ul class="warm-list">
+        {% for lead in analytics.warm_leads %}
+        <li class="warm-item">
+          <div class="warm-avatar">{{ (lead.name or '?')[0].upper() }}</div>
+          <div class="warm-info">
+            <div class="warm-name">{{ lead.name }}</div>
+            <div class="warm-company">{{ lead.company }}</div>
+          </div>
+          <span class="status-pill pill-{{ lead.status }}">{{ lead.status }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <strong>No warm leads yet</strong>
+        Replied and booked prospects will appear here.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Recent activity -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-head-label">Recent activity</span>
+        {% if analytics.recent_events %}
+        <span class="panel-count">{{ analytics.recent_events|length }}</span>
+        {% endif %}
+      </div>
+      {% if analytics.recent_events %}
+      <ul class="activity-feed">
+        {% for ev in analytics.recent_events %}
+        <li class="activity-item">
+          <div class="act-dot dot-{{ ev.direction or 'internal' }}"></div>
+          <div class="act-body">
+            <div class="act-main">
+              <strong>{{ ev.prospect_name or 'Unknown' }}</strong>
+              {% if ev.prospect_company %} · {{ ev.prospect_company }}{% endif %}
+              <br>{{ ev.event_type | replace('_', ' ') }}
+            </div>
+            <div class="act-time">{{ ev.created_at[:16] if ev.created_at else '—' }}</div>
+          </div>
+          <span class="act-tag tag-{{ ev.channel }}">{{ ev.channel }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty-state">
+        <strong>No activity yet</strong>
+        Events will appear as your campaign runs.
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- ── Account info ── -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-head-label">Campaign settings</span>
+    </div>
+    <div class="account-grid">
+      <div class="account-field">
+        <div class="account-label">Business name</div>
+        <div class="account-val">{{ client.name }}</div>
+      </div>
+      <div class="account-field">
+        <div class="account-label">Contact email</div>
+        <div class="account-val">{{ client.email or '—' }}</div>
+      </div>
+      <div class="account-field">
+        <div class="account-label">What you do</div>
+        <div class="account-val {% if not client.niche %}empty-val{% endif %}">
+          {{ client.niche or 'Not set' }}
+        </div>
+      </div>
+      <div class="account-field">
+        <div class="account-label">Ideal customer</div>
+        <div class="account-val {% if not client.icp %}empty-val{% endif %}">
+          {{ client.icp or 'Not set' }}
+        </div>
+      </div>
+      {% if client.calendar_link %}
+      <div class="account-field">
+        <div class="account-label">Booking link</div>
+        <div class="account-val link">
+          <a href="{{ client.calendar_link }}" target="_blank" rel="noopener">{{ client.calendar_link }}</a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</main>
+
+<script>
+async function sendReply(draftId) {
+  const body    = document.getElementById('reply-body-' + draftId).value.trim();
+  const btn     = document.getElementById('approve-' + draftId);
+  const status  = document.getElementById('draft-status-' + draftId);
+  if (!body) { status.textContent = 'Reply body is empty.'; status.className = 'draft-status-msg error'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res  = await fetch('/client/reply-drafts/' + draftId + '/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve', body }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.textContent = 'Sent to ' + (data.recipient || 'recipient') + '.';
+      status.className = 'draft-status-msg sent';
+      document.getElementById('draft-' + draftId).style.opacity = '0.5';
+      document.getElementById('draft-' + draftId).style.pointerEvents = 'none';
+    } else {
+      status.textContent = data.error || 'Send failed.';
+      status.className = 'draft-status-msg error';
+      btn.disabled = false;
+      btn.textContent = 'Send reply →';
+    }
+  } catch (e) {
+    status.textContent = 'Network error. Try again.';
+    status.className = 'draft-status-msg error';
+    btn.disabled = false;
+    btn.textContent = 'Send reply →';
+  }
+}
+
+async function dismissDraft(draftId) {
+  const status = document.getElementById('draft-status-' + draftId);
+  try {
+    const res  = await fetch('/client/reply-drafts/' + draftId + '/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'dismiss' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.textContent = 'Dismissed.';
+      status.className = 'draft-status-msg dismissed';
+      setTimeout(() => {
+        const card = document.getElementById('draft-' + draftId);
+        card.style.transition = 'opacity 0.3s';
+        card.style.opacity = '0';
+        setTimeout(() => card.remove(), 320);
+      }, 600);
+    }
+  } catch (e) {}
+}
+</script>
 </body>
 </html>

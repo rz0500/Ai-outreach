@@ -4,83 +4,147 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Log in — Antigravity</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f11;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      background: #080c14;
       color: #e2e8f0;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2rem;
+      padding: 2rem 1rem;
     }
+
     .card {
-      background: #1a1a24;
-      border: 1px solid #2d2d3a;
-      border-radius: 12px;
-      padding: 2.5rem;
+      background: #111827;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 18px;
+      padding: 2.75rem 2.25rem;
       width: 100%;
       max-width: 420px;
     }
-    .logo { font-size: 1.4rem; font-weight: 700; color: #a78bfa; margin-bottom: 1.75rem; }
-    h1 { font-size: 1.3rem; font-weight: 600; margin-bottom: 0.4rem; }
-    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 1.75rem; line-height: 1.5; }
-    label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.35rem; }
+
+    .brand {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+    }
+
+    h1 { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; margin-bottom: 0.4rem; }
+
+    .subtitle {
+      color: #64748b;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      margin-bottom: 1.75rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+
     input[type="email"] {
       width: 100%;
-      background: #0f0f11;
-      border: 1px solid #2d2d3a;
-      border-radius: 6px;
+      background: #0d1117;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
       padding: 0.65rem 0.9rem;
       color: #e2e8f0;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
     }
-    input[type="email"]:focus { outline: none; border-color: #a78bfa; }
+
+    input[type="email"]:focus {
+      outline: none;
+      border-color: rgba(124,58,237,0.55);
+    }
+
+    input[type="email"]::placeholder { color: #374151; }
+
     .error {
-      background: rgba(239,68,68,0.1);
-      border: 1px solid rgba(239,68,68,0.3);
+      background: rgba(239,68,68,0.08);
+      border: 1px solid rgba(239,68,68,0.25);
       color: #fca5a5;
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 0.75rem 1rem;
-      font-size: 0.875rem;
+      font-size: 0.85rem;
       margin-bottom: 1.25rem;
     }
+
     .success {
       background: rgba(124,58,237,0.08);
       border: 1px solid rgba(124,58,237,0.25);
       color: #c4b5fd;
-      border-radius: 6px;
-      padding: 1rem 1.25rem;
+      border-radius: 10px;
+      padding: 1.25rem 1.25rem;
       font-size: 0.9rem;
-      line-height: 1.5;
+      line-height: 1.6;
     }
+
+    .success strong { display: block; color: #ddd6fe; margin-bottom: 0.4rem; font-size: 1rem; }
+
     button[type="submit"] {
       width: 100%;
       margin-top: 1.25rem;
-      padding: 0.75rem;
-      background: #7c3aed;
+      padding: 0.8rem;
+      background: linear-gradient(135deg, #7c3aed, #6366f1);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 10px;
       font-size: 0.95rem;
       font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
     }
-    button[type="submit"]:hover { background: #6d28d9; }
-    .footer { margin-top: 1.5rem; text-align: center; font-size: 0.8rem; color: #64748b; }
-    .footer a { color: #a78bfa; text-decoration: none; }
+
+    button[type="submit"]:hover { opacity: 0.92; transform: translateY(-1px); }
+    button[type="submit"]:active { transform: translateY(0); }
+
+    .footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #4b5563;
+    }
+
+    .footer a { color: #7c3aed; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">Antigravity</div>
+    <div class="brand">Antigravity</div>
 
-    {% if sent %}
+    {% if request.args.get('verified') == '1' %}
       <div class="success">
-        <strong>Check your inbox.</strong><br/>
-        We've sent a login link to your email address. It expires in 24 hours.
+        <strong>Sending address verified.</strong>
+        Log in to your dashboard to see it active in your campaign settings.
+      </div>
+      <div class="footer" style="margin-top:1.75rem">
+        <a href="/client/login">Log in &rarr;</a>
+      </div>
+    {% elif sent %}
+      <div class="success">
+        <strong>Check your inbox.</strong>
+        We've sent a one-click login link to your email address. It expires in 24 hours.
+      </div>
+      <div class="footer" style="margin-top:1.75rem">
+        Didn't get it? <a href="/client/login">Try again &rarr;</a>
       </div>
     {% else %}
       <h1>Log in to your dashboard</h1>
@@ -92,7 +156,8 @@
 
       <form method="POST" action="/client/login">
         <label for="email">Email address</label>
-        <input type="email" id="email" name="email" placeholder="you@yourdomain.com" required autofocus />
+        <input type="email" id="email" name="email"
+               placeholder="you@yourdomain.com" required autofocus />
         <button type="submit">Send login link &rarr;</button>
       </form>
 

@@ -230,6 +230,184 @@ def format_report(summary: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# HTML report for weekly email
+# ---------------------------------------------------------------------------
+
+def generate_weekly_report_html(
+    summary: dict,
+    client_name: str = "",
+    week_label: str = "",
+    dashboard_url: str = "",
+) -> str:
+    """
+    Render a summary dict as a branded HTML email body.
+
+    Args:
+        summary:       Dict returned by generate_summary().
+        client_name:   Client's name for the greeting line.
+        week_label:    Human-readable week string, e.g. "14 Apr 2026".
+        dashboard_url: Full URL to the client dashboard (for the CTA button).
+
+    Returns:
+        HTML string safe to pass to mailer.send_email(html_body=...).
+    """
+    p   = summary["prospects"]
+    f   = summary["funnel"]
+    sb  = summary["score_bands"]
+    out = summary["outreach"]
+    total = p["total"]
+
+    def stat_block(label: str, value) -> str:
+        return (
+            f'<td style="text-align:center;padding:12px 16px;">'
+            f'<div style="font-size:28px;font-weight:700;color:#a78bfa;">{value}</div>'
+            f'<div style="font-size:11px;color:#64748b;text-transform:uppercase;'
+            f'letter-spacing:0.08em;margin-top:4px;">{label}</div>'
+            f'</td>'
+        )
+
+    def funnel_row(label: str, count: int, colour: str) -> str:
+        pct = round(count / total * 100) if total else 0
+        bar_w = max(4, pct)
+        return (
+            f'<tr>'
+            f'<td style="padding:5px 0;font-size:13px;color:#94a3b8;width:90px;">{label}</td>'
+            f'<td style="padding:5px 8px;font-size:13px;font-weight:600;color:#e2e8f0;'
+            f'width:36px;text-align:right;">{count}</td>'
+            f'<td style="padding:5px 0;">'
+            f'<div style="height:8px;border-radius:4px;background:{colour};'
+            f'width:{bar_w}%;max-width:100%;"></div></td>'
+            f'</tr>'
+        )
+
+    # Top prospects rows
+    top_rows = ""
+    for p_ in summary["top_prospects"][:5]:
+        score = p_.get("lead_score", 0)
+        score_colour = "#6ee7b7" if score >= 71 else ("#fbbf24" if score >= 41 else "#94a3b8")
+        top_rows += (
+            f'<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">'
+            f'<td style="padding:8px 0;font-size:13px;color:#e2e8f0;">'
+            f'{(p_.get("name") or "")[:28]}</td>'
+            f'<td style="padding:8px 8px;font-size:12px;color:#94a3b8;">'
+            f'{(p_.get("company") or "")[:24]}</td>'
+            f'<td style="padding:8px 0;font-size:13px;font-weight:700;'
+            f'color:{score_colour};text-align:right;">{score}</td>'
+            f'<td style="padding:8px 0 8px 8px;font-size:11px;color:#64748b;'
+            f'text-transform:uppercase;">{p_.get("status","")}</td>'
+            f'</tr>'
+        )
+
+    cta = (
+        f'<tr><td colspan="2" style="padding-top:28px;text-align:center;">'
+        f'<a href="{dashboard_url}" style="display:inline-block;background:'
+        f'linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;text-decoration:none;'
+        f'font-weight:700;font-size:14px;padding:12px 28px;border-radius:10px;">'
+        f'View your dashboard</a>'
+        f'</td></tr>'
+    ) if dashboard_url else ""
+
+    greeting = f"Hi {client_name}," if client_name else "Hi,"
+    week_str  = week_label or str(date.today())
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#080c14;font-family:'Helvetica Neue',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#080c14;padding:32px 16px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="padding-bottom:24px;">
+    <div style="font-size:13px;font-weight:700;color:#a78bfa;letter-spacing:0.1em;
+                text-transform:uppercase;">Antigravity</div>
+    <h1 style="margin:8px 0 4px;font-size:22px;font-weight:700;color:#f8fafc;">
+      Your pipeline — week of {week_str}</h1>
+    <p style="margin:0;font-size:14px;color:#64748b;">{greeting}</p>
+  </td></tr>
+
+  <!-- Stats row -->
+  <tr><td style="padding-bottom:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);
+                  border-radius:14px;">
+      <tr>
+        {stat_block("Prospects", total)}
+        {stat_block("Sent", out.get("sent", 0))}
+        {stat_block("Replies", f["counts"].get("replied", 0))}
+        {stat_block("Booked", f["counts"].get("booked", 0))}
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Funnel + Score bands -->
+  <tr><td style="padding-bottom:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-spacing:0;">
+      <tr valign="top">
+        <td width="52%" style="padding-right:12px;">
+          <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);
+                      border-radius:14px;padding:16px 18px;">
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;
+                        letter-spacing:0.08em;margin-bottom:10px;">Status funnel</div>
+            <table cellpadding="0" cellspacing="0" width="100%">
+              {funnel_row("New", f["counts"].get("new",0), "#6366f1")}
+              {funnel_row("Contacted", f["counts"].get("contacted",0), "#8b5cf6")}
+              {funnel_row("Replied", f["counts"].get("replied",0), "#a78bfa")}
+              {funnel_row("Booked", f["counts"].get("booked",0), "#6ee7b7")}
+              {funnel_row("Rejected", f["counts"].get("rejected",0), "#475569")}
+            </table>
+            <div style="margin-top:10px;font-size:11px;color:#64748b;">
+              Conversion rate: <strong style="color:#a78bfa;">{f["conversion_rate"]}%</strong>
+            </div>
+          </div>
+        </td>
+        <td width="48%">
+          <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);
+                      border-radius:14px;padding:16px 18px;">
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;
+                        letter-spacing:0.08em;margin-bottom:10px;">Lead scores</div>
+            <div style="margin-bottom:10px;">
+              <div style="font-size:12px;color:#6ee7b7;font-weight:600;">
+                Hot (71–100) &nbsp;<span style="color:#e2e8f0;">{sb["hot"]}</span></div>
+              <div style="height:6px;border-radius:3px;background:#6ee7b7;
+                          width:{round(sb["hot"]/max(total,1)*100)}%;margin:4px 0 8px;"></div>
+              <div style="font-size:12px;color:#fbbf24;font-weight:600;">
+                Warm (41–70) &nbsp;<span style="color:#e2e8f0;">{sb["warm"]}</span></div>
+              <div style="height:6px;border-radius:3px;background:#fbbf24;
+                          width:{round(sb["warm"]/max(total,1)*100)}%;margin:4px 0 8px;"></div>
+              <div style="font-size:12px;color:#94a3b8;font-weight:600;">
+                Cold (1–40) &nbsp;<span style="color:#e2e8f0;">{sb["cold"]}</span></div>
+              <div style="height:6px;border-radius:3px;background:#475569;
+                          width:{round(sb["cold"]/max(total,1)*100)}%;margin:4px 0;"></div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Top prospects -->
+  {'<tr><td style="padding-bottom:24px;"><div style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:16px 18px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Top prospects</div><table width="100%" cellpadding="0" cellspacing="0">' + top_rows + '</table></div></td></tr>' if top_rows else ""}
+
+  <!-- CTA -->
+  <tr><td>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      {cta}
+      <tr><td style="padding-top:24px;border-top:1px solid rgba(255,255,255,0.06);">
+        <p style="margin:0;font-size:12px;color:#475569;text-align:center;">
+          — The Antigravity Team
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>"""
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 

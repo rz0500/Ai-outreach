@@ -3,14 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeadGen AI Dashboard</title>
+    <title>Ops — Antigravity</title>
     <!-- Use modern typography -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
+    {% set deliverability = deliverability|default({
+        'suppressed_total': 0,
+        'failed_count': 0,
+        'skipped_count': 0,
+        'recent_failed': [],
+        'recent_skipped': []
+    }) %}
+    <script>
+        const OPERATOR_CLIENT_ID = {{ selected_client_id|default(1)|int }};
+        const OPERATOR_QUERY = `?client_id=${OPERATOR_CLIENT_ID}`;
+    </script>
     <header>
-        <h1>LeadGen AI</h1>
+        <h1>Antigravity <span style="font-size:0.65rem;font-weight:500;color:#475569;text-transform:uppercase;letter-spacing:0.12em;margin-left:0.5rem;vertical-align:middle;">Ops</span></h1>
         <div class="user-profile">
             <span class="status-pill status-in_sequence" id="scheduler-pill">System Active</span>
             <span id="inbox-status-label" style="font-size:0.75rem;color:#94a3b8;margin-left:0.75rem;">Inbox: checking...</span>
@@ -22,6 +33,167 @@
             <a href="/settings" style="margin-left:1rem;color:#94a3b8;text-decoration:none;font-size:0.82rem;" title="Settings">&#9881; Settings</a>
         </div>
     </header>
+
+    <div class="table-container" style="margin-bottom:1.5rem;padding:1rem 1.1rem;">
+        <form method="get" action="/ops" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+            <div>
+                <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Workspace View</div>
+                <select name="client_id" onchange="this.form.submit()" style="min-width:260px;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.65rem 0.8rem;color:#e2e8f0;font-family:'Outfit',sans-serif;">
+                    {% for client in clients %}
+                    <option value="{{ client.id }}" {% if client.id == selected_client_id %}selected{% endif %}>
+                        #{{ client.id }} - {{ client.name }}{% if client.email %} ({{ client.email }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;flex:1;">
+                <div style="min-width:160px;">
+                    <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Selected Client</div>
+                    <div style="font-size:1rem;font-weight:600;color:#f8fafc;">{{ selected_client.name if selected_client else 'House Account' }}</div>
+                </div>
+                <div style="min-width:120px;">
+                    <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Status</div>
+                    <div style="font-size:1rem;font-weight:600;color:#a5b4fc;">{{ selected_client.status if selected_client else 'active' }}</div>
+                </div>
+                <div style="min-width:120px;">
+                    <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Workspace Reply Rate</div>
+                    <div style="font-size:1rem;font-weight:600;color:#6ee7b7;">{{ selected_client_analytics.reply_rate }}%</div>
+                </div>
+                <div style="min-width:120px;">
+                    <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Warm Leads</div>
+                    <div style="font-size:1rem;font-weight:600;color:#fbbf24;">{{ selected_client_analytics.warm_leads|length }}</div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- ── Workspace Details drilldown ── -->
+    {% if selected_client and selected_client.id != 1 %}
+    <div class="table-container" style="margin-bottom:1.5rem;padding:1.25rem 1.5rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;flex-wrap:wrap;gap:0.5rem;">
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.09em;font-weight:700;">Workspace Details</div>
+            <a href="/client?_ops_preview=1" target="_blank"
+               style="font-size:0.75rem;color:#a78bfa;text-decoration:none;border:1px solid rgba(124,58,237,0.3);border-radius:6px;padding:0.2rem 0.65rem;">
+               View client dashboard ↗
+            </a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem 1.5rem;">
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Account email</div>
+                <div style="font-size:0.88rem;color:#94a3b8;">{{ selected_client.email or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Status</div>
+                <span class="status-pill status-{{ selected_client.status }}">{{ selected_client.status }}</span>
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Campaign</div>
+                {% if selected_client.campaign_paused %}
+                <span style="font-size:0.78rem;font-weight:600;color:#fbbf24;">⏸ Paused</span>
+                {% else %}
+                <span style="font-size:0.78rem;font-weight:600;color:#34d399;">▶ Active</span>
+                {% endif %}
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Joined</div>
+                <div style="font-size:0.88rem;color:#94a3b8;">{{ (selected_client.created_at or '')[:10] or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Target location</div>
+                <div style="font-size:0.88rem;color:#94a3b8;">{{ selected_client.location or '—' }}</div>
+            </div>
+            <div style="grid-column:span 2;">
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Niche</div>
+                <div style="font-size:0.88rem;color:#94a3b8;">{{ selected_client.niche or '—' }}</div>
+            </div>
+            <div style="grid-column:span 2;">
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Ideal customer</div>
+                <div style="font-size:0.88rem;color:#94a3b8;line-height:1.5;">{{ selected_client.icp or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Booking link</div>
+                {% if selected_client.calendar_link %}
+                <a href="{{ selected_client.calendar_link }}" target="_blank" style="font-size:0.82rem;color:#a78bfa;word-break:break-all;">{{ selected_client.calendar_link }}</a>
+                {% else %}
+                <div style="font-size:0.88rem;color:#334155;">—</div>
+                {% endif %}
+            </div>
+            <div>
+                <div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;margin-bottom:0.25rem;">Sender identity</div>
+                {% if selected_client.sender_email %}
+                <div style="font-size:0.85rem;color:#e2e8f0;">
+                    {{ selected_client.sender_name or '' }}
+                    {% if selected_client.sender_name %}<span style="color:#334155;"> · </span>{% endif %}
+                    {{ selected_client.sender_email }}
+                    {% if selected_client.sender_email_verified %}
+                    <span style="display:inline-block;margin-left:0.35rem;font-size:0.65rem;font-weight:700;color:#34d399;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);border-radius:20px;padding:0.1rem 0.45rem;">✓ Verified</span>
+                    {% else %}
+                    <span style="display:inline-block;margin-left:0.35rem;font-size:0.65rem;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:20px;padding:0.1rem 0.45rem;">⚠ Unverified</span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div style="font-size:0.88rem;color:#334155;">Using system default</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── All Workspaces overview ── -->
+    {% if clients|length > 1 %}
+    <div class="table-container" style="margin-bottom:1.5rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;">
+            <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.09em;font-weight:700;">All Workspaces</div>
+            <span style="font-size:0.75rem;color:#334155;">{{ clients|length }} total</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">ID</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Name</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Email</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Status</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Niche</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Sender</th>
+                    <th style="text-align:left;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">Joined</th>
+                    <th style="text-align:center;padding:0.5rem 0.6rem;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:#334155;font-weight:700;">View</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in clients %}
+                <tr class="ws-row{% if c.id == selected_client_id %} ws-row-active{% endif %}">
+                    <td style="padding:0.55rem 0.6rem;font-size:0.8rem;color:#475569;">#{{ c.id }}</td>
+                    <td style="padding:0.55rem 0.6rem;font-size:0.85rem;font-weight:500;color:#e2e8f0;">{{ c.name }}</td>
+                    <td style="padding:0.55rem 0.6rem;font-size:0.8rem;color:#64748b;">{{ c.email or '—' }}</td>
+                    <td style="padding:0.55rem 0.6rem;">
+                        <span class="status-pill status-{{ c.status }}" style="font-size:0.7rem;padding:0.15rem 0.55rem;">{{ c.status }}</span>
+                    </td>
+                    <td style="padding:0.55rem 0.6rem;font-size:0.8rem;color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.niche or '' }}">{{ (c.niche or '—')[:40] }}</td>
+                    <td style="padding:0.55rem 0.6rem;font-size:0.8rem;color:#64748b;">
+                        {% if c.sender_email %}
+                        {{ c.sender_email }}
+                        {% if c.sender_email_verified %}
+                        <span style="color:#34d399;font-size:0.65rem;margin-left:0.2rem;">✓</span>
+                        {% else %}
+                        <span style="color:#fbbf24;font-size:0.65rem;margin-left:0.2rem;">⚠</span>
+                        {% endif %}
+                        {% else %}
+                        <span style="color:#334155;">system</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding:0.55rem 0.6rem;font-size:0.8rem;color:#475569;">{{ (c.created_at or '')[:10] }}</td>
+                    <td style="padding:0.55rem 0.6rem;text-align:center;">
+                        <a href="/ops?client_id={{ c.id }}"
+                           class="ws-select-link{% if c.id == selected_client_id %} ws-select-link-current{% endif %}">
+                           Select
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
     <div class="stats-grid">
         <div class="stat-card">
@@ -40,6 +212,72 @@
         <div class="stat-card">
             <div class="stat-title">Conversion Rate</div>
             <div class="stat-value">{{ summary.funnel.conversion_rate }}%</div>
+        </div>
+    </div>
+
+    <div class="stats-grid" style="margin-top:-0.5rem;margin-bottom:1.5rem;">
+        <div class="stat-card">
+            <div class="stat-title">Suppressed Contacts</div>
+            <div class="stat-value" style="color:#fbbf24;">{{ deliverability.suppressed_total }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Failed Sends</div>
+            <div class="stat-value" style="color:#f87171;">{{ deliverability.failed_count }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Skipped Sends</div>
+            <div class="stat-value" style="color:#c4b5fd;">{{ deliverability.skipped_count }}</div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SAMPLE DECKS                                                      -->
+    <!-- ================================================================ -->
+    <div class="table-container" style="margin-bottom:2rem;" id="sample-decks-section">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <h2 style="font-weight:500;margin:0;">Sample Decks</h2>
+            <span style="flex:1;"></span>
+            <button onclick="generateSampleDecks(this)"
+                id="sample-decks-btn"
+                style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#818cf8;border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                onmouseover="this.style.background='rgba(99,102,241,0.25)'"
+                onmouseout="this.style.background='rgba(99,102,241,0.15)'">Generate Samples</button>
+        </div>
+        <div id="sample-decks-body">
+            <p style="color:var(--text-muted);font-size:0.9rem;">Click <strong>Generate Samples</strong> to create 4 decks across different industries — each takes about 5 seconds.</p>
+        </div>
+    </div>
+
+    <div class="table-container" style="margin-bottom:1.5rem;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div>
+                <h2 style="margin-bottom:1rem;font-weight:600;">Recent Failed Email Sends</h2>
+                {% if deliverability.recent_failed %}
+                    {% for event in deliverability.recent_failed %}
+                    <div style="padding:0.9rem 1rem;border:1px solid rgba(248,113,113,0.16);background:rgba(127,29,29,0.14);border-radius:10px;margin-bottom:0.75rem;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#fecaca;">{{ event.prospect_name or 'Unknown prospect' }}{% if event.prospect_company %} · {{ event.prospect_company }}{% endif %}</div>
+                        <div style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">{{ event.created_at }}{% if event.event_type %} · {{ event.event_type }}{% endif %}</div>
+                        <div style="font-size:0.8rem;color:#fca5a5;margin-top:0.45rem;word-break:break-word;">{{ event.metadata or 'No metadata' }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding:1rem;border:1px dashed rgba(255,255,255,0.08);border-radius:10px;color:#64748b;font-size:0.85rem;">No failed email sends logged yet.</div>
+                {% endif %}
+            </div>
+            <div>
+                <h2 style="margin-bottom:1rem;font-weight:600;">Recent Suppression Skips</h2>
+                {% if deliverability.recent_skipped %}
+                    {% for event in deliverability.recent_skipped %}
+                    <div style="padding:0.9rem 1rem;border:1px solid rgba(196,181,253,0.16);background:rgba(76,29,149,0.14);border-radius:10px;margin-bottom:0.75rem;">
+                        <div style="font-size:0.82rem;font-weight:600;color:#ddd6fe;">{{ event.prospect_name or 'Unknown prospect' }}{% if event.prospect_company %} · {{ event.prospect_company }}{% endif %}</div>
+                        <div style="font-size:0.78rem;color:#94a3b8;margin-top:0.25rem;">{{ event.created_at }}{% if event.event_type %} · {{ event.event_type }}{% endif %}</div>
+                        <div style="font-size:0.8rem;color:#c4b5fd;margin-top:0.45rem;word-break:break-word;">{{ event.metadata or 'No metadata' }}</div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding:1rem;border:1px dashed rgba(255,255,255,0.08);border-radius:10px;color:#64748b;font-size:0.85rem;">No suppression skips logged yet.</div>
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -168,7 +406,6 @@
         </div>
     </div>
 
-    <!-- ================================================================ -->
     <!-- FIND & FIRE — Google Maps → Research → Email → PDF → Send     -->
     <!-- ================================================================ -->
     <div class="pipeline-section" id="find-and-fire" style="background: linear-gradient(135deg, rgba(16,185,129,0.05) 0%, rgba(99,102,241,0.05) 100%); border-color: rgba(16,185,129,0.2);">
@@ -211,6 +448,7 @@
             <div class="pl-step-line"></div>
             <div class="pl-step" id="ff-step-pdf"><div class="pl-step-dot"></div><span>PDFs</span></div>
         </div>
+        <div id="ff-live-status" style="display:none;margin-top:0.85rem;font-size:0.82rem;color:#94a3b8;"></div>
 
         <!-- Error -->
         <div id="ff-error" style="display:none; margin-top:1rem; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:1rem; color:#fca5a5; font-size:0.85rem;"></div>
@@ -491,6 +729,24 @@
 
     <!-- ================================================================ -->
     <!-- OUTREACH REVIEW QUEUE                                          -->
+    <!-- ================================================================
+         Email Warmup Status Widget
+    ================================================================ -->
+    <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="warmup-section">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+            <h2 style="font-weight:500;margin:0;">Email Warmup</h2>
+            <span id="warmup-badge" style="display:none;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.35);border-radius:99px;padding:0.15rem 0.6rem;font-size:0.72rem;font-weight:700;color:#6ee7b7;"></span>
+            <span style="flex:1;"></span>
+            <button onclick="loadWarmupStatus()"
+                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+                onmouseout="this.style.background='rgba(255,255,255,0.04)'">↻ Refresh</button>
+        </div>
+        <div id="warmup-body">
+            <p style="color:var(--text-muted);font-size:0.9rem;">Loading warmup status...</p>
+        </div>
+    </div>
+
     <!-- ================================================================ -->
     <div class="table-container" style="margin-top: 2rem; margin-bottom: 2rem;" id="outreach-queue-section">
         <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem;flex-wrap:wrap;">
@@ -1495,7 +1751,7 @@
                 const ta = document.getElementById('reply-body-' + draftId);
                 if (ta) payload.body = ta.value.trim();
             }
-            const resp = await fetch('/api/reply-drafts/' + draftId + '/action', {
+            const resp = await fetch('/api/reply-drafts/' + draftId + '/action' + OPERATOR_QUERY, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify(payload),
@@ -1571,18 +1827,68 @@
         el.style.color       = c.text;
     }
 
+    function ffApplyStage(stage, status) {
+        const ids = ['ff-step-find','ff-step-research','ff-step-email','ff-step-pdf'];
+        ids.forEach(id => ffSetStep(id, 'idle'));
+
+        if (status === 'error') {
+            if (stage === 'finding') ffSetStep('ff-step-find', 'error');
+            else if (stage === 'research') { ffSetStep('ff-step-find', 'done'); ffSetStep('ff-step-research', 'error'); }
+            else if (stage === 'email') { ffSetStep('ff-step-find', 'done'); ffSetStep('ff-step-research', 'done'); ffSetStep('ff-step-email', 'error'); }
+            else if (stage === 'pdf') { ffSetStep('ff-step-find', 'done'); ffSetStep('ff-step-research', 'done'); ffSetStep('ff-step-email', 'done'); ffSetStep('ff-step-pdf', 'error'); }
+            else ffSetStep('ff-step-find', 'error');
+            return;
+        }
+
+        if (stage === 'finding') {
+            ffSetStep('ff-step-find', 'active');
+        } else if (stage === 'research') {
+            ffSetStep('ff-step-find', 'done');
+            ffSetStep('ff-step-research', 'active');
+        } else if (stage === 'email') {
+            ffSetStep('ff-step-find', 'done');
+            ffSetStep('ff-step-research', 'done');
+            ffSetStep('ff-step-email', 'active');
+        } else if (stage === 'pdf') {
+            ffSetStep('ff-step-find', 'done');
+            ffSetStep('ff-step-research', 'done');
+            ffSetStep('ff-step-email', 'done');
+            ffSetStep('ff-step-pdf', 'active');
+        } else if (stage === 'done') {
+            ids.forEach(id => ffSetStep(id, 'done'));
+        }
+    }
+
     function buildLeadCard(r, idx) {
         const hasEmail  = !!(r.email && r.email.subject && r.email.body);
         const hasPdf    = !!(r.pdf && r.pdf.url);
         const research  = r.research || {};
         const niche     = research.niche || research.note || '';
         const painPoint = research.pain_point || '';
+        const stageStatuses = r.stage_statuses || {};
+        const itemStatus = r.status || 'completed';
+        const statusStyle = itemStatus === 'completed'
+            ? 'background:rgba(16,185,129,0.15);color:#6ee7b7;'
+            : itemStatus === 'partial_error'
+            ? 'background:rgba(251,191,36,0.15);color:#fbbf24;'
+            : 'background:rgba(239,68,68,0.15);color:#f87171;';
         const qs        = (r.email && r.email.quality_score) || 0;
         const qsStyle   = qs >= 80
             ? 'background:rgba(16,185,129,0.15);color:#6ee7b7;'
             : qs >= 60
             ? 'background:rgba(251,191,36,0.15);color:#fbbf24;'
             : 'background:rgba(239,68,68,0.15);color:#f87171;';
+        const stageChip = (label, stageStatus) => {
+            const normalized = stageStatus || 'pending';
+            const styles = normalized === 'completed'
+                ? 'background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.28); color:#6ee7b7;'
+                : normalized === 'failed'
+                ? 'background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.28); color:#fca5a5;'
+                : normalized === 'running'
+                ? 'background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.28); color:#a5b4fc;'
+                : 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); color:var(--text-muted);';
+            return `<span style="padding:0.25rem 0.6rem; border-radius:999px; font-size:0.7rem; font-weight:600; ${styles}">${escHtml(label)}: ${escHtml(normalized)}</span>`;
+        };
 
         return `
         <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:1.5rem; position:relative;">
@@ -1590,7 +1896,14 @@
             <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.1rem; flex-wrap:wrap;">
                 <span style="font-weight:700; font-size:1.05rem; color:#f8fafc;">${escHtml(r.company)}</span>
                 ${r.website ? `<a href="${escHtml(r.website)}" target="_blank" style="font-size:0.75rem; color:var(--text-muted); text-decoration:none;">↗ site</a>` : ''}
+                <span style="padding:0.2rem 0.55rem; border-radius:10px; font-size:0.68rem; font-weight:700; ${statusStyle}">${escHtml(itemStatus.replace('_', ' '))}</span>
                 ${hasEmail ? `<span style="margin-left:auto; padding:0.2rem 0.6rem; border-radius:10px; font-size:0.68rem; font-weight:700; ${qsStyle}">QS ${qs}/100</span>` : ''}
+            </div>
+
+            <div style="display:flex; gap:0.45rem; flex-wrap:wrap; margin-bottom:1rem;">
+                ${stageChip('Research', stageStatuses.research)}
+                ${stageChip('Email', stageStatuses.email)}
+                ${stageChip('PDF', stageStatuses.pdf)}
             </div>
 
             <!-- Research summary -->
@@ -1612,6 +1925,8 @@
 
             <!-- PDF link -->
             ${hasPdf ? `<a href="${escHtml(r.pdf.url)}" target="_blank" style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.78rem; color:#6ee7b7; text-decoration:none; margin-bottom:1rem; border:1px solid rgba(16,185,129,0.25); padding:0.3rem 0.7rem; border-radius:8px; background:rgba(16,185,129,0.06);">📄 PDF Proposal</a>` : ''}
+
+            ${r.stage_errors && Object.keys(r.stage_errors).length ? `<div style="font-size:0.76rem;color:#fbbf24;margin-bottom:0.85rem;">${escHtml(Object.entries(r.stage_errors).map(([k,v]) => `${k}: ${v}`).join(' | '))}</div>` : ''}
 
             <!-- Send row -->
             <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.5rem; flex-wrap:wrap;">
@@ -1654,7 +1969,7 @@
         status.textContent = '';
 
         try {
-            const resp = await fetch(`/api/send-outreach/${outreachId}`, {
+            const resp = await fetch(`/api/send-outreach/${outreachId}${OPERATOR_QUERY}`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ to_address: toAddress }),
@@ -1682,7 +1997,7 @@
         }
     }
 
-    async function runFindAndFire() {
+    async function runFindAndFireLegacy() {
         const query    = document.getElementById('ff-query').value.trim();
         const location = document.getElementById('ff-location').value.trim();
 
@@ -1694,14 +2009,18 @@
         const steps    = document.getElementById('ff-steps');
         const errEl    = document.getElementById('ff-error');
         const results  = document.getElementById('ff-results');
+        const live     = document.getElementById('ff-live-status');
+        const cardsEl  = document.getElementById('ff-cards');
 
         btn.disabled    = true;
         btn.textContent = 'Working…';
         errEl.style.display    = 'none';
         results.style.display  = 'none';
+        live.style.display     = 'block';
+        live.textContent       = 'Finding businesses...';
+        cardsEl.innerHTML      = '';
         steps.style.display    = 'flex';
-        ['ff-step-find','ff-step-research','ff-step-email','ff-step-pdf'].forEach(id => ffSetStep(id, 'idle'));
-        ffSetStep('ff-step-find', 'active');
+        ffApplyStage('finding', 'running');
 
         try {
             // Start job — returns immediately with job_id
@@ -1715,13 +2034,12 @@
             if (!startResp.ok || startData.error) {
                 errEl.style.display = 'block';
                 errEl.textContent   = startData.error || 'Find & Fire failed.';
-                ffSetStep('ff-step-find', 'error');
+                ffApplyStage('finding', 'error');
                 return;
             }
 
             const jobId = startData.job_id;
-            ffSetStep('ff-step-find', 'done');
-            ffSetStep('ff-step-research', 'active');
+            let lastRendered = -1;
 
             // Poll until done
             const d = await new Promise((resolve, reject) => {
@@ -1775,6 +2093,134 @@
             ffSetStep('ff-step-find', 'error');
         } finally {
             btn.disabled    = false;
+            btn.textContent = 'Find 3 Leads & Build Campaign';
+        }
+    }
+
+    async function runFindAndFire() {
+        const query = document.getElementById('ff-query').value.trim();
+        const location = document.getElementById('ff-location').value.trim();
+
+        if (!query) { document.getElementById('ff-query').focus(); return; }
+        if (!location) { document.getElementById('ff-location').focus(); return; }
+
+        const btn = document.getElementById('ff-btn');
+        const steps = document.getElementById('ff-steps');
+        const errEl = document.getElementById('ff-error');
+        const results = document.getElementById('ff-results');
+        const live = document.getElementById('ff-live-status');
+        const cardsEl = document.getElementById('ff-cards');
+
+        btn.disabled = true;
+        btn.textContent = 'Working...';
+        errEl.style.display = 'none';
+        errEl.textContent = '';
+        results.style.display = 'none';
+        live.style.display = 'block';
+        live.textContent = 'Finding businesses...';
+        cardsEl.innerHTML = '';
+        steps.style.display = 'flex';
+        ffApplyStage('finding', 'running');
+
+        try {
+            const startResp = await fetch('/api/find-and-fire', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, location, limit: 3 }),
+            });
+            const startData = await startResp.json();
+
+            if (!startResp.ok || startData.error) {
+                errEl.style.display = 'block';
+                errEl.textContent = startData.error || 'Find & Fire failed.';
+                live.textContent = errEl.textContent;
+                ffApplyStage('finding', 'error');
+                return;
+            }
+
+            const jobId = startData.job_id;
+            let lastRendered = -1;
+
+            const finalData = await new Promise((resolve, reject) => {
+                const poll = setInterval(async () => {
+                    try {
+                        const pollResp = await fetch(`/api/find-and-fire/${jobId}`);
+                        const pollData = await pollResp.json();
+
+                        btn.textContent = `Working... ${pollData.progress}/${pollData.total}`;
+                        ffApplyStage(pollData.stage || 'finding', pollData.status);
+
+                        const currentCompany = pollData.current_company
+                            ? ` ${pollData.current_company}`
+                            : '';
+                        live.textContent = pollData.message
+                            || `Working... ${pollData.progress}/${pollData.total}${currentCompany}`;
+
+                        if (Array.isArray(pollData.results) && pollData.results.length - 1 > lastRendered) {
+                            for (let i = lastRendered + 1; i < pollData.results.length; i += 1) {
+                                cardsEl.insertAdjacentHTML('beforeend', buildLeadCard(pollData.results[i], i));
+                            }
+                            lastRendered = pollData.results.length - 1;
+                            if (pollData.results.length > 0) {
+                                results.style.display = 'block';
+                                document.getElementById('ff-results-label').textContent =
+                                    `${pollData.results.length} completed lead${pollData.results.length !== 1 ? 's' : ''} for ${query} in ${location}`;
+                            }
+                        }
+
+                        if (pollData.status === 'done' || pollData.status === 'error') {
+                            clearInterval(poll);
+                            resolve(pollData);
+                        }
+                    } catch (err) {
+                        clearInterval(poll);
+                        reject(err);
+                    }
+                }, 2000);
+            });
+
+            if (finalData.status === 'error' && finalData.results.length === 0) {
+                errEl.style.display = 'block';
+                errEl.textContent = finalData.error || 'Find & Fire failed.';
+                live.textContent = finalData.message || errEl.textContent;
+                ffApplyStage(finalData.stage || 'finding', 'error');
+                return;
+            }
+
+            ffApplyStage(
+                finalData.status === 'error' ? (finalData.stage || 'finding') : 'done',
+                finalData.status
+            );
+
+            if (lastRendered < 0 && Array.isArray(finalData.results)) {
+                finalData.results.forEach((result, idx) => {
+                    cardsEl.insertAdjacentHTML('beforeend', buildLeadCard(result, idx));
+                });
+            }
+
+            document.getElementById('ff-results-label').textContent =
+                `${finalData.results.length} completed lead${finalData.results.length !== 1 ? 's' : ''} for ${query} in ${location}`;
+            results.style.display = finalData.results.length > 0 ? 'block' : 'none';
+            live.textContent = finalData.error
+                ? `${finalData.message || 'Finished with issues.'}${finalData.error ? ` ${finalData.error}` : ''}`
+                : (finalData.message || `Processed ${finalData.progress}/${finalData.total} businesses.`);
+
+            if (finalData.error) {
+                errEl.style.display = 'block';
+                errEl.textContent = finalData.error;
+            }
+
+            if (finalData.results.length > 0) {
+                results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        } catch (err) {
+            errEl.style.display = 'block';
+            errEl.textContent = 'Network error - is the server running?';
+            live.style.display = 'block';
+            live.textContent = 'Polling stopped due to a network error.';
+            ffApplyStage('finding', 'error');
+        } finally {
+            btn.disabled = false;
             btn.textContent = 'Find 3 Leads & Build Campaign';
         }
     }
@@ -1954,7 +2400,7 @@
         const badge   = document.getElementById('oq-count-badge');
         const emptyEl = document.getElementById('oq-empty');
         try {
-            const r    = await fetch('/api/outreach-queue');
+            const r    = await fetch(`/api/outreach-queue${OPERATOR_QUERY}`);
             const data = await r.json();
             if (!data || data.length === 0) {
                 body.innerHTML = '';
@@ -2021,7 +2467,7 @@
         btn.disabled = true;
         btn.textContent = 'Sending…';
         try {
-            const r = await fetch(`/api/outreach-queue/${id}/approve`, { method: 'POST' });
+            const r = await fetch(`/api/outreach-queue/${id}/approve${OPERATOR_QUERY}`, { method: 'POST' });
             const d = await r.json();
             if (!r.ok || d.error) throw new Error(d.error || 'Send failed');
             const item = document.getElementById(`oq-item-${id}`);
@@ -2037,7 +2483,7 @@
 
     async function oqReject(id) {
         try {
-            await fetch(`/api/outreach-queue/${id}/reject`, { method: 'POST' });
+            await fetch(`/api/outreach-queue/${id}/reject${OPERATOR_QUERY}`, { method: 'POST' });
             const item = document.getElementById(`oq-item-${id}`);
             item.remove();
             updateOqBadge();
@@ -2107,7 +2553,7 @@
     async function refreshTracker(btn) {
         if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
         try {
-            const resp = await fetch('/api/outreach-tracker');
+            const resp = await fetch(`/api/outreach-tracker${OPERATOR_QUERY}`);
             const data = await resp.json();
             renderTrackerRows(data);
         } catch (err) {
@@ -2180,7 +2626,7 @@
     async function refreshSentReplies(btn) {
         if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
         try {
-            const resp = await fetch('/api/sent-replies');
+            const resp = await fetch(`/api/sent-replies${OPERATOR_QUERY}`);
             const data = await resp.json();
             renderSentReplies(data);
         } catch (err) {
@@ -2205,6 +2651,7 @@
         errEl.style.display = 'none';
         okEl.style.display  = 'none';
         const payload = {
+            client_id: OPERATOR_CLIENT_ID,
             name:    document.getElementById('al-name').value.trim(),
             company: document.getElementById('al-company').value.trim(),
             email:   document.getElementById('al-email').value.trim(),
@@ -2286,7 +2733,7 @@
     async function refreshAnalytics(btn) {
         if (btn) { btn.disabled = true; btn.textContent = '…'; }
         try {
-            const res  = await fetch('/api/analytics');
+            const res  = await fetch(`/api/analytics${OPERATOR_QUERY}`);
             const d    = await res.json();
             const f    = d.funnel.counts;
             const sb   = d.score_bands;
@@ -2358,7 +2805,7 @@
     async function enrolProspect(id, btn) {
         if (!confirm('Enrol this prospect in the outreach sequence?')) return;
         btn.disabled = true; btn.textContent = '…';
-        const res = await fetch(`/api/prospects/${id}/enrol`, { method: 'POST' });
+        const res = await fetch(`/api/prospects/${id}/enrol${OPERATOR_QUERY}`, { method: 'POST' });
         const d   = await res.json();
         if (res.ok) {
             btn.remove();   // hide enrol button — they're now in sequence
@@ -2402,7 +2849,7 @@
             status:     document.getElementById('edit-status').value,
             notes:      document.getElementById('edit-notes').value.trim(),
         };
-        const res = await fetch(`/api/prospects/${id}`, {
+        const res = await fetch(`/api/prospects/${id}${OPERATOR_QUERY}`, {
             method: 'PATCH',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload),
@@ -2421,7 +2868,7 @@
     async function deleteProspect(id, btn) {
         if (!confirm('Delete this prospect and all related records? This cannot be undone.')) return;
         btn.disabled = true;
-        const res = await fetch(`/api/prospects/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/prospects/${id}${OPERATOR_QUERY}`, { method: 'DELETE' });
         if (res.ok) {
             document.getElementById(`prospect-row-${id}`)?.remove();
         } else {
@@ -2493,6 +2940,130 @@
     }
     refreshMonitorStatus();
     setInterval(refreshMonitorStatus, 30000);   // refresh every 30 s
+
+    // ── Email Warmup Status ───────────────────────────────────────────────
+    async function loadWarmupStatus() {
+        const body = document.getElementById('warmup-body');
+        const badge = document.getElementById('warmup-badge');
+        try {
+            const res = await fetch('/api/warmup-status');
+            const d   = await res.json();
+
+            if (!d.configured) {
+                body.innerHTML = `
+                    <p style="color:var(--text-muted);font-size:0.9rem;">
+                        Warmup not configured. Set <code>WARMUP_START_DATE</code> and
+                        <code>WARMUP_ADDRESSES</code> in
+                        <a href="/settings" style="color:#818cf8;">Settings</a> to begin warming your sender reputation.
+                    </p>`;
+                badge.style.display = 'none';
+                return;
+            }
+
+            const pct       = d.pct ?? 0;
+            const barColor  = d.fully_warmed ? '#6ee7b7' : '#818cf8';
+            const limitText = d.daily_limit === 0 ? 'Unlimited' : String(d.daily_limit);
+            const remText   = d.remaining_today === -1 ? '∞' : String(d.remaining_today);
+
+            badge.textContent = d.fully_warmed ? 'Fully Warmed' : `Day ${d.day}`;
+            badge.style.display = 'inline-block';
+            if (d.fully_warmed) {
+                badge.style.background = 'rgba(16,185,129,0.2)';
+                badge.style.borderColor = 'rgba(16,185,129,0.35)';
+                badge.style.color = '#6ee7b7';
+            } else {
+                badge.style.background = 'rgba(129,140,248,0.2)';
+                badge.style.borderColor = 'rgba(129,140,248,0.35)';
+                badge.style.color = '#818cf8';
+            }
+
+            body.innerHTML = `
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.25rem;">
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:0.85rem 1rem;">
+                        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem;">Today's Cap</div>
+                        <div style="font-size:1.4rem;font-weight:600;color:#e2e8f0;">${limitText}</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">${d.tier_label}</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:0.85rem 1rem;">
+                        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem;">Sent Today</div>
+                        <div style="font-size:1.4rem;font-weight:600;color:#e2e8f0;">${d.sent_today}</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">${remText} remaining</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:0.85rem 1rem;">
+                        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.3rem;">Warmup Emails</div>
+                        <div style="font-size:1.4rem;font-weight:600;color:#e2e8f0;">${d.warmup_today}</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">${d.warmup_total} all-time · ${d.addresses} partner${d.addresses !== 1 ? 's' : ''}</div>
+                    </div>
+                </div>
+                <div style="margin-bottom:0.4rem;display:flex;justify-content:space-between;font-size:0.78rem;color:var(--text-muted);">
+                    <span>Ramp progress — Day ${d.day} of 35</span>
+                    <span>${pct}%</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.06);border-radius:99px;height:8px;overflow:hidden;">
+                    <div style="height:100%;width:${pct}%;background:${barColor};border-radius:99px;transition:width 0.4s;"></div>
+                </div>
+                <p style="margin-top:0.75rem;font-size:0.78rem;color:var(--text-muted);">
+                    Started ${d.start_date} &nbsp;·&nbsp;
+                    ${d.fully_warmed ? 'Fully warmed — 200 sends/day available.' : `${35 - d.day} day${35 - d.day !== 1 ? 's' : ''} until fully warmed.`}
+                </p>`;
+        } catch (e) {
+            body.innerHTML = `<p style="color:#f87171;font-size:0.9rem;">Could not load warmup status: ${e.message}</p>`;
+        }
+    }
+    loadWarmupStatus();
+    setInterval(loadWarmupStatus, 60000);   // refresh every 60 s
+
+    // ── Sample Decks ─────────────────────────────────────────────────────
+    async function generateSampleDecks(btn) {
+        const body = document.getElementById('sample-decks-body');
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Generating…';
+        body.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Building 4 sample decks — this takes about 30 seconds…</p>`;
+        try {
+            const res = await fetch('/api/sample-decks', { method: 'POST' });
+            if (!res.ok) {
+                const text = await res.text();
+                body.innerHTML = `<p style="color:#f87171">HTTP ${res.status}: ${text.slice(0,200)}</p>`;
+                return;
+            }
+            const d   = await res.json();
+            if (d.error) { body.innerHTML = `<p style="color:#f87171">${d.error}</p>`; return; }
+            renderSampleDecks(d.samples);
+        } catch(e) {
+            body.innerHTML = `<p style="color:#f87171">Failed: ${e.message}</p>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = orig;
+        }
+    }
+
+    function renderSampleDecks(samples) {
+        const body = document.getElementById('sample-decks-body');
+        if (!samples || !samples.length) {
+            body.innerHTML = `<p style="color:#f87171">No samples generated.</p>`;
+            return;
+        }
+        const cards = samples.map(s => {
+            const statusColor = s.error ? '#f87171' : '#6ee7b7';
+            const statusText  = s.error ? `Error: ${s.error}` : 'Ready';
+            const openBtn = s.url
+                ? `<a href="${s.url}" target="_blank"
+                    style="display:inline-block;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.4);color:#818cf8;border-radius:7px;padding:0.3rem 0.9rem;font-size:0.78rem;font-weight:600;text-decoration:none;margin-top:0.75rem;"
+                    onmouseover="this.style.background='rgba(99,102,241,0.35)'"
+                    onmouseout="this.style.background='rgba(99,102,241,0.2)'">Open PDF →</a>`
+                : '';
+            return `
+            <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:1.1rem 1.25rem;">
+                <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.35rem;text-transform:uppercase;">${s.industry || 'General'}</div>
+                <div style="font-size:1rem;font-weight:600;color:#e2e8f0;margin-bottom:0.2rem;">${s.company}</div>
+                <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:0.3rem;">${s.contact}</div>
+                <div style="font-size:0.75rem;color:${statusColor};">${statusText}</div>
+                ${openBtn}
+            </div>`;
+        }).join('');
+        body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">${cards}</div>`;
+    }
 
     </script>
 </body>

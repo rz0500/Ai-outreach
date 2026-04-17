@@ -120,3 +120,58 @@ def get_self_prospect_run_hour() -> int:
 def get_secret_key() -> str:
     """Return the Flask session secret key. Falls back to a fixed dev default."""
     return (os.getenv("SECRET_KEY") or "dev-secret-change-in-production").strip()
+
+
+def get_app_base_url() -> str:
+    """
+    Return the public base URL for this deployment (no trailing slash).
+    Used to generate absolute URLs (e.g. unsubscribe links) in background threads
+    that don't have a Flask request context.
+    Defaults to http://localhost:5000 when APP_BASE_URL is not set.
+    """
+    raw = (os.getenv("APP_BASE_URL") or "http://localhost:5000").strip().rstrip("/")
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# Email warmup
+# ---------------------------------------------------------------------------
+
+def get_warmup_start_date() -> str:
+    """
+    ISO date (YYYY-MM-DD) when warmup started. Used to compute the current
+    ramp tier. Empty string means warmup is not yet configured.
+    """
+    return (os.getenv("WARMUP_START_DATE") or "").strip()
+
+
+def get_warmup_addresses() -> list[str]:
+    """
+    Comma-separated list of warmup partner email addresses.
+    The warmup engine sends short emails to these and auto-replies when they land.
+    """
+    raw = os.getenv("WARMUP_ADDRESSES", "").strip()
+    return [a.strip() for a in raw.split(",") if a.strip()]
+
+
+def get_warmup_emails_per_cycle() -> int:
+    """How many warmup emails to send per scheduler cycle. Default 3."""
+    raw = os.getenv("WARMUP_EMAILS_PER_CYCLE", "3")
+    try:
+        val = int(raw)
+    except ValueError:
+        val = 3
+    return max(1, val)
+
+
+def get_max_real_sends_override() -> int:
+    """
+    Hard cap for real outreach sends per day, bypassing the ramp schedule.
+    0 = use the ramp schedule automatically. Set this to override.
+    """
+    raw = os.getenv("MAX_DAILY_SENDS", "0")
+    try:
+        val = int(raw)
+    except ValueError:
+        val = 0
+    return max(0, val)

@@ -4,8 +4,7 @@ sendgrid_mailer.py - Robust Email Infrastructure
 Module 16 of the AI Lead Gen System.
 
 Uses the official SendGrid API as a drop-in replacement for the native SMTP mailer.
-Supports domain rotation (multiple sender emails), rate limiting checks, 
-and highly reliable deliverability.
+Supports domain rotation, PDF attachments, and RFC-2822 thread headers.
 
 Configuration:
     SENDGRID_API_KEY in .env
@@ -13,19 +12,25 @@ Configuration:
 """
 
 import os
+import base64
+import mimetypes
 import random
 import logging
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import (
+    Mail, Attachment, FileContent, FileName, FileType, Disposition, Header, From,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 def get_sender_emails() -> list:
     """Parse comma-separated sender emails from the environment."""
     raw = os.getenv("SENDER_EMAILS", "you@yourdomain.com")
     return [e.strip() for e in raw.split(",") if e.strip()]
+
 
 def get_sendgrid_client():
     key = os.getenv("SENDGRID_API_KEY")
@@ -33,42 +38,81 @@ def get_sendgrid_client():
         return None
     return SendGridAPIClient(key)
 
-def send_email(to_email: str, subject: str, body_text: str) -> tuple[bool, str]:
+
+def send_email(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    *,
+    from_address: str = "",
+    from_name: str = "",
+    attachment_path: str = "",
+    in_reply_to: str = "",
+    references: str = "",
+    list_unsubscribe: str = "",
+    html_body: str = "",
+) -> tuple[bool, str]:
     """
-    Send an email using SendGrid with random domain rotation.
-    Acts as a direct drop-in replacement for mailer.send_email().
-    Returns (success_boolean, error_message).
+    Send an email via SendGrid with domain rotation, optional PDF attachment,
+    and RFC-2822 thread headers.  Drop-in replacement for mailer.send_email().
+    Returns (success_bool, error_message).
     """
     senders = get_sender_emails()
     if not senders:
         return False, "Missing SENDER_EMAILS config."
-        
+
     client = get_sendgrid_client()
     if not client:
-        # Fails safely if API key isn't provided yet
         return False, "Missing SENDGRID_API_KEY in .env."
 
-    # Domain Rotation: Randomly pick one of the active sender emails
-    chosen_sender = random.choice(senders)
-    
-    # Convert plain text body to HTML for SendGrid
-    html_content = body_text.replace("\n", "<br>")
+    chosen_sender = (from_address or "").strip() or random.choice(senders)
+    html_content  = html_body if html_body else body_text.replace("\n", "<br>")
 
     message = Mail(
-        from_email=chosen_sender,
+        from_email=From(chosen_sender, from_name) if from_name else chosen_sender,
         to_emails=to_email,
         subject=subject,
-        html_content=html_content
+        html_content=html_content,
     )
-    
+
+    # ── Thread headers ────────────────────────────────────────────────────
+    if in_reply_to:
+        message.header = Header("In-Reply-To", in_reply_to)
+    if references:
+        message.header = Header("References", references)
+    if list_unsubscribe:
+        message.header = Header("List-Unsubscribe", f"<{list_unsubscribe}>")
+        message.header = Header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+
+    # ── Attachment ────────────────────────────────────────────────────────
+    if attachment_path:
+        try:
+            with open(attachment_path, "rb") as fh:
+                data = fh.read()
+            mime_type, _ = mimetypes.guess_type(attachment_path)
+            mime_type = mime_type or "application/octet-stream"
+            att = Attachment(
+                FileContent(base64.b64encode(data).decode()),
+                FileName(os.path.basename(attachment_path)),
+                FileType(mime_type),
+                Disposition("attachment"),
+            )
+            message.attachment = att
+        except OSError as exc:
+            logging.warning(f"SendGrid: could not attach {attachment_path}: {exc}")
+
     try:
         response = client.send(message)
-        logging.info(f"SendGrid success: Sent from {chosen_sender} to {to_email} (Status: {response.status_code})")
+        logging.info(
+            f"SendGrid success: {chosen_sender} -> {to_email} "
+            f"(status {response.status_code})"
+        )
         return True, ""
-    except Exception as e:
-        err = f"SendGrid API Error: {str(e)}"
+    except Exception as exc:
+        err = f"SendGrid API Error: {exc}"
         logging.error(err)
         return False, err
+
 
 if __name__ == "__main__":
     print("Testing SendGrid Mailer interface...")

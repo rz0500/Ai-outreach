@@ -13,20 +13,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import database
+from deliverability import deliver_prospect_email, route_outbound_email, verify_unsubscribe_token
 import reporter
-from mailer import send_email as _smtp_send_email
 from outreach import debug_email_reasoning, generate_email
+import settings
 from settings import (
     get_calendar_link,
     get_inbox_poll_interval,
     get_sequence_run_hour,
-    get_use_sendgrid,
     get_self_prospect_niche,
     get_self_prospect_location,
     get_self_prospect_daily_limit,
     get_self_prospect_run_hour,
     get_secret_key,
 )
+import warmup_engine
 
 app = Flask(__name__)
 app.secret_key = get_secret_key()
@@ -66,6 +67,7 @@ def _background_scheduler() -> None:
     last_sequence_date: datetime.date | None = None
     last_self_prospect_date: datetime.date | None = None
     last_weekly_report_date: datetime.date | None = None
+    last_warmup_cycle_hour: int | None = None  # tracks which 4-hour slot last ran
 
     while True:
         now_utc = datetime.datetime.utcnow()
@@ -132,20 +134,44 @@ def _background_scheduler() -> None:
             to_process = set(_pending_client_research)
             for cid in to_process:
                 try:
-                    # Find the first prospect for this client that has a website
-                    # (added by /onboard POST before queuing the research)
+                    client_rec = database.get_client(cid)
+
+                    # 1. Research the stub prospect (client's own website) if present
                     prospects = database.get_all_prospects(client_id=cid)
-                    prospect = next(
+                    website_stub = next(
                         (p for p in prospects if p.get("website")),
                         None,
                     )
-                    if prospect:
+                    if website_stub:
                         try:
-                            _run_pipeline_for_db_prospect(prospect)
+                            _run_pipeline_for_db_prospect(website_stub)
                         except Exception as exc:
-                            print(f"[Scheduler] onboard pipeline failed for client {cid}: {exc}")
-                        database.ensure_sequence_enrollment(prospect["id"])
-                        database.update_status(prospect["id"], "in_sequence")
+                            print(f"[Scheduler] onboard website research failed for client {cid}: {exc}")
+
+                    # 2. Discover real prospects via Google Maps using the client's niche
+                    client_niche     = (client_rec or {}).get("niche") if client_rec else None
+                    client_location  = (client_rec or {}).get("location") if client_rec else None
+                    global_location  = get_self_prospect_location()
+                    search_location  = client_location or global_location
+                    if client_niche and search_location:
+                        try:
+                            from google_maps_finder import find_and_add_prospects
+                            limit      = get_self_prospect_daily_limit()
+                            new_leads  = find_and_add_prospects(
+                                client_niche, search_location, limit=limit, client_id=cid
+                            )
+                            for lead in new_leads:
+                                try:
+                                    _run_pipeline_for_db_prospect(lead)
+                                    database.ensure_sequence_enrollment(lead["id"])
+                                    database.update_status(lead["id"], "in_sequence")
+                                except Exception as exc:
+                                    print(f"[Scheduler] onboard lead pipeline failed for client {cid}, "
+                                          f"'{lead.get('company')}': {exc}")
+                            print(f"[Scheduler] onboard: added {len(new_leads)} leads for client {cid}")
+                        except Exception as exc:
+                            print(f"[Scheduler] onboard Google Maps discovery failed for client {cid}: {exc}")
+
                     _pending_client_research.discard(cid)
                 except Exception as exc:
                     print(f"[Scheduler] onboard drain error for client {cid}: {exc}")
@@ -161,11 +187,21 @@ def _background_scheduler() -> None:
                 _scheduler_state["last_weekly_report_error"] = str(exc)
             last_weekly_report_date = this_monday
 
+        # ── Warmup email cycle (every 4 hours) ────────────────────────────
+        warmup_slot = now_utc.hour // 4  # 0-5, changes 6× per day
+        if last_warmup_cycle_hour != (today, warmup_slot):
+            try:
+                warmup_engine.run_warmup_cycle(db_path=database.DB_PATH)
+            except Exception as exc:
+                print(f"[Scheduler] warmup cycle error: {exc}")
+            last_warmup_cycle_hour = (today, warmup_slot)
+
         time.sleep(get_inbox_poll_interval())
 
 # Ensure tables exist to prevent sqlite crash if visited before running main
 database.initialize_database()
 database.initialize_outreach_table()
+database.initialize_send_counters_table()
 
 # ---------------------------------------------------------------------------
 # Sample prospect data used to showcase the email engine on the dashboard
@@ -368,15 +404,69 @@ def _generate_sample_emails():
     return samples
 
 
-@app.route("/")
-def index():
+def _coerce_operator_client_id(raw_value, default: int = 1) -> int:
+    """Parse an operator-selected client id and fall back safely."""
+    try:
+        client_id = int(raw_value)
+    except (TypeError, ValueError):
+        return default
+    if client_id < 1:
+        return default
+    return client_id
+
+
+def _apply_client_prospect_filters(prospects: list, q: str, status_filter: str, sort_key: str, sort_dir: str) -> tuple[list, str, str]:
+    """Apply shared client prospect search, status, and sorting rules."""
+    filtered = prospects
+    if q:
+        filtered = [
+            p for p in filtered
+            if q in (p.get("name") or "").lower()
+            or q in (p.get("company") or "").lower()
+            or q in (p.get("email") or "").lower()
+        ]
+    if status_filter:
+        filtered = [p for p in filtered if (p.get("status") or "").lower() == status_filter]
+
+    sorters = {
+        "score": lambda p: p.get("lead_score") or 0,
+        "name": lambda p: (p.get("name") or "").lower(),
+        "company": lambda p: (p.get("company") or "").lower(),
+        "status": lambda p: (p.get("status") or "").lower(),
+    }
+    if sort_key not in sorters:
+        sort_key = "score"
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "desc"
+
+    filtered = sorted(
+        filtered,
+        key=sorters[sort_key],
+        reverse=(sort_dir == "desc"),
+    )
+    return filtered, sort_key, sort_dir
+
+
+def _render_operator_dashboard():
+    _db = database.DB_PATH
+    clients = database.get_all_clients(db_path=_db)
+    selected_client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    selected_client = database.get_client(selected_client_id, db_path=_db)
+    if not selected_client:
+        selected_client_id = 1
+        selected_client = database.get_client(1, db_path=_db)
+
     # We query the database via our existing modules
-    prospects = _annotate_sequence_progress(database.get_all_prospects())
-    summary = reporter.generate_summary()
+    prospects = _annotate_sequence_progress(
+        database.get_all_prospects(client_id=selected_client_id, db_path=_db)
+    )
+    summary = reporter.generate_summary(client_id=selected_client_id, db_path=_db)
+    deliverability = database.get_deliverability_summary(client_id=selected_client_id, db_path=_db)
+    selected_client_analytics = database.get_client_analytics(selected_client_id, db_path=_db)
     
     # Get recent outbox drafts/sent
     try:
-        outreach_data = database.get_all_outreach()
+        outreach_data = database.get_all_outreach(client_id=selected_client_id, db_path=_db)
     except Exception:
         outreach_data = []
         
@@ -390,7 +480,7 @@ def index():
 
     # Reply drafts awaiting review
     try:
-        reply_drafts = database.get_pending_reply_drafts()
+        reply_drafts = database.get_pending_reply_drafts(client_id=selected_client_id, db_path=_db)
     except Exception:
         reply_drafts = []
 
@@ -406,7 +496,60 @@ def index():
         decks=decks,
         reply_drafts=reply_drafts,
         sample_emails=sample_emails,
+        deliverability=deliverability,
+        clients=clients,
+        selected_client=selected_client,
+        selected_client_id=selected_client_id,
+        selected_client_analytics=selected_client_analytics,
     )
+
+
+@app.route("/")
+def landing_page():
+    """Public marketing page for the self-serve product launch."""
+    return render_template(
+        "landing.html",
+        default_calendar_link=get_calendar_link(),
+    )
+
+
+@app.route("/checkout")
+def checkout_page():
+    """Pricing page — Stripe Checkout when configured, otherwise pilot flow."""
+    return render_template("checkout_dummy.html")
+
+
+@app.route("/api/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    """
+    Create a Stripe Checkout session and return the hosted URL.
+    Falls back to {"fallback": "/onboard"} when STRIPE_SECRET_KEY is not set.
+    """
+    secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    price_id   = os.getenv("STRIPE_PRICE_ID", "").strip()
+
+    if not secret_key or not price_id:
+        return jsonify({"fallback": "/onboard"})
+
+    try:
+        import stripe as _stripe
+        _stripe.api_key = secret_key
+        session = _stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url=request.host_url.rstrip("/") + "/onboard?plan=paid",
+            cancel_url=request.host_url.rstrip("/") + "/checkout",
+        )
+        return jsonify({"url": session.url})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/ops")
+@app.route("/dashboard")
+def index():
+    """Internal operator dashboard."""
+    return _render_operator_dashboard()
 
 @app.route("/api/sample-emails")
 def api_sample_emails():
@@ -845,8 +988,8 @@ def api_full_pipeline():
                 "credibility":   getattr(iq, "credibility", None),
                 "generic_risk":  getattr(iq, "generic_risk", None),
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[Pipeline] email reasoning failed: {exc}")
 
     if has_api_key:
         from ai_engine import generate_hyper_personalized_email
@@ -877,8 +1020,8 @@ def api_full_pipeline():
                 subject=email_result["subject"],
                 body=email_result["body"],
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[Pipeline] save_outreach failed for prospect {prospect_id}: {exc}")
 
     # ------------------------------------------------------------------ #
     # Step 3: Generate PDF proposal                                        #
@@ -921,13 +1064,15 @@ def api_full_pipeline():
 @app.route("/api/reply-drafts")
 def api_reply_drafts():
     """Return all reply drafts with status=pending_review."""
-    return jsonify(database.get_pending_reply_drafts())
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    return jsonify(database.get_pending_reply_drafts(client_id=client_id, db_path=database.DB_PATH))
 
 
 @app.route("/api/sent-replies")
 def api_sent_replies():
     """Return all reply drafts that have been approved and sent."""
-    return jsonify(database.get_sent_reply_drafts())
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    return jsonify(database.get_sent_reply_drafts(client_id=client_id, db_path=database.DB_PATH))
 
 
 @app.route("/api/reply-drafts/<int:draft_id>/action", methods=["POST"])
@@ -938,11 +1083,12 @@ def api_reply_draft_action(draft_id):
     """
     data = request.get_json(silent=True) or {}
     action = (data.get("action") or "").strip()
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
     if action not in ("approve", "dismiss"):
         return jsonify({"error": "action must be 'approve' or 'dismiss'"}), 400
 
-    draft = database.get_reply_draft_by_id(draft_id)
-    if not draft:
+    draft = database.get_reply_draft_by_id(draft_id, db_path=database.DB_PATH)
+    if not draft or draft.get("client_id", 1) != client_id:
         return jsonify({"error": "Draft not found"}), 404
 
     if action == "dismiss":
@@ -974,25 +1120,24 @@ def api_reply_draft_action(draft_id):
     # reply into the original conversation thread.
     inbound_message_id = (draft.get("inbound_message_id") or "").strip()
 
-    sent, error = _route_send_email(
-        recipient, subject, body,
+    delivery = deliver_prospect_email(
+        to_address=recipient,
+        subject=subject,
+        body=body,
+        prospect_id=draft["prospect_id"],
+        event_type="reply_draft_sent",
+        client_id=draft.get("client_id", 1),
+        db_path=database.DB_PATH,
+        content_excerpt=body[:250],
+        metadata=f"draft_id={draft_id};recipient={recipient};subject={subject}",
         in_reply_to=inbound_message_id,
         references=inbound_message_id,
     )
-    if not sent:
-        return jsonify({"error": f"Send failed: {error}"}), 500
+    if not delivery["sent"]:
+        return jsonify({"error": f"Send failed: {delivery['error']}"}), 500
 
     database.update_reply_draft_status(draft_id, "sent")
     database.update_status(draft["prospect_id"], "replied")
-    database.log_communication_event(
-        prospect_id=draft["prospect_id"],
-        channel="email",
-        direction="outbound",
-        event_type="reply_draft_sent",
-        status="sent",
-        content_excerpt=body[:250],
-        metadata=f"draft_id={draft_id};recipient={recipient};subject={subject}",
-    )
     return jsonify({"ok": True, "status": "sent", "recipient": recipient, "subject": subject})
 
 
@@ -1104,7 +1249,7 @@ def _extract_email_from_website(url: str) -> str:
     return _pick(found)
 
 
-def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
+def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     """
     Run research + email + PDF for a prospect that is already in the DB.
     Returns a result dict consumed by the find-and-fire endpoint.
@@ -1125,15 +1270,27 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
         "email":     {},
         "pdf":       {},
         "outreach_id": None,
+        "stage_statuses": {
+            "research": "pending",
+            "email": "pending",
+            "pdf": "pending",
+        },
+        "stage_errors": {},
+        "status": "running",
     }
 
     # Step 1 — Research
+    if stage_hook:
+        stage_hook("research", "active", {"company": company})
     if not website:
+        result["stage_statuses"]["research"] = "skipped"
         result["research"] = {"note": "No website — research skipped"}
     else:
         try:
             analysis = research_prospect(prospect_id)
             if "error" in analysis:
+                result["stage_statuses"]["research"] = "error"
+                result["stage_errors"]["research"] = analysis["error"]
                 result["research"] = {"note": analysis["error"]}
             else:
                 result["research"] = {
@@ -1145,14 +1302,21 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
                     "pain_point":     analysis.get("pain_point", ""),
                     "growth_signal":  analysis.get("growth_signal", ""),
                 }
+                result["stage_statuses"]["research"] = "done"
         except Exception as exc:
+            result["stage_statuses"]["research"] = "error"
+            result["stage_errors"]["research"] = str(exc)
             result["research"] = {"note": f"Research error: {exc}"}
 
+    if stage_hook:
+        stage_hook(
+            "research",
+            result["stage_statuses"]["research"],
+            {"company": company, "error": result["stage_errors"].get("research", "")},
+        )
+
     # Reload prospect from DB so enrichment fields are present
-    enriched = next(
-        (p for p in database.get_all_prospects() if p["id"] == prospect_id),
-        prospect,
-    )
+    enriched = database.get_prospect_by_id(prospect_id) or prospect
 
     # Auto-extract email if the prospect has no email on file
     if not enriched.get("email") and website:
@@ -1165,23 +1329,32 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
 
     # Step 2 — Email
     has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    if stage_hook:
+        stage_hook("email", "active", {"company": company})
     try:
         if has_api_key:
             from ai_engine import generate_hyper_personalized_email
             email_result = generate_hyper_personalized_email(enriched)
         else:
             email_result = generate_email(enriched)
-    except Exception:
+    except Exception as exc:
+        result["stage_errors"]["email"] = str(exc)
         try:
             email_result = generate_email(enriched)
         except Exception as exc:
             email_result = {"subject": "", "body": "", "quality_score": 0}
+            result["stage_errors"]["email"] = str(exc)
 
     result["email"] = {
         "subject":       email_result.get("subject", ""),
         "body":          email_result.get("body", ""),
         "quality_score": email_result.get("quality_score", 0),
     }
+    if result["email"]["subject"] and result["email"]["body"]:
+        result["stage_statuses"]["email"] = "done"
+    else:
+        result["stage_statuses"]["email"] = "error"
+        result["stage_errors"]["email"] = result["stage_errors"].get("email", "Email generation returned no draft.")
 
     # Save email draft to outreach table
     if result["email"]["subject"] and result["email"]["body"]:
@@ -1191,17 +1364,29 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
                 subject=result["email"]["subject"],
                 body=result["email"]["body"],
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[Pipeline] save_outreach failed for '{company}': {exc}")
 
     # Step 3 — PDF
+    if stage_hook:
+        stage_hook(
+            "email",
+            result["stage_statuses"]["email"],
+            {"company": company, "error": result["stage_errors"].get("email", "")},
+        )
+
     pdf_filepath = ""
+    if stage_hook:
+        stage_hook("pdf", "active", {"company": company})
     try:
         pdf_filepath = generate_proposal(enriched)
         filename = os.path.basename(pdf_filepath)
         result["pdf"] = {"url": f"/proposals/{filename}", "filename": filename}
+        result["stage_statuses"]["pdf"] = "done"
     except Exception as exc:
         result["pdf"] = {"url": "", "filename": "", "error": str(exc)}
+        result["stage_statuses"]["pdf"] = "error"
+        result["stage_errors"]["pdf"] = str(exc)
 
     # Persist the PDF path on the outreach draft so send can attach it
     if result["outreach_id"] and pdf_filepath and os.path.isfile(pdf_filepath):
@@ -1212,15 +1397,161 @@ def _run_pipeline_for_db_prospect(prospect: dict) -> dict:
                     (pdf_filepath, result["outreach_id"]),
                 )
                 conn.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[Pipeline] pdf_path update failed for '{company}': {exc}")
+
+    if stage_hook:
+        stage_hook(
+            "pdf",
+            result["stage_statuses"]["pdf"],
+            {"company": company, "error": result["stage_errors"].get("pdf", "")},
+        )
+
+    if all(status in ("done", "skipped") for status in result["stage_statuses"].values()):
+        result["status"] = "completed"
+    elif any(status == "done" for status in result["stage_statuses"].values()):
+        result["status"] = "partial_error"
+    else:
+        result["status"] = "failed"
 
     return result
 
 
 # In-memory job store for find-and-fire background jobs
-# { job_id: {status, progress, total, results, error} }
+# { job_id: {status, stage, progress, total, results, error, ...} }
 _find_fire_jobs: dict = {}
+
+
+def _new_find_fire_job(limit: int) -> dict:
+    """Return the initial job payload for a Find-and-Fire background run."""
+    return {
+        "status": "running",
+        "stage": "finding",
+        "progress": 0,
+        "total": limit,
+        "results": [],
+        "items": [],
+        "error": None,
+        "message": "Finding businesses...",
+        "current_company": "",
+        "current_index": 0,
+    }
+
+
+def _set_find_fire_stage(job: dict, stage: str, message: str = "", *, error: str | None = None) -> None:
+    """Update the top-level state for a Find-and-Fire job."""
+    job["stage"] = stage
+    if error:
+        job["status"] = "error"
+        job["error"] = error
+    elif stage == "done":
+        job["status"] = "done"
+    else:
+        job["status"] = "running"
+    if message:
+        job["message"] = message
+
+
+def _ensure_find_fire_item(job: dict, index: int, company: str, website: str = "") -> dict:
+    """Return or create a per-lead progress record for the job."""
+    while len(job["items"]) <= index:
+        job["items"].append({
+            "index": len(job["items"]) + 1,
+            "company": "",
+            "website": "",
+            "status": "pending",
+            "current_stage": "pending",
+            "stage_statuses": {"research": "pending", "email": "pending", "pdf": "pending"},
+            "error": "",
+        })
+    item = job["items"][index]
+    if company:
+        item["company"] = company
+    if website:
+        item["website"] = website
+    return item
+
+
+def _run_find_fire_job(job_id: str, query: str, location: str, limit: int, finder) -> None:
+    """
+    Execute a Find-and-Fire job using the provided discovery callable.
+    Broken out for easier testing and richer progress updates.
+    """
+    job = _find_fire_jobs[job_id]
+    _set_find_fire_stage(job, "finding", f"Finding businesses for {query} in {location}...")
+
+    try:
+        prospects = finder(query, location, limit=limit)
+    except Exception as exc:
+        _set_find_fire_stage(job, "error", "Business discovery failed.", error=str(exc))
+        return
+
+    if not prospects:
+        job["error"] = "No businesses with websites found for that search."
+        _set_find_fire_stage(job, "done", job["error"])
+        return
+
+    job["total"] = len(prospects)
+    job["items"] = []
+
+    for i, prospect in enumerate(prospects):
+        company = prospect.get("company", "?")
+        website = prospect.get("website", "")
+        item = _ensure_find_fire_item(job, i, company, website)
+        item["status"] = "running"
+        item["current_stage"] = "research"
+        job["current_company"] = company
+        job["current_index"] = i + 1
+
+        def _stage_hook(stage: str, state: str, meta: dict | None = None):
+            meta = meta or {}
+            item["current_stage"] = stage
+            item["stage_statuses"][stage] = state
+            if state == "active":
+                _set_find_fire_stage(job, stage, f"{stage.title()} {company} ({i + 1}/{job['total']})")
+            elif state == "error":
+                item["error"] = meta.get("error", "")
+                item["status"] = "partial_error"
+                _set_find_fire_stage(job, stage, f"{stage.title()} issue for {company}")
+            elif state in ("done", "skipped") and all(
+                s in ("done", "skipped") for s in item["stage_statuses"].values()
+            ):
+                item["status"] = "completed"
+
+        try:
+            result = _run_pipeline_for_db_prospect(prospect, stage_hook=_stage_hook)
+        except Exception as exc:
+            item["status"] = "failed"
+            item["error"] = str(exc)
+            result = {
+                "prospect_id": prospect.get("id"),
+                "company": company,
+                "website": website,
+                "prospect_email": prospect.get("email") or "",
+                "research": {},
+                "email": {},
+                "pdf": {},
+                "outreach_id": None,
+                "stage_statuses": dict(item["stage_statuses"]),
+                "stage_errors": {"worker": str(exc)},
+                "status": "failed",
+                "error": str(exc),
+            }
+
+        item["stage_statuses"] = dict(result.get("stage_statuses", item["stage_statuses"]))
+        item["status"] = result.get("status", item["status"])
+        item["current_stage"] = "done"
+        item["error"] = result.get("error") or "; ".join(
+            err for err in result.get("stage_errors", {}).values() if err
+        )
+        job["results"].append(result)
+        job["progress"] = i + 1
+        if i + 1 < job["total"]:
+            _set_find_fire_stage(job, "research", f"Preparing next lead ({i + 2}/{job['total']})")
+
+    job["current_company"] = ""
+    job["current_index"] = job["total"]
+    _set_find_fire_stage(job, "done", f"Processed {job['progress']} of {job['total']} businesses.")
 
 
 @app.route("/api/find-and-fire", methods=["POST"])
@@ -1251,39 +1582,28 @@ def api_find_and_fire():
         return jsonify({"error": "GOOGLE_MAPS_API_KEY not configured in .env"}), 400
 
     job_id = str(uuid.uuid4())
-    _find_fire_jobs[job_id] = {
-        "status":   "running",
-        "progress": 0,
-        "total":    limit,
-        "results":  [],
-        "error":    None,
-    }
+    _find_fire_jobs[job_id] = _new_find_fire_job(limit)
 
-    def _run(job_id, query, location, limit):
-        job = _find_fire_jobs[job_id]
-        try:
-            prospects = find_and_add_prospects(query, location, limit=limit)
-            if not prospects:
-                job["status"] = "done"
-                job["error"]  = "No businesses with websites found for that search."
-                return
-            job["total"] = len(prospects)
-            for i, p in enumerate(prospects):
-                try:
-                    result = _run_pipeline_for_db_prospect(p)
-                    job["results"].append(result)
-                except Exception as exc:
-                    job["results"].append({"company": p.get("company", "?"), "error": str(exc)})
-                job["progress"] = i + 1
-            job["status"] = "done"
-        except Exception as exc:
-            job["status"] = "done"
-            job["error"]  = str(exc)
-
-    t = _threading.Thread(target=_run, args=(job_id, query, location, limit), daemon=True)
+    t = _threading.Thread(
+        target=_run_find_fire_job,
+        args=(job_id, query, location, limit, find_and_add_prospects),
+        daemon=True,
+    )
     t.start()
 
-    return jsonify({"job_id": job_id, "status": "running", "total": limit})
+    return jsonify({
+        "job_id": job_id,
+        "status": "running",
+        "stage": _find_fire_jobs[job_id]["stage"],
+        "progress": 0,
+        "total": limit,
+        "current_company": "",
+        "current_index": 0,
+        "results": [],
+        "items": [],
+        "message": _find_fire_jobs[job_id]["message"],
+        "error": None,
+    })
 
 
 @app.route("/api/find-and-fire/<job_id>", methods=["GET"])
@@ -1295,8 +1615,13 @@ def api_find_and_fire_status(job_id):
     return jsonify({
         "job_id":   job_id,
         "status":   job["status"],
+        "stage":    job.get("stage", ""),
         "progress": job["progress"],
         "total":    job["total"],
+        "current_company": job.get("current_company", ""),
+        "current_index": job.get("current_index", 0),
+        "items":    job.get("items", []),
+        "message":  job.get("message", ""),
         "results":  job["results"],
         "error":    job["error"],
     })
@@ -1311,17 +1636,17 @@ def api_send_outreach(outreach_id):
     """
     data       = request.get_json(silent=True) or {}
     to_address = (data.get("to_address") or "").strip()
+    client_id  = _coerce_operator_client_id(request.args.get("client_id"), 1)
 
     # Load the outreach record
-    all_outreach = database.get_all_outreach()
+    all_outreach = database.get_all_outreach(client_id=client_id, db_path=database.DB_PATH)
     record = next((o for o in all_outreach if o["id"] == outreach_id), None)
     if not record:
         return jsonify({"error": "Outreach record not found"}), 404
 
     # Fall back to prospect's stored email if no address supplied
     if not to_address:
-        all_prospects = database.get_all_prospects()
-        p = next((x for x in all_prospects if x["id"] == record["prospect_id"]), None)
+        p = database.get_prospect_by_id(record["prospect_id"], db_path=database.DB_PATH)
         to_address = (p.get("email") or "") if p else ""
 
     if not to_address:
@@ -1332,31 +1657,31 @@ def api_send_outreach(outreach_id):
         return jsonify({"error": f"Invalid recipient: {reason}"}), 400
 
     pdf_path = (record.get("pdf_path") or "").strip()
-    sent, error = _route_send_email(
-        to_address, record["subject"], record["body"],
-        attachment_path=pdf_path,
-    )
-    if not sent:
-        return jsonify({"error": f"Send failed: {error}"}), 500
-
-    database.update_outreach_status(outreach_id, "sent")
-    database.update_status(record["prospect_id"], "contacted")
-    database.log_communication_event(
+    delivery = deliver_prospect_email(
+        to_address=to_address,
+        subject=record["subject"],
+        body=record["body"],
         prospect_id=record["prospect_id"],
-        channel="email",
-        direction="outbound",
         event_type="outreach_sent",
-        status="sent",
+        client_id=record.get("client_id", 1),
+        db_path=database.DB_PATH,
         content_excerpt=record["body"][:250],
         metadata=f"outreach_id={outreach_id};recipient={to_address}",
+        attachment_path=pdf_path,
     )
+    if not delivery["sent"]:
+        return jsonify({"error": f"Send failed: {delivery['error']}"}), 500
+
+    database.update_outreach_status(outreach_id, "sent", db_path=database.DB_PATH)
+    database.update_status(record["prospect_id"], "contacted", db_path=database.DB_PATH)
     return jsonify({"ok": True, "sent_to": to_address, "subject": record["subject"]})
 
 
 @app.route("/api/outreach-tracker")
 def api_outreach_tracker():
     """Return all sent outreach records for the tracker panel."""
-    return jsonify(database.get_sent_outreach())
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    return jsonify(database.get_sent_outreach(client_id=client_id, db_path=database.DB_PATH))
 
 
 def _route_send_email(
@@ -1366,21 +1691,40 @@ def _route_send_email(
     attachment_path: str = "",
     in_reply_to: str = "",
     references: str = "",
+    respect_suppression: bool = True,
+    client_id: int = 1,
+    db_path: str = database.DB_PATH,
+    skip_warmup_throttle: bool = False,
+    html_body: str = "",
 ) -> tuple[bool, str]:
     """
     Route outbound email through SendGrid or SMTP depending on USE_SENDGRID setting.
     SendGrid path: ignores attachment and thread headers (not yet supported there).
     SMTP path: supports PDF attachment and RFC-2822 thread headers.
+
+    skip_warmup_throttle — set True for system emails (magic links, weekly reports,
+    warmup emails themselves) that should not count against the daily outreach cap.
     """
-    if get_use_sendgrid():
-        from sendgrid_mailer import send_email as sg_send
-        return sg_send(to_address, subject, body)
-    return _smtp_send_email(
-        to_address, subject, body,
+    if not skip_warmup_throttle:
+        allowed, reason = warmup_engine.can_send_today(db_path=db_path)
+        if not allowed:
+            return False, reason
+
+    ok, err = route_outbound_email(
+        to_address=to_address,
+        subject=subject,
+        body=body,
         attachment_path=attachment_path,
         in_reply_to=in_reply_to,
         references=references,
+        respect_suppression=respect_suppression,
+        client_id=client_id,
+        db_path=db_path,
+        html_body=html_body,
     )
+    if ok and not skip_warmup_throttle:
+        warmup_engine.record_real_send(db_path=db_path)
+    return ok, err
 
 
 def _validate_email_address(address: str) -> tuple[bool, str]:
@@ -1419,6 +1763,7 @@ def api_add_prospect():
     data = request.get_json(silent=True) or {}
     name    = (data.get("name") or "").strip()
     company = (data.get("company") or "").strip()
+    client_id = _coerce_operator_client_id(data.get("client_id"), 1)
     if not name or not company:
         return jsonify({"error": "name and company are required"}), 400
     try:
@@ -1430,10 +1775,18 @@ def api_add_prospect():
             phone=(data.get("phone") or "").strip() or None,
             notes=(data.get("notes") or "").strip() or None,
             status="new",
+            client_id=client_id,
         )
     except Exception as exc:
         return jsonify({"error": str(exc)}), 400
-    prospect = next((p for p in database.get_all_prospects() if p["id"] == pid), None)
+    prospect = next(
+        (
+            p
+            for p in database.get_all_prospects(client_id=client_id, db_path=database.DB_PATH)
+            if p["id"] == pid
+        ),
+        None,
+    )
     return jsonify({"ok": True, "id": pid, "prospect": dict(prospect) if prospect else {}})
 
 
@@ -1444,12 +1797,13 @@ def api_enrol_prospect(prospect_id):
     Idempotent — safe to call if already enrolled.
     Also sets prospect status to 'in_sequence'.
     """
-    all_prospects = database.get_all_prospects()
-    if not any(p["id"] == prospect_id for p in all_prospects):
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    prospect = database.get_prospect_by_id(prospect_id, db_path=database.DB_PATH)
+    if not prospect or prospect.get("client_id", 1) != client_id:
         return jsonify({"error": "Prospect not found"}), 404
-    enrollment_id = database.ensure_sequence_enrollment(prospect_id)
-    database.update_status(prospect_id, "in_sequence")
-    enrollment = database.get_sequence_enrollment(prospect_id)
+    enrollment_id = database.ensure_sequence_enrollment(prospect_id, db_path=database.DB_PATH)
+    database.update_status(prospect_id, "in_sequence", db_path=database.DB_PATH)
+    enrollment = database.get_sequence_enrollment(prospect_id, db_path=database.DB_PATH)
     return jsonify({
         "ok": True,
         "enrollment_id": enrollment_id,
@@ -1467,14 +1821,19 @@ def api_update_prospect(prospect_id):
     All fields are optional.
     """
     data = request.get_json(silent=True) or {}
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
     allowed = ("name", "company", "email", "linkedin_url", "website",
                "phone", "lead_score", "status", "notes")
     kwargs = {k: data[k] for k in allowed if k in data}
     if not kwargs:
         return jsonify({"error": "No updatable fields provided."}), 400
 
+    prospect = database.get_prospect_by_id(prospect_id, db_path=database.DB_PATH)
+    if not prospect or prospect.get("client_id", 1) != client_id:
+        return jsonify({"error": "Prospect not found."}), 404
+
     try:
-        updated = database.update_prospect(prospect_id, **kwargs)
+        updated = database.update_prospect(prospect_id, db_path=database.DB_PATH, **kwargs)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -1486,7 +1845,11 @@ def api_update_prospect(prospect_id):
 @app.route("/api/prospects/<int:prospect_id>", methods=["DELETE"])
 def api_delete_prospect(prospect_id):
     """Hard-delete a prospect and all related records."""
-    removed = database.delete_prospect(prospect_id)
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    prospect = database.get_prospect_by_id(prospect_id, db_path=database.DB_PATH)
+    if not prospect or prospect.get("client_id", 1) != client_id:
+        return jsonify({"error": "Prospect not found."}), 404
+    removed = database.delete_prospect(prospect_id, db_path=database.DB_PATH)
     if not removed:
         return jsonify({"error": "Prospect not found."}), 404
     return jsonify({"ok": True})
@@ -1539,9 +1902,14 @@ def settings_page():
         ("SEQUENCE_RUN_HOUR",    "Sequence Run Hour (UTC 0-23)", "number", "9"),
         ("USE_SENDGRID",         "Use SendGrid (true/false)", "text",  "false"),
         ("SENDGRID_API_KEY",     "SendGrid API Key",       "password", ""),
+        ("SENDGRID_WEBHOOK_PUBLIC_KEY", "SendGrid Webhook Public Key", "password", ""),
         ("LINKEDIN_DRY_RUN",     "LinkedIn Dry Run (true/false)", "text", "true"),
         ("SETTINGS_USER",        "Settings Page Username",  "text",     "admin"),
         ("SETTINGS_PASSWORD",    "Settings Page Password",  "password", "admin"),
+        ("WARMUP_START_DATE",    "Warmup Start Date (YYYY-MM-DD)", "text", ""),
+        ("WARMUP_ADDRESSES",     "Warmup Partner Emails (comma-separated)", "text", ""),
+        ("WARMUP_EMAILS_PER_CYCLE", "Warmup Emails Per Cycle", "number", "3"),
+        ("MAX_DAILY_SENDS",      "Max Real Sends Per Day (0 = use ramp)", "number", "0"),
     ]
 
     saved = False
@@ -1614,7 +1982,8 @@ def api_import_csv():
 @app.route("/api/analytics")
 def api_analytics():
     """Return full pipeline analytics for the dashboard analytics panel."""
-    summary = reporter.generate_summary()
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    summary = reporter.generate_summary(client_id=client_id, db_path=database.DB_PATH)
     # Convert top_companies list-of-tuples to JSON-safe list-of-dicts
     summary["top_companies"] = [
         {"company": co, "count": cnt} for co, cnt in summary["top_companies"]
@@ -1642,6 +2011,128 @@ def api_monitor_status():
         "last_sequence_run":   _fmt(_scheduler_state["last_sequence_run"]),
         "last_sequence_error": _scheduler_state["last_sequence_error"],
     })
+
+
+@app.route("/api/sample-decks", methods=["POST"])
+def api_sample_decks():
+    """
+    Generate (or re-use cached) 4 sample pitch decks across different industries.
+    Returns a list of {company, contact, industry, url, error} dicts.
+    """
+    from deck_generator import generate_deck
+
+    # Each sample uses a distinct visual theme
+    SAMPLE_THEMES = [
+        "dark_indigo",    # Apex Digital  — deep navy, purple/orange/cyan
+        "charcoal_gold",  # ClearLaw      — black bg, gold accents
+        "midnight_teal",  # PulseStudio   — dark teal, cyan/emerald
+        "dark_slate_red", # Helix Agency  — near-black, red/amber
+    ]
+
+    SAMPLES = [
+        {
+            "company":          "Apex Digital",
+            "name":             "James Cole",
+            "niche":            "B2B SaaS for construction project managers",
+            "icp":              "mid-sized UK construction firms running 5+ concurrent projects",
+            "website_headline": "Stop losing projects to miscommunication",
+            "product_feature":  "real-time site-to-office sync with automated progress reporting",
+            "competitors":      "Buildertrend, CoConstruct",
+            "ad_status":        "running_ads",
+            "outbound_status":  "no_outbound",
+            "notes":            "[Research Hook]\nPain Point: construction PMs waste 6+ hours per week on manual status updates\nGrowth Signal: recently rebranded with enterprise case studies\nOpener: sharp positioning around miscommunication",
+        },
+        {
+            "company":          "ClearLaw",
+            "name":             "Sophie Hunt",
+            "niche":            "legal tech SaaS for independent law firms",
+            "icp":              "UK law firms with 5-30 solicitors handling high-volume caseloads",
+            "website_headline": "Case management that keeps up with your caseload",
+            "product_feature":  "AI-assisted document review with deadline tracking",
+            "competitors":      "Clio, Leap",
+            "ad_status":        "no_ads",
+            "outbound_status":  "no_outbound",
+            "notes":            "[Research Hook]\nPain Point: solicitors spend 40% of billable time on admin instead of client work\nGrowth Signal: recently added remote working features\nOpener: every hour on admin is an hour not billed",
+        },
+        {
+            "company":          "PulseStudio",
+            "name":             "Marcus Webb",
+            "niche":            "SaaS for boutique fitness studios and gym operators",
+            "icp":              "independent fitness studios with 200-800 active members",
+            "website_headline": "Run your studio. Not spreadsheets.",
+            "product_feature":  "automated class booking, retention alerts, and member communication",
+            "competitors":      "Mindbody, Glofox",
+            "ad_status":        "running_ads",
+            "outbound_status":  "no_outbound",
+            "notes":            "[Research Hook]\nPain Point: studio owners lose 3-5 members per month to churn they never see coming\nGrowth Signal: launched a new membership tier this quarter\nOpener: the members who leave rarely say why",
+        },
+        {
+            "company":          "Helix Agency",
+            "name":             "Priya Nair",
+            "niche":            "performance marketing agency for DTC e-commerce brands",
+            "icp":              "UK DTC brands doing £500k-£5m annual revenue on Meta and Google",
+            "website_headline": "Performance marketing that pays for itself",
+            "product_feature":  "cross-channel attribution and creative testing at scale",
+            "competitors":      "Impression, Hallam",
+            "ad_status":        "running_ads",
+            "outbound_status":  "active_outbound",
+            "notes":            "[Research Hook]\nPain Point: DTC brands cap out on paid acquisition as CPAs rise and ROAS drops\nGrowth Signal: recently expanded to TikTok ads\nOpener: paid traffic is rented pipeline — remove the budget and it stops",
+        },
+    ]
+
+    results = []
+    for s, theme in zip(SAMPLES, SAMPLE_THEMES):
+        company_safe = "".join(c if c.isalnum() else "_" for c in s["company"]).lower()
+        existing_pdf  = os.path.join("decks", f"deck_{company_safe}.pdf")
+        existing_pptx = os.path.join("decks", f"deck_{company_safe}.pptx")
+
+        # Return cached file if it already exists
+        if os.path.exists(existing_pdf):
+            results.append({
+                "company": s["company"],
+                "contact": s["name"],
+                "industry": s["niche"].split(" for ")[0] if " for " in s["niche"] else s["niche"][:40],
+                "url": f"/decks/deck_{company_safe}.pdf",
+                "error": None,
+            })
+            continue
+        if os.path.exists(existing_pptx):
+            results.append({
+                "company": s["company"],
+                "contact": s["name"],
+                "industry": s["niche"].split(" for ")[0] if " for " in s["niche"] else s["niche"][:40],
+                "url": f"/decks/deck_{company_safe}.pptx",
+                "error": None,
+            })
+            continue
+
+        # Generate
+        try:
+            path = generate_deck(s, theme=theme)
+            filename = os.path.basename(path)
+            results.append({
+                "company": s["company"],
+                "contact": s["name"],
+                "industry": s["niche"].split(" for ")[0] if " for " in s["niche"] else s["niche"][:40],
+                "url": f"/decks/{filename}",
+                "error": None,
+            })
+        except Exception as exc:
+            results.append({
+                "company": s["company"],
+                "contact": s["name"],
+                "industry": s["niche"].split(" for ")[0] if " for " in s["niche"] else s["niche"][:40],
+                "url": None,
+                "error": str(exc)[:120],
+            })
+
+    return jsonify({"samples": results})
+
+
+@app.route("/api/warmup-status")
+def api_warmup_status():
+    """Return email warmup ramp progress for the dashboard widget."""
+    return jsonify(warmup_engine.get_warmup_status(db_path=database.DB_PATH))
 
 
 @app.route("/api/monitor-reset", methods=["POST"])
@@ -1683,7 +2174,8 @@ def _send_weekly_client_reports() -> None:
             funnel   = summary["funnel"]["counts"]
             outreach = summary["outreach"]
             prospects_total = summary["prospects"]["total"]
-            body = (
+            # Plain-text fallback
+            plain_body = (
                 f"Hi {client['name']},\n\n"
                 f"Here's your Antigravity pipeline update for the week of {monday}:\n\n"
                 f"  Prospects found : {prospects_total}\n"
@@ -1693,10 +2185,21 @@ def _send_weekly_client_reports() -> None:
                 f"Your pipeline is active. We'll be in touch as results come in.\n\n"
                 f"— The Antigravity Team\n"
             )
+            base_url = settings.get_app_base_url().rstrip("/")
+            html_body = reporter.generate_weekly_report_html(
+                summary,
+                client_name=client.get("name", ""),
+                week_label=monday.strftime("%d %b %Y"),
+                dashboard_url=f"{base_url}/client" if base_url else "",
+            )
             _route_send_email(
                 to_address=client["email"],
                 subject=subject,
-                body=body,
+                body=plain_body,
+                html_body=html_body,
+                respect_suppression=False,
+                client_id=client["id"],
+                skip_warmup_throttle=True,
             )
         except Exception as exc:
             print(f"[Weekly report] Failed for client {client['id']}: {exc}")
@@ -1724,6 +2227,7 @@ def onboard_submit():
     icp           = (data.get("icp") or "").strip()
     website       = (data.get("website") or "").strip()
     calendar_link = (data.get("calendar_link") or "").strip()
+    location      = (data.get("location") or "").strip()
     email         = (data.get("email") or "").strip().lower()
 
     if not name or not email:
@@ -1739,17 +2243,15 @@ def onboard_submit():
     client_id = database.add_client(
         name=name,
         email=email,
-        niche=niche,
-        icp=icp,
-        calendar_link=calendar_link,
+        niche=niche or None,
+        icp=icp or None,
+        calendar_link=calendar_link or None,
+        location=location or None,
         db_path=_db,
     )
 
-    # Optionally store website on the client record via update_client
+    # Add a stub prospect for website research if a website was provided
     if website:
-        database.update_client(client_id, niche=niche, icp=icp, calendar_link=calendar_link, db_path=_db)
-        # Store website in the pending research queue payload by adding a stub prospect
-        # The scheduler will pick this up and run full research
         database.add_prospect(
             name="Owner",
             company=name,
@@ -1818,6 +2320,9 @@ def client_login_submit():
         _route_send_email(
             to_address=email,
             subject="Your Antigravity login link",
+            respect_suppression=False,
+            client_id=client["id"],
+            skip_warmup_throttle=True,
             body=(
                 f"Hi {client['name']},\n\n"
                 f"Click this link to access your Antigravity dashboard:\n\n"
@@ -1875,12 +2380,475 @@ def client_dashboard():
         session.clear()
         return redirect(url_for("client_login_page"))
 
-    analytics = database.get_client_analytics(client_id, db_path=_db)
+    analytics             = database.get_client_analytics(client_id, db_path=_db)
+    outreach_queue_count  = len(database.get_pending_outreach_for_review(client_id, db_path=_db))
     return render_template(
         "client_dashboard.html",
         client=client,
         analytics=analytics,
+        outreach_queue_count=outreach_queue_count,
     )
+
+
+@app.route("/client/prospects")
+def client_prospects_page():
+    """Client-facing prospect list scoped to the logged-in workspace."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+
+    all_prospects = _annotate_sequence_progress(
+        database.get_all_prospects(client_id=client_id, db_path=_db)
+    )
+    q = (request.args.get("q") or "").strip().lower()
+    status_filter = (request.args.get("status") or "").strip().lower()
+    sort_key = (request.args.get("sort") or "score").strip().lower()
+    sort_dir = (request.args.get("dir") or "desc").strip().lower()
+    try:
+        current_page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        current_page = 1
+    per_page = 10
+
+    prospects, sort_key, sort_dir = _apply_client_prospect_filters(
+        all_prospects,
+        q,
+        status_filter,
+        sort_key,
+        sort_dir,
+    )
+
+    total_filtered = len(prospects)
+    total_pages = max(1, (total_filtered + per_page - 1) // per_page)
+    if current_page > total_pages:
+        current_page = total_pages
+    start = (current_page - 1) * per_page
+    end = start + per_page
+    prospects = prospects[start:end]
+
+    available_statuses = sorted({
+        (p.get("status") or "").lower()
+        for p in all_prospects
+        if (p.get("status") or "").strip()
+    })
+    return render_template(
+        "client_prospects.html",
+        client=client,
+        prospects=prospects,
+        all_prospects=all_prospects,
+        available_statuses=available_statuses,
+        search_query=request.args.get("q", "").strip(),
+        status_filter=status_filter,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
+        current_page=current_page,
+        total_pages=total_pages,
+        total_filtered=total_filtered,
+        per_page=per_page,
+    )
+
+
+@app.route("/client/prospects/export")
+def client_prospects_export():
+    """Export the logged-in client's filtered prospects as CSV."""
+    import csv
+    import io
+    from flask import Response
+
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+
+    all_prospects = _annotate_sequence_progress(
+        database.get_all_prospects(client_id=client_id, db_path=_db)
+    )
+    q = (request.args.get("q") or "").strip().lower()
+    status_filter = (request.args.get("status") or "").strip().lower()
+    sort_key = (request.args.get("sort") or "score").strip().lower()
+    sort_dir = (request.args.get("dir") or "desc").strip().lower()
+    prospects, _, _ = _apply_client_prospect_filters(
+        all_prospects,
+        q,
+        status_filter,
+        sort_key,
+        sort_dir,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["name", "company", "email", "website", "sequence", "lead_score", "status", "notes"])
+    for prospect in prospects:
+        writer.writerow([
+            prospect.get("name", ""),
+            prospect.get("company", ""),
+            prospect.get("email", ""),
+            prospect.get("website", ""),
+            prospect.get("sequence_day_label", ""),
+            prospect.get("lead_score", ""),
+            prospect.get("status", ""),
+            prospect.get("notes", ""),
+        ])
+
+    safe_name = "".join(ch if ch.isalnum() else "_" for ch in (client.get("name") or "client")).strip("_") or "client"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_prospects.csv"'
+        },
+    )
+
+
+@app.route("/client/prospects/<int:prospect_id>")
+def client_prospect_detail_page(prospect_id):
+    """Client-facing detail page for a single workspace prospect."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+
+    prospect = database.get_prospect_by_id(prospect_id, db_path=_db)
+    if not prospect or prospect.get("client_id") != client_id:
+        return redirect(url_for("client_prospects_page"))
+
+    annotated = _annotate_sequence_progress([prospect])[0]
+    latest_research = database.get_latest_research(prospect_id, db_path=_db)
+    outreach_history = database.get_outreach_by_prospect(prospect_id, db_path=_db)
+    reply_history = database.get_reply_drafts_for_prospect(prospect_id, db_path=_db)
+
+    return render_template(
+        "client_prospect_detail.html",
+        client=client,
+        prospect=annotated,
+        latest_research=latest_research,
+        outreach_history=outreach_history,
+        reply_history=reply_history,
+    )
+
+
+@app.route("/client/prospects/<int:prospect_id>/update-status", methods=["POST"])
+def client_prospect_update_status(prospect_id):
+    """Allow a client to manually mark a prospect as booked or rejected."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    prospect = database.get_prospect_by_id(prospect_id, db_path=_db)
+    if not prospect or prospect.get("client_id") != client_id:
+        return redirect(url_for("client_prospects_page"))
+
+    new_status = (request.form.get("new_status") or "").strip().lower()
+    if new_status == "booked":
+        database.update_status(prospect_id, "booked", db_path=_db)
+        database.update_sequence_enrollment_status(
+            prospect_id, "completed", paused_reason="manually_marked_booked", db_path=_db
+        )
+    elif new_status == "rejected":
+        database.update_status(prospect_id, "rejected", db_path=_db)
+        database.update_sequence_enrollment_status(
+            prospect_id, "paused", paused_reason="manually_marked_rejected", db_path=_db
+        )
+
+    return redirect(url_for("client_prospect_detail_page", prospect_id=prospect_id))
+
+
+@app.route("/client/prospects/bulk-action", methods=["POST"])
+def client_prospects_bulk_action():
+    """Client-authenticated bulk actions for prospects in the current workspace."""
+    client_id = _client_login_required()
+    if not client_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    raw_ids = data.get("prospect_ids") or []
+    if action not in ("enrol", "status"):
+        return jsonify({"error": "Unsupported bulk action."}), 400
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"error": "Select at least one prospect."}), 400
+
+    prospect_ids = []
+    for value in raw_ids:
+        try:
+            prospect_ids.append(int(value))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Prospect IDs must be integers."}), 400
+
+    unique_ids = sorted(set(prospect_ids))
+    prospects = [
+        database.get_prospect_by_id(pid, db_path=database.DB_PATH)
+        for pid in unique_ids
+    ]
+    allowed = [p for p in prospects if p and p.get("client_id") == client_id]
+    if len(allowed) != len(unique_ids):
+        return jsonify({"error": "One or more prospects were not found."}), 404
+
+    updated = 0
+    if action == "enrol":
+        for prospect in allowed:
+            database.ensure_sequence_enrollment(prospect["id"], db_path=database.DB_PATH)
+            database.update_status(prospect["id"], "in_sequence", db_path=database.DB_PATH)
+            updated += 1
+        return jsonify({"ok": True, "action": "enrol", "updated": updated})
+
+    status = (data.get("status") or "").strip().lower()
+    if status not in database.VALID_STATUSES:
+        return jsonify({"error": "Invalid status."}), 400
+
+    for prospect in allowed:
+        database.update_prospect(prospect["id"], status=status, db_path=database.DB_PATH)
+        updated += 1
+    return jsonify({"ok": True, "action": "status", "status": status, "updated": updated})
+
+
+@app.route("/client/reply-drafts/<int:draft_id>/action", methods=["POST"])
+def client_reply_draft_action(draft_id):
+    """
+    Client-facing approve/dismiss for a reply draft.
+    Verifies the draft belongs to the logged-in client before acting.
+    """
+    client_id = _client_login_required()
+    if not client_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data   = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip()
+    if action not in ("approve", "dismiss"):
+        return jsonify({"error": "action must be 'approve' or 'dismiss'"}), 400
+
+    draft = database.get_reply_draft_by_id(draft_id, db_path=database.DB_PATH)
+    if not draft:
+        return jsonify({"error": "Draft not found"}), 404
+    if draft.get("client_id") != client_id:
+        return jsonify({"error": "Not found"}), 404  # don't leak existence
+
+    if action == "dismiss":
+        database.update_reply_draft_status(draft_id, "dismissed", db_path=database.DB_PATH)
+        return jsonify({"ok": True, "status": "dismissed"})
+
+    recipient = (draft.get("inbound_from") or draft.get("prospect_email") or "").strip()
+    if not recipient:
+        return jsonify({"error": "Draft has no recipient email."}), 400
+
+    valid, reason = _validate_email_address(recipient)
+    if not valid:
+        return jsonify({"error": f"Invalid recipient: {reason}"}), 400
+
+    body = (data.get("body") or draft.get("drafted_reply") or "").strip()
+    if not body:
+        return jsonify({"error": "Draft has no body."}), 400
+
+    raw_subject = (draft.get("inbound_subject") or "").strip()
+    if not raw_subject:
+        raw_subject = (draft.get("prospect_company") or "follow-up")
+    subject = raw_subject if raw_subject.lower().startswith("re:") else f"Re: {raw_subject}"
+
+    inbound_message_id = (draft.get("inbound_message_id") or "").strip()
+    delivery = deliver_prospect_email(
+        to_address=recipient,
+        subject=subject,
+        body=body,
+        prospect_id=draft["prospect_id"],
+        event_type="reply_draft_sent",
+        client_id=client_id,
+        db_path=database.DB_PATH,
+        content_excerpt=body[:250],
+        metadata=f"draft_id={draft_id};source=client_dashboard",
+        in_reply_to=inbound_message_id,
+        references=inbound_message_id,
+    )
+    if not delivery["sent"]:
+        return jsonify({"error": f"Send failed: {delivery['error']}"}), 500
+
+    database.update_reply_draft_status(draft_id, "sent", db_path=database.DB_PATH)
+    database.update_status(draft["prospect_id"], "replied", db_path=database.DB_PATH)
+    return jsonify({"ok": True, "status": "sent", "recipient": recipient})
+
+
+@app.route("/client/settings", methods=["GET"])
+def client_settings_page():
+    """Client settings — update niche, ICP, location, calendar link."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+    saved        = request.args.get("saved") == "1"
+    verified     = request.args.get("verified") == "1"
+    verify_sent  = request.args.get("verify_sent") == "1"
+    verify_error = request.args.get("verify_error") or ""
+    return render_template(
+        "client_settings.html",
+        client=client,
+        saved=saved,
+        verified=verified,
+        verify_sent=verify_sent,
+        verify_error=verify_error,
+    )
+
+
+@app.route("/client/settings", methods=["POST"])
+def client_settings_submit():
+    """Save updated client settings."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    data          = request.form
+    niche         = (data.get("niche") or "").strip() or None
+    icp           = (data.get("icp") or "").strip() or None
+    location      = (data.get("location") or "").strip() or None
+    calendar_link = (data.get("calendar_link") or "").strip() or None
+    sender_name   = (data.get("sender_name") or "").strip() or None
+    sender_email  = (data.get("sender_email") or "").strip().lower() or None
+
+    _db = database.DB_PATH
+
+    # If the sender_email is changing, reset verification so the new address
+    # must be re-verified before it's used for outbound sends.
+    current_client = database.get_client(client_id, db_path=_db)
+    old_sender_email = ((current_client or {}).get("sender_email") or "").strip().lower()
+    if sender_email != old_sender_email:
+        database.reset_sender_verification(client_id, db_path=_db)
+
+    database.update_client(
+        client_id,
+        niche=niche,
+        icp=icp,
+        location=location,
+        calendar_link=calendar_link,
+        sender_name=sender_name,
+        sender_email=sender_email,
+        db_path=_db,
+    )
+    return redirect(url_for("client_settings_page") + "?saved=1")
+
+
+@app.route("/client/campaign/pause", methods=["POST"])
+def client_campaign_pause():
+    """Pause sequence dispatch for the logged-in client's workspace."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    database.update_client(client_id, campaign_paused=1, db_path=database.DB_PATH)
+    return redirect(url_for("client_dashboard"))
+
+
+@app.route("/client/campaign/resume", methods=["POST"])
+def client_campaign_resume():
+    """Resume sequence dispatch for the logged-in client's workspace."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    database.update_client(client_id, campaign_paused=0, db_path=database.DB_PATH)
+    return redirect(url_for("client_dashboard"))
+
+
+@app.route("/client/campaign/review-mode/enable", methods=["POST"])
+def client_review_mode_enable():
+    """Enable outreach review mode — all sequence emails held for approval."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    database.update_client(client_id, outreach_review_mode=1, db_path=database.DB_PATH)
+    return redirect(url_for("client_dashboard"))
+
+
+@app.route("/client/campaign/review-mode/disable", methods=["POST"])
+def client_review_mode_disable():
+    """Disable outreach review mode — sequence emails send automatically again."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    database.update_client(client_id, outreach_review_mode=0, db_path=database.DB_PATH)
+    return redirect(url_for("client_dashboard"))
+
+
+@app.route("/client/outreach-queue")
+def client_outreach_queue():
+    """Client-facing approval queue for outreach emails held for review."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+    pending = database.get_pending_outreach_for_review(client_id, db_path=_db)
+    return render_template("client_outreach_queue.html", client=client, pending=pending)
+
+
+@app.route("/client/outreach-queue/<int:outreach_id>/action", methods=["POST"])
+def client_outreach_queue_action(outreach_id):
+    """Approve (send) or reject a pending outreach email."""
+    client_id = _client_login_required()
+    if not client_id:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data   = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        return jsonify({"error": "action must be 'approve' or 'reject'"}), 400
+
+    _db = database.DB_PATH
+    # Load all pending outreach for this client to verify ownership
+    pending = database.get_pending_outreach_for_review(client_id, db_path=_db)
+    record  = next((o for o in pending if o["id"] == outreach_id), None)
+    if not record:
+        return jsonify({"error": "Outreach record not found or already actioned"}), 404
+
+    if action == "reject":
+        database.update_outreach_status(outreach_id, "rejected_draft", db_path=_db)
+        return jsonify({"ok": True, "status": "rejected_draft"})
+
+    # Approve: send now
+    to_address = (record.get("prospect_email") or "").strip()
+    if not to_address:
+        p = database.get_prospect_by_id(record["prospect_id"], db_path=_db)
+        to_address = ((p or {}).get("email") or "").strip()
+    if not to_address:
+        return jsonify({"error": "No email address on file for this prospect"}), 400
+
+    edited_body = (data.get("body") or record["body"]).strip()
+    delivery = deliver_prospect_email(
+        to_address=to_address,
+        subject=record["subject"],
+        body=edited_body,
+        prospect_id=record["prospect_id"],
+        event_type="outreach_sent",
+        client_id=client_id,
+        db_path=_db,
+        content_excerpt=edited_body[:250],
+        metadata=f"outreach_id={outreach_id};source=outreach_queue_approval",
+        attachment_path=(record.get("pdf_path") or "").strip(),
+    )
+    if not delivery["sent"]:
+        return jsonify({"error": f"Send failed: {delivery['error']}"}), 500
+
+    database.update_outreach_status(outreach_id, "sent", db_path=_db)
+    database.update_status(record["prospect_id"], "contacted", db_path=_db)
+    return jsonify({"ok": True, "status": "sent", "sent_to": to_address})
 
 
 @app.route("/client/logout", methods=["POST"])
@@ -1891,19 +2859,360 @@ def client_logout():
 
 
 # ---------------------------------------------------------------------------
+# Sender email verification
+# ---------------------------------------------------------------------------
+
+@app.route("/client/settings/verify-sender", methods=["POST"])
+def client_verify_sender_send():
+    """
+    Send a verification email to the client's configured sender_email.
+    The email contains a one-click link that, when visited, marks the address
+    as verified so it can be used for outbound sends.
+    """
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        session.clear()
+        return redirect(url_for("client_login_page"))
+
+    sender_email = (client.get("sender_email") or "").strip().lower()
+    if not sender_email:
+        return redirect(url_for("client_settings_page") + "?verify_error=no_email")
+
+    token      = str(uuid.uuid4())
+    expires_at = (
+        datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    database.set_sender_verify_token(client_id, token, expires_at, db_path=_db)
+
+    verify_url = (
+        request.host_url.rstrip("/")
+        + url_for("client_verify_sender_confirm")
+        + f"?token={token}"
+    )
+
+    try:
+        _route_send_email(
+            to_address=sender_email,
+            subject="Verify your sending address — Antigravity",
+            body=(
+                f"Hi {client.get('name', '')},\n\n"
+                f"Click the link below to verify {sender_email} as your campaign "
+                f"sending address:\n\n"
+                f"{verify_url}\n\n"
+                f"This link expires in 24 hours. If you didn't request this, "
+                f"you can ignore this email.\n\n"
+                f"— The Antigravity Team\n"
+            ),
+            respect_suppression=False,
+            client_id=client_id,
+            skip_warmup_throttle=True,
+        )
+    except Exception as exc:
+        print(f"[SenderVerify] failed to send verification to {sender_email}: {exc}")
+        return redirect(url_for("client_settings_page") + "?verify_error=send_failed")
+
+    return redirect(url_for("client_settings_page") + "?verify_sent=1")
+
+
+@app.route("/client/verify-sender")
+def client_verify_sender_confirm():
+    """
+    Public endpoint — validate the sender verification token and mark the
+    client's sender_email as verified.
+    Does not require the client session since the link is sent to the email address.
+    """
+    token = request.args.get("token", "").strip()
+    if not token:
+        return redirect(url_for("client_login_page"))
+
+    _db = database.DB_PATH
+    client = database.get_client_by_sender_verify_token(token, db_path=_db)
+    if not client:
+        return render_template(
+            "client_login.html", sent=False,
+            error="Invalid or expired verification link.",
+        )
+
+    expires_at_str = (client.get("sender_verify_expires_at") or "")
+    if expires_at_str:
+        try:
+            expires_at = datetime.datetime.strptime(expires_at_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.datetime.utcnow() > expires_at:
+                return render_template(
+                    "client_login.html", sent=False,
+                    error="This verification link has expired. Please request a new one from your settings.",
+                )
+        except ValueError:
+            pass
+
+    database.confirm_sender_email_verified(client["id"], db_path=_db)
+
+    # If the client already has an active session, redirect to settings with success.
+    # Otherwise redirect to login (they'll see the verified badge after logging in).
+    if session.get("client_id") == client["id"]:
+        return redirect(url_for("client_settings_page") + "?verified=1")
+    return redirect(url_for("client_login_page") + "?verified=1")
+
+
+# ---------------------------------------------------------------------------
+# Stripe webhook — subscription lifecycle
+# ---------------------------------------------------------------------------
+
+@app.route("/webhook/stripe", methods=["POST"])
+def stripe_webhook():
+    """
+    Handle Stripe webhook events.
+    Activate clients on checkout.session.completed.
+    Mark cancelled on customer.subscription.deleted.
+
+    Set STRIPE_WEBHOOK_SECRET in .env to enable signature verification.
+    """
+    import stripe as _stripe
+
+    secret_key      = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    webhook_secret  = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+
+    if not secret_key:
+        return jsonify({"error": "Stripe not configured"}), 400
+
+    _stripe.api_key = secret_key
+    payload = request.get_data()
+
+    if webhook_secret:
+        sig = request.headers.get("Stripe-Signature", "")
+        try:
+            event = _stripe.Webhook.construct_event(payload, sig, webhook_secret)
+        except (_stripe.error.SignatureVerificationError, ValueError) as exc:
+            print(f"[Stripe webhook] signature error: {exc}")
+            return jsonify({"error": "Invalid signature"}), 400
+    else:
+        try:
+            event = _stripe.Event.construct_from(
+                __import__("json").loads(payload), _stripe.api_key
+            )
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    _db = database.DB_PATH
+    etype = event["type"]
+
+    if etype == "checkout.session.completed":
+        sess        = event["data"]["object"]
+        cust_email  = (sess.get("customer_details") or {}).get("email") or sess.get("customer_email") or ""
+        cust_email  = cust_email.strip().lower()
+        if cust_email:
+            client = database.get_client_by_email(cust_email, db_path=_db)
+            if client:
+                database.update_client(client["id"], status="active", db_path=_db)
+                _pending_client_research.add(client["id"])
+                print(f"[Stripe] activated client {client['id']} ({cust_email})")
+            else:
+                print(f"[Stripe] checkout.session.completed — no client found for {cust_email}")
+
+    elif etype == "customer.subscription.deleted":
+        sub        = event["data"]["object"]
+        cust_id    = sub.get("customer", "")
+        if cust_id and secret_key:
+            try:
+                cust       = _stripe.Customer.retrieve(cust_id)
+                cust_email = (cust.get("email") or "").strip().lower()
+                if cust_email:
+                    client = database.get_client_by_email(cust_email, db_path=_db)
+                    if client:
+                        database.update_client(client["id"], status="cancelled", db_path=_db)
+                        print(f"[Stripe] cancelled client {client['id']} ({cust_email})")
+            except Exception as exc:
+                print(f"[Stripe] could not process subscription.deleted: {exc}")
+
+    return jsonify({"received": True})
+
+
+def _apply_sendgrid_suppression(email: str, reason: str, event_type: str) -> int:
+    """
+    Suppress a contact across all matching workspaces and log the webhook event.
+
+    Returns the number of matching prospects updated.
+    """
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return 0
+
+    prospects = database.get_prospects_by_email(normalized, db_path=database.DB_PATH)
+    if not prospects:
+        return 0
+
+    for prospect in prospects:
+        client_id = prospect.get("client_id", 1)
+        database.suppress_contact(
+            normalized,
+            reason=reason,
+            source="sendgrid_webhook",
+            db_path=database.DB_PATH,
+            client_id=client_id,
+        )
+        database.update_status(prospect["id"], "rejected", db_path=database.DB_PATH)
+        database.log_communication_event(
+            prospect_id=prospect["id"],
+            channel="email",
+            direction="outbound",
+            event_type=event_type,
+            status="failed" if event_type in ("sendgrid_bounce", "sendgrid_dropped") else "skipped",
+            content_excerpt=normalized[:250],
+            metadata=f"source=sendgrid_webhook;reason={reason};email={normalized}",
+            client_id=client_id,
+            db_path=database.DB_PATH,
+        )
+    return len(prospects)
+
+
+def _load_sendgrid_webhook_public_key(public_key: str):
+    """Load a SendGrid webhook public key from PEM or base64-encoded DER text."""
+    import base64
+    from cryptography.hazmat.primitives import serialization
+
+    normalized = (public_key or "").strip()
+    if not normalized:
+        return None
+
+    try:
+        if normalized.startswith("-----BEGIN"):
+            return serialization.load_pem_public_key(normalized.encode("utf-8"))
+        return serialization.load_der_public_key(base64.b64decode(normalized))
+    except Exception:
+        return None
+
+
+def _verify_sendgrid_webhook_signature(payload: bytes) -> tuple[bool, str | None]:
+    """
+    Verify the SendGrid Event Webhook signature when a public key is configured.
+
+    Twilio's docs specify ECDSA verification over the SHA-256 digest of
+    timestamp + raw payload bytes, using these headers:
+      - X-Twilio-Email-Event-Webhook-Signature
+      - X-Twilio-Email-Event-Webhook-Timestamp
+    """
+    import base64
+    import hashlib
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, utils
+
+    configured_key = (os.getenv("SENDGRID_WEBHOOK_PUBLIC_KEY") or "").strip()
+    if not configured_key:
+        return True, None
+
+    signature = (request.headers.get("X-Twilio-Email-Event-Webhook-Signature") or "").strip()
+    timestamp = (request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp") or "").strip()
+    if not signature or not timestamp:
+        return False, "Missing SendGrid signature headers."
+
+    public_key = _load_sendgrid_webhook_public_key(configured_key)
+    if public_key is None:
+        return False, "Invalid SENDGRID_WEBHOOK_PUBLIC_KEY configuration."
+
+    try:
+        signature_bytes = base64.b64decode(signature)
+    except Exception:
+        return False, "Malformed SendGrid signature."
+
+    digest = hashlib.sha256(timestamp.encode("utf-8") + payload).digest()
+    try:
+        public_key.verify(
+            signature_bytes,
+            digest,
+            ec.ECDSA(utils.Prehashed(hashes.SHA256())),
+        )
+    except Exception:
+        return False, "Invalid SendGrid signature."
+    return True, None
+
+
+@app.route("/webhook/sendgrid", methods=["POST"])
+def sendgrid_webhook():
+    """
+    Handle SendGrid Event Webhook callbacks for bounces and unsubscribes.
+
+    Expected payload is a JSON list of event objects.
+    """
+    raw_payload = request.get_data(cache=True)
+    is_valid, verification_error = _verify_sendgrid_webhook_signature(raw_payload)
+    if not is_valid:
+        return jsonify({"error": verification_error}), 400
+
+    events = request.get_json(silent=True)
+    if not isinstance(events, list):
+        return jsonify({"error": "Expected a JSON array of SendGrid events."}), 400
+
+    processed = 0
+    matched = 0
+    ignored = 0
+
+    for event in events:
+        if not isinstance(event, dict):
+            ignored += 1
+            continue
+
+        event_name = (event.get("event") or "").strip().lower()
+        email = (event.get("email") or "").strip().lower()
+        reason = (
+            event.get("reason")
+            or event.get("response")
+            or event.get("status")
+            or event_name
+        )
+        if not email:
+            ignored += 1
+            continue
+
+        if event_name == "bounce":
+            matched += _apply_sendgrid_suppression(email, str(reason), "sendgrid_bounce")
+            processed += 1
+        elif event_name == "dropped":
+            matched += _apply_sendgrid_suppression(email, str(reason), "sendgrid_dropped")
+            processed += 1
+        elif event_name in ("spamreport", "unsubscribe", "group_unsubscribe"):
+            matched += _apply_sendgrid_suppression(email, str(reason), "sendgrid_unsubscribe")
+            processed += 1
+        else:
+            ignored += 1
+
+    return jsonify({
+        "received": len(events),
+        "processed": processed,
+        "matched_prospects": matched,
+        "ignored": ignored,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Import & Fire — bulk lead list → research → email → auto-send or review queue
 # ---------------------------------------------------------------------------
 
 _bulk_import_jobs: dict = {}
 
 
-def _run_research_and_email(prospect: dict, db_path: str) -> dict:
+def _run_research_and_email(
+    prospect: dict,
+    db_path: str,
+    pre_context: dict | None = None,
+) -> dict:
     """
     Lightweight pipeline: research (if website present) + email generation.
     Skips PDF to keep bulk runs fast.  Saves a draft to the outreach table
     and returns a result dict with keys:
         prospect_id, company, prospect_email, outreach_id,
         subject, body, error
+
+    pre_context — optional dict of already-known intel about this company.
+        Supported keys: niche, icp, website_headline, product_feature,
+        competitors, pain_point, growth_signal, hook, notes.
+        When provided, the website scrape is skipped and these values are
+        saved directly as a research record so the email gen can use them.
     """
     from research_agent import research_prospect
 
@@ -1920,8 +3229,50 @@ def _run_research_and_email(prospect: dict, db_path: str) -> dict:
         "error":          "",
     }
 
-    # Research — only when we have a website
-    if website:
+    # Research — use pre-provided context if available, otherwise scrape website
+    if pre_context:
+        try:
+            # Persist the caller-supplied intel as a research record
+            analysis = {
+                "niche":            pre_context.get("niche", ""),
+                "icp":              pre_context.get("icp", ""),
+                "website_headline": pre_context.get("website_headline", ""),
+                "product_feature":  pre_context.get("product_feature", ""),
+                "competitors":      pre_context.get("competitors", ""),
+                "pain_point":       pre_context.get("pain_point", ""),
+                "growth_signal":    pre_context.get("growth_signal", ""),
+                "hook":             pre_context.get("hook", ""),
+            }
+            database.update_enrichment_fields(prospect_id, {
+                k: v for k, v in {
+                    "niche":            analysis["niche"],
+                    "icp":              analysis["icp"],
+                    "website_headline": analysis["website_headline"],
+                    "product_feature":  analysis["product_feature"],
+                    "competitors":      analysis["competitors"],
+                }.items() if v
+            }, db_path=db_path)
+            database.save_research_result(
+                prospect_id=prospect_id,
+                analysis=analysis,
+                url=website or "",
+                db_path=db_path,
+            )
+            # Append to notes so the email template engine picks it up
+            if any(analysis.values()):
+                extra_notes = (
+                    f"[Research Hook]\n"
+                    f"Pain Point: {analysis['pain_point']}\n"
+                    f"Growth Signal: {analysis['growth_signal']}\n"
+                    f"Opener: {analysis['hook']}"
+                )
+                existing = prospect.get("notes") or ""
+                if "[Research Hook]" not in existing:
+                    combined = (existing + "\n\n" + extra_notes).strip()
+                    database.update_notes(prospect_id, combined, db_path=db_path)
+        except Exception as exc:
+            result["error"] = f"pre_context save: {exc}"
+    elif website:
         try:
             research_prospect(prospect_id, db_path=db_path)
         except Exception as exc:
@@ -1993,6 +3344,33 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
         phone   = (lead.get("phone") or "").strip()
         linkedin= (lead.get("linkedin_url") or "").strip()
 
+        # Context columns — pre-provided intel skips website scraping
+        _ctx_niche    = (lead.get("niche") or lead.get("description") or lead.get("industry") or "").strip()
+        _ctx_icp      = (lead.get("icp") or "").strip()
+        _ctx_headline = (lead.get("website_headline") or "").strip()
+        _ctx_feature  = (lead.get("product_feature") or lead.get("feature") or "").strip()
+        _ctx_comp     = (lead.get("competitors") or "").strip()
+        _ctx_pain     = (lead.get("pain_point") or lead.get("pain") or "").strip()
+        _ctx_signal   = (lead.get("growth_signal") or lead.get("signal") or "").strip()
+        _ctx_hook     = (lead.get("hook") or lead.get("value_prop") or "").strip()
+        _ctx_notes    = (lead.get("notes") or "").strip()
+
+        # Build pre_context only when the caller supplied at least one intel field
+        _has_context = any([_ctx_niche, _ctx_icp, _ctx_headline, _ctx_feature,
+                            _ctx_comp, _ctx_pain, _ctx_signal, _ctx_hook])
+        pre_context: dict | None = None
+        if _has_context:
+            pre_context = {
+                "niche":            _ctx_niche,
+                "icp":              _ctx_icp,
+                "website_headline": _ctx_headline,
+                "product_feature":  _ctx_feature,
+                "competitors":      _ctx_comp,
+                "pain_point":       _ctx_pain,
+                "growth_signal":    _ctx_signal,
+                "hook":             _ctx_hook,
+            }
+
         item = {
             "company":        company,
             "prospect_email": email,
@@ -2008,6 +3386,8 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
             if existing:
                 prospect_id = existing["id"]
             else:
+                # Merge extra notes from CSV context field into prospect notes
+                prospect_notes = _ctx_notes or None
                 prospect_id = database.add_prospect(
                     name=name or company,
                     company=company,
@@ -2015,6 +3395,7 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
                     website=website or None,
                     phone=phone or None,
                     linkedin_url=linkedin or None,
+                    notes=prospect_notes,
                     status="new",
                     db_path=db_path,
                 )
@@ -2026,7 +3407,7 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
             if not prospect:
                 raise RuntimeError("Prospect record not found after insert")
 
-            pipeline_result = _run_research_and_email(prospect, db_path)
+            pipeline_result = _run_research_and_email(prospect, db_path, pre_context=pre_context)
             item.update({
                 "prospect_id":    pipeline_result["prospect_id"],
                 "prospect_email": pipeline_result["prospect_email"] or email,
@@ -2039,12 +3420,18 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
                 if mode == "auto_send":
                     to_addr = pipeline_result["prospect_email"]
                     if to_addr:
-                        sent, send_err = _route_send_email(
+                        delivery = deliver_prospect_email(
                             to_address=to_addr,
                             subject=pipeline_result["subject"],
                             body=pipeline_result["body"],
+                            prospect_id=prospect_id,
+                            event_type="outreach_sent",
+                            client_id=prospect.get("client_id", 1),
+                            db_path=db_path,
+                            content_excerpt=pipeline_result["body"][:250],
+                            metadata=f"outreach_id={pipeline_result['outreach_id']};recipient={to_addr};source=import_and_fire",
                         )
-                        if sent:
+                        if delivery["sent"]:
                             database.update_outreach_status(
                                 pipeline_result["outreach_id"], "sent", db_path=db_path
                             )
@@ -2052,7 +3439,7 @@ def _bulk_import_worker(job_id: str, leads: list, mode: str, db_path: str) -> No
                             item["action"] = "sent"
                         else:
                             item["action"] = "send_failed"
-                            item["error"]  = send_err
+                            item["error"]  = delivery["error"]
                     else:
                         item["action"] = "no_email"
                 else:
@@ -2156,7 +3543,8 @@ def api_import_and_fire_status(job_id):
 @app.route("/api/outreach-queue", methods=["GET"])
 def api_outreach_queue():
     """Return all draft outreach records waiting for review."""
-    drafts = database.get_draft_outreach(client_id=1, db_path=database.DB_PATH)
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    drafts = database.get_draft_outreach(client_id=client_id, db_path=database.DB_PATH)
     return jsonify(drafts)
 
 
@@ -2167,7 +3555,8 @@ def api_outreach_queue_approve(outreach_id):
     Expects optional JSON body: { "subject": "...", "body": "..." } to allow
     inline edits before sending.
     """
-    drafts = database.get_draft_outreach(client_id=1, db_path=database.DB_PATH)
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    drafts = database.get_draft_outreach(client_id=client_id, db_path=database.DB_PATH)
     record = next((d for d in drafts if d["id"] == outreach_id), None)
     if not record:
         return jsonify({"error": "Draft not found or already processed"}), 404
@@ -2180,9 +3569,19 @@ def api_outreach_queue_approve(outreach_id):
     subject = (data.get("subject") or record["subject"]).strip()
     body    = (data.get("body")    or record["body"]).strip()
 
-    sent, err = _route_send_email(to_address=to_addr, subject=subject, body=body)
-    if not sent:
-        return jsonify({"error": err or "Send failed"}), 500
+    delivery = deliver_prospect_email(
+        to_address=to_addr,
+        subject=subject,
+        body=body,
+        prospect_id=record["prospect_id"],
+        event_type="outreach_sent",
+        client_id=record.get("client_id", 1),
+        db_path=database.DB_PATH,
+        content_excerpt=body[:250],
+        metadata=f"outreach_id={outreach_id};recipient={to_addr};source=review_queue",
+    )
+    if not delivery["sent"]:
+        return jsonify({"error": delivery['error'] or 'Send failed'}), 500
 
     database.update_outreach_status(outreach_id, "sent", db_path=database.DB_PATH)
     database.update_status(record["prospect_id"], "in_sequence", db_path=database.DB_PATH)
@@ -2192,14 +3591,124 @@ def api_outreach_queue_approve(outreach_id):
 @app.route("/api/outreach-queue/<int:outreach_id>/reject", methods=["POST"])
 def api_outreach_queue_reject(outreach_id):
     """Remove a draft from the review queue without sending."""
+    client_id = _coerce_operator_client_id(request.args.get("client_id"), 1)
+    drafts = database.get_draft_outreach(client_id=client_id, db_path=database.DB_PATH)
+    record = next((d for d in drafts if d["id"] == outreach_id), None)
+    if not record:
+        return jsonify({"error": "Draft not found"}), 404
     deleted = database.delete_outreach(outreach_id, db_path=database.DB_PATH)
     if not deleted:
         return jsonify({"error": "Draft not found"}), 404
     return jsonify({"ok": True})
 
 
+def _scheduler_enabled() -> bool:
+    """
+    Return True unless the scheduler has been explicitly disabled.
+
+    Disable via:
+      - CLI flag:   python web_app.py --no-scheduler
+      - Env var:    SCHEDULER_ENABLED=false
+    """
+    import sys
+    if "--no-scheduler" in sys.argv:
+        return False
+    env = os.getenv("SCHEDULER_ENABLED", "true").strip().lower()
+    return env not in ("false", "0", "no", "off")
+
+
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
+
+_ERROR_STYLE = """
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Outfit',-apple-system,sans-serif;background:#080c14;color:#e2e8f0;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem}
+  .card{background:#111827;border:1px solid rgba(255,255,255,0.07);border-radius:18px;
+        padding:2.75rem 2.25rem;max-width:420px;width:100%;text-align:center}
+  .brand{font-size:.8rem;font-weight:700;color:#a78bfa;letter-spacing:.1em;
+         text-transform:uppercase;margin-bottom:1.75rem}
+  .code{font-size:3rem;font-weight:700;color:#f1f5f9;margin-bottom:.5rem}
+  .msg{color:#64748b;font-size:.95rem;line-height:1.6;margin-bottom:1.75rem}
+  a{display:inline-block;padding:.7rem 1.5rem;background:linear-gradient(135deg,#7c3aed,#6366f1);
+    color:#fff;border-radius:8px;text-decoration:none;font-size:.9rem;font-weight:600}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+"""
+
+
+@app.route("/unsubscribe")
+def unsubscribe():
+    """
+    One-click unsubscribe. Public — no auth required.
+    Verifies an HMAC token then suppresses the prospect and shows a confirmation page.
+    """
+    _db = database.DB_PATH
+    try:
+        prospect_id = int(request.args.get("pid", ""))
+        client_id   = int(request.args.get("cid", ""))
+    except (TypeError, ValueError):
+        return render_template("unsubscribe.html", success=False,
+                               error="Invalid unsubscribe link.")
+
+    token = request.args.get("token", "").strip()
+    if not token or not verify_unsubscribe_token(prospect_id, client_id, token):
+        return render_template("unsubscribe.html", success=False,
+                               error="Invalid or expired unsubscribe link.")
+
+    prospect = database.get_prospect_by_id(prospect_id, db_path=_db)
+    if not prospect or prospect.get("client_id") != client_id:
+        # Treat as success to avoid leaking whether the prospect exists
+        return render_template("unsubscribe.html", success=True)
+
+    database.suppress_prospect(
+        prospect_id,
+        reason="one_click_unsubscribe",
+        source="unsubscribe_link",
+        db_path=_db,
+    )
+    print(f"[Unsubscribe] prospect {prospect_id} suppressed via one-click link")
+    return render_template("unsubscribe.html", success=True)
+
+
+@app.route("/health")
+def health():
+    """Lightweight health check for load balancers and uptime monitors."""
+    return jsonify({"status": "ok", "service": "antigravity"}), 200
+
+
+@app.errorhandler(404)
+def not_found(_e):
+    return (
+        f"<!doctype html><html><head><title>Not found</title>{_ERROR_STYLE}</head>"
+        f"<body><div class='card'><div class='brand'>Antigravity</div>"
+        f"<div class='code'>404</div>"
+        f"<p class='msg'>This page doesn't exist.</p>"
+        f"<a href='/'>Go home</a></div></body></html>"
+    ), 404
+
+
+@app.errorhandler(500)
+def server_error(_e):
+    return (
+        f"<!doctype html><html><head><title>Server error</title>{_ERROR_STYLE}</head>"
+        f"<body><div class='card'><div class='brand'>Antigravity</div>"
+        f"<div class='code'>500</div>"
+        f"<p class='msg'>Something went wrong on our end. We're on it.</p>"
+        f"<a href='/'>Go home</a></div></body></html>"
+    ), 500
+
+
 if __name__ == "__main__":
     import threading
-    t = threading.Thread(target=_background_scheduler, daemon=True, name="bg-scheduler")
-    t.start()
-    app.run(debug=True, port=5000, use_reloader=False)
+    if _scheduler_enabled():
+        t = threading.Thread(target=_background_scheduler, daemon=True, name="bg-scheduler")
+        t.start()
+        print("[Startup] Background scheduler started.")
+    else:
+        print("[Startup] Scheduler disabled (--no-scheduler or SCHEDULER_ENABLED=false).")
+    debug = os.getenv("FLASK_DEBUG", "false").strip().lower() in ("1", "true", "yes")
+    port  = int(os.getenv("PORT", "5000"))
+    app.run(debug=debug, port=port, use_reloader=False)

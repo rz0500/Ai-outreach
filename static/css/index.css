@@ -577,3 +577,23 @@ tbody tr:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* Workspace overview table rows */
+.ws-row {
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ws-row-active {
+    background: rgba(124,58,237,0.06);
+}
+.ws-select-link {
+    font-size: 0.72rem;
+    color: #a78bfa;
+    text-decoration: none;
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 5px;
+    padding: 0.15rem 0.55rem;
+}
+.ws-select-link-current {
+    opacity: 0.4;
+    pointer-events: none;
+}

@@ -1,24 +1,29 @@
 # CLAUDE.md
 
-This file gives Claude Code the current working context for this repository. It should match the real codebase and stay aligned with `agent.md` and `memory.md`.
+This file gives the current working context for this repository. It should match the real codebase and stay aligned with `agent.md` and `memory.md`.
 
 ## Project Overview
 
 `leadgen` / **Antigravity** is a Python-based AI lead generation and outreach SaaS. Current working capabilities include:
 
-- **multi-tenant** prospect storage — every table carries `client_id`, house account = 1
-- self-booking onboarding at `/onboard` — creates client workspace automatically
-- autonomous self-prospecting via Google Maps on a daily schedule
+- **multi-tenant** prospect storage with `client_id` on every data table; house account = 1
+- public landing page at `/`
+- pricing / pilot checkout page at `/checkout`
+- self-serve onboarding at `/onboard`
 - client-facing dashboard at `/client` with magic-link login
-- automated weekly pipeline reports emailed to each active client
-- evidence-first outbound email generation
-- website research and enrichment via Anthropic API
+- client settings at `/client/settings`
+- client prospects flow at `/client/prospects` with detail pages, CSV export, and bulk actions
+- **client prospect status updates** — mark prospects booked or rejected from the detail page
+- operator dashboard at `/ops` with workspace filtering
+- SMTP-first deliverability hardening
+- SendGrid routing plus signed webhook verification support
 - Google Maps -> research -> email -> PDF -> send workflow
-- multi-channel sequence foundations
-- inbox reply monitoring with AI classification
-- background scheduler for inbox polling, daily sequence dispatch, self-prospecting, and weekly reports
-- settings UI for live `.env` editing
-- prospect CRUD, analytics, and CSV import in the operator dashboard
+- inbox monitoring, reply classification, and **warm client notifications** on interested/booked replies
+- **outreach approval queue** — per-client `outreach_review_mode` toggle; holds sequence emails for review before sending
+- weekly client reports with **HTML email template** (stat blocks, funnel bars, score bands, top prospects)
+- one-click unsubscribe with HMAC tokens and RFC List-Unsubscribe headers
+- campaign pause/resume per client
+- standalone scheduler support via `python scheduler.py`
 
 The system is a usable internal SaaS prototype, not a fully hardened production product.
 
@@ -34,110 +39,108 @@ If a meaningful repo-level change is made, update all three files.
 ## Module Reference
 
 ### Core Data
-- **`database.py`** - SQLite persistence for clients, prospects, outreach, suppression, communication events, sequence enrollments, prospect research, reply drafts, and client sessions. All data tables carry `client_id` (DEFAULT 1 = house account). New client functions: `add_client`, `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`, `update_client`, `get_client_analytics`. All query functions accept and filter by `client_id=1`.
-
-### Outreach
-- **`outreach.py`** - Main email writer, evidence-first and angle-based
-- **`email_validator.py`** - Email quality gate
-- **`ai_engine.py`** - Anthropic-backed prompt engine and reply classifier
-
-### Research
-- **`research_agent.py`** - Website enrichment and structured research support
-
-### Sequencing
-- **`sequencer.py`** - Legacy single-channel sequencer
-- **`sequence_engine.py`** - Channel-aware sequence model
-- **`sequence_dispatcher.py`** - Dispatches email, LinkedIn, Instagram, and SMS touchpoints
-- **`main.py`** - Entry point wired to the dispatcher path
+- **`database.py`** - SQLite persistence for clients, prospects, outreach, suppression, communication events, sequence enrollments, prospect research, reply drafts, and client sessions.
+  - `add_client(name, email, niche, icp, calendar_link, location, sender_name, sender_email)`
+  - `update_client(client_id, ..., campaign_paused, outreach_review_mode)`
+  - `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`
+  - `get_prospect_by_id(prospect_id)`
+  - `get_pending_outreach_for_review(client_id)` — returns outreach with status `pending_review`
 
 ### Delivery
-- **`mailer.py`** - SMTP delivery
-- **`sendgrid_mailer.py`** - SendGrid delivery
-- **`_route_send_email()` in `web_app.py`** - the only approved outbound send path inside the web app
-
-### Inbox
-- **`inbox_monitor.py`** - IMAP reply monitor and reply classification flow
-  - Gmail/live inbox path now uses `UNSEEN`
-  - tolerates `unknown-8bit` style MIME charset labels
-  - limits each poll with `IMAP_MAX_MESSAGES_PER_POLL` (default 25)
+- **`mailer.py`** - SMTP delivery with sender override and optional `html_body` parameter
+- **`sendgrid_mailer.py`** - SendGrid delivery with `html_body` support (used as `html_content`)
+- **`deliverability.py`** - shared outbound suppression checks, failure classification, event logging, per-client sender identity, unsubscribe token generation/verification
+- **`_route_send_email()` in `web_app.py`** - the only approved outbound send path inside the web app; accepts `html_body`
 
 ### Web
-- **`web_app.py`** - Flask dashboard and API surface. Important endpoints include:
-  - `GET /` — operator dashboard (house account, all prospects)
-  - `GET/POST /settings` — Basic Auth protected
-  - `GET /onboard` / `POST /onboard` — public client onboarding form
-  - `GET /onboard/confirm` — post-signup confirmation page
-  - `GET /client/login` / `POST /client/login` — magic link request
-  - `GET /client/verify` — magic link token validation, sets session
-  - `GET /client` — client-facing dashboard (session-gated)
+- **`web_app.py`** - Flask dashboard and API surface. Important endpoints:
+  - `GET /`
+  - `GET /checkout`
+  - `GET/POST /onboard`
+  - `GET /ops`
+  - `GET /client/login`
+  - `GET /client/verify`
+  - `GET /client`
+  - `GET/POST /client/settings`
+  - `GET /client/prospects`
+  - `GET /client/prospects/export`
+  - `GET /client/prospects/<id>`
+  - `POST /client/prospects/<id>/update-status`
+  - `POST /client/prospects/bulk-action`
+  - `POST /client/reply-drafts/<id>/action`
+  - `GET /client/outreach-queue`
+  - `POST /client/outreach-queue/<id>/action`
+  - `POST /client/campaign/pause`
+  - `POST /client/campaign/resume`
+  - `POST /client/campaign/review-mode/enable`
+  - `POST /client/campaign/review-mode/disable`
   - `POST /client/logout`
-  - `POST /api/full-pipeline`
-  - `POST /api/generate-from-url`
-  - `POST /api/generate-deck-from-url`
   - `POST /api/find-and-fire`
-  - `POST /api/send-outreach/<id>`
-  - `GET /api/outreach-tracker`
-  - `GET /api/sent-replies`
-  - `GET /api/reply-drafts`
-  - `POST /api/reply-drafts/<id>/action`
-  - `POST /api/seed-demo-reply`
-  - `POST /api/prospects`
-  - `PATCH /api/prospects/<id>`
-  - `DELETE /api/prospects/<id>`
-  - `POST /api/prospects/<id>/enrol`
-  - `POST /api/import-csv`
-  - `GET /api/analytics`
-  - `GET /api/monitor-status`
-  - `POST /api/monitor-reset`
-
-### Documents
-- **`pdf_generator.py`** - automated proposal PDF
-- **`deck_generator.py`** - richer bespoke deck PDF path
-
-### Discovery
-- **`google_maps_finder.py`** - Google Maps lead discovery
-
-### Shared Settings
-- **`settings.py`** - runtime config helpers used across the app
+  - `GET /api/find-and-fire/<job_id>`
+  - `POST /webhook/sendgrid`
+  - `POST /webhook/stripe`
+  - `GET /unsubscribe`
+  - `GET /health`
 
 ## Important Rules
 
 - All outbound sends in `web_app.py` must go through `_route_send_email()`
 - `LINKEDIN_DRY_RUN=true` by default
-- `USE_SENDGRID=true` currently drops attachment and thread-header support
-- Scheduler only starts from `python web_app.py`
-- `delete_prospect()` cascades through all related tables including `prospect_research`
+- Scheduler can be disabled with `--no-scheduler` or `SCHEDULER_ENABLED=false`
+- `/settings` is Basic Auth protected
+- `/` is public marketing and `/ops` is internal operator UI
+- `/client` requires `session["client_id"]`
+- House account is always `client_id=1`
+- Find-and-Fire uses job-id polling, not SSE
+- `get_prospect_by_id()` must be used to reload a prospect after research
+- SendGrid signed webhook verification is optional and controlled by `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- Per-client sender identity is stored and used during outbound sends; only used when `sender_email_verified=1`
+- `outreach_review_mode=1` on a client makes the sequencer hold emails as `pending_review` instead of sending
+- `_route_send_email` and all DB-writing routes must pass `db_path=_db` explicitly — default arg values are frozen at import time
 
 ## Running
 
 ```bash
 pip install -r requirements.txt
+
 python web_app.py
+python web_app.py --no-scheduler
+python scheduler.py
 ```
 
-Focused checks:
+Primary local routes:
 
 ```bash
-python -m unittest test_ai_engine.py
-python -m unittest test_reply_workflow.py test_subject_variety.py
-python -m unittest discover
-python -m compileall c:\Users\ritis\Projects\leadgen
+http://127.0.0.1:5000/
+http://127.0.0.1:5000/checkout
+http://127.0.0.1:5000/onboard
+http://127.0.0.1:5000/client
+http://127.0.0.1:5000/ops
 ```
 
 ## SaaS Layer Status
 
 | Task | Status |
 |---|---|
-| 1. Per-client multi-tenancy | ✅ Done |
-| 2. Self-booking onboarding at `/onboard` | ✅ Done |
-| 3. Autonomous self-prospecting | ✅ Done |
-| 4. Client-facing dashboard (`/client`) | ✅ Done |
-| 5. Automated weekly client reports | ✅ Done |
+| Multi-tenancy | Done |
+| Public launch path | Done |
+| Client dashboard | Done |
+| Client settings | Done |
+| Client prospects flow | Done |
+| Operator workspace filtering | Done |
+| Deliverability hardening | Done |
+| SendGrid webhook handling | Done |
+| Per-client sender identity | Done |
+| One-click unsubscribe | Done |
+| Campaign pause/resume | Done |
+| Warm reply notifications | Done |
+| Client prospect status updates | Done |
+| Outreach approval queue | Done |
+| HTML weekly report | Done |
 
 ## Planned Next Tasks
 
-1. Test suite coverage for new SaaS endpoints
-2. Find-and-fire progress streaming
-3. Production scheduler split / startup hardening
-4. SendGrid feature parity (attachments, thread headers)
-5. Bounce / unsubscribe webhook handling
+1. Sender verification visibility improvement (show verified status more prominently)
+2. Onboarding sanity pass (test the full new-client flow end-to-end)
+3. Production deploy hardening and env cleanup
+4. More `/ops` polish and deeper workspace drilldowns

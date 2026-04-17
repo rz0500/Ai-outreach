@@ -27,6 +27,7 @@ Usage:
 import os
 import smtplib
 import ssl
+from email.utils import formataddr
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -55,12 +56,17 @@ def send_email(
     subject: str,
     body: str,
     from_address: str = SMTP_USER,
+    from_name: str = "",
     in_reply_to: str = "",
     references: str = "",
     attachment_path: str = "",
+    list_unsubscribe: str = "",
+    html_body: str = "",
 ) -> tuple[bool, str]:
     """
-    Send a plain-text email via SMTP, with an optional file attachment.
+    Send an email via SMTP, with an optional file attachment and optional HTML body.
+    When html_body is provided the message is sent as multipart/alternative with
+    both plain-text and HTML parts; mail clients that support HTML will render it.
 
     Supports two connection modes based on SMTP_PORT:
       - Port 465 : SMTP_SSL  (SSL from the start — common for Gmail)
@@ -96,12 +102,17 @@ def send_email(
     has_attachment = bool(attachment_path and os.path.isfile(attachment_path))
     msg = MIMEMultipart("mixed" if has_attachment else "alternative")
     msg["Subject"] = subject
-    msg["From"]    = from_address
+    msg["From"]    = formataddr((from_name, from_address)) if from_name else from_address
     msg["To"]      = to_address
     if in_reply_to:
         msg["In-Reply-To"] = in_reply_to
         msg["References"]  = references or in_reply_to
+    if list_unsubscribe:
+        msg["List-Unsubscribe"]      = f"<{list_unsubscribe}>"
+        msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
     msg.attach(MIMEText(body, "plain"))
+    if html_body:
+        msg.attach(MIMEText(html_body, "html"))
 
     if has_attachment:
         with open(attachment_path, "rb") as fh:
