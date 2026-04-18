@@ -12,6 +12,7 @@ Usage:
     prospect_id = add_prospect(name="Jane Doe", company="Acme Corp", ...)
 """
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from typing import Iterator, Optional
@@ -20,8 +21,10 @@ from typing import Iterator, Optional
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Path to the SQLite database file. Change this to use a different location.
-DB_PATH = "prospects.db"
+# Path to the SQLite database file.
+# Override with DB_PATH env var — set this to a persistent volume path on
+# Render/Railway/Fly to survive redeploys, e.g. DB_PATH=/var/data/prospects.db
+DB_PATH = os.getenv("DB_PATH", "prospects.db")
 
 # All allowed values for the 'status' column.
 VALID_STATUSES = {"new", "qualified", "contacted", "replied", "booked", "rejected", "in_sequence"}

@@ -65,8 +65,17 @@ def _check_production_safety() -> None:
     if settings_pw in ("admin", "change-me", "password", ""):
         warnings.append(
             "SETTINGS_PASSWORD is insecure (value: '{}'). "
-            "The /settings page will be trivially accessible. "
+            "The /settings and /ops pages will be trivially accessible. "
             "Set SETTINGS_PASSWORD to a strong password.".format(settings_pw or "(empty)")
+        )
+
+    db_path = os.getenv("DB_PATH", "").strip()
+    if not db_path:
+        warnings.append(
+            "DB_PATH is not set — SQLite will write to 'prospects.db' in the project "
+            "root. On platforms with ephemeral filesystems (Render, Railway, Fly) this "
+            "file is wiped on every redeploy. Set DB_PATH to a path on a persistent "
+            "volume, e.g. DB_PATH=/var/data/prospects.db"
         )
 
     if warnings:
@@ -588,6 +597,9 @@ def _render_operator_dashboard():
 @app.route("/api/ops/client/<int:client_id>/pause", methods=["POST"])
 def ops_pause_client(client_id: int):
     """Ops: pause campaign for any client workspace."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
     _db = database.DB_PATH
     if not database.get_client(client_id, db_path=_db):
         return jsonify({"error": "client not found"}), 404
@@ -598,6 +610,9 @@ def ops_pause_client(client_id: int):
 @app.route("/api/ops/client/<int:client_id>/resume", methods=["POST"])
 def ops_resume_client(client_id: int):
     """Ops: resume campaign for any client workspace."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
     _db = database.DB_PATH
     if not database.get_client(client_id, db_path=_db):
         return jsonify({"error": "client not found"}), 404
@@ -608,6 +623,9 @@ def ops_resume_client(client_id: int):
 @app.route("/api/ops/client/<int:client_id>/toggle-review-mode", methods=["POST"])
 def ops_toggle_review_mode(client_id: int):
     """Ops: toggle outreach review mode for any client workspace."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
     _db = database.DB_PATH
     client = database.get_client(client_id, db_path=_db)
     if not client:
@@ -620,6 +638,9 @@ def ops_toggle_review_mode(client_id: int):
 @app.route("/api/ops/client/<int:client_id>/resend-welcome", methods=["POST"])
 def ops_resend_welcome(client_id: int):
     """Ops: resend magic-link welcome email to any client."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
     _db = database.DB_PATH
     client = database.get_client(client_id, db_path=_db)
     if not client:
@@ -674,10 +695,24 @@ def create_checkout_session():
         return jsonify({"error": str(exc)}), 500
 
 
+def _ops_auth_required():
+    """Return a 401 challenge if the request lacks valid Basic Auth credentials."""
+    if not _check_settings_auth():
+        return (
+            "Unauthorised",
+            401,
+            {"WWW-Authenticate": 'Basic realm="Antigravity Ops"'},
+        )
+    return None
+
+
 @app.route("/ops")
 @app.route("/dashboard")
 def index():
-    """Internal operator dashboard."""
+    """Internal operator dashboard — Basic Auth protected."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
     return _render_operator_dashboard()
 
 @app.route("/api/sample-emails")

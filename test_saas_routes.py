@@ -22,8 +22,13 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("SMTP_HOST", "")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
+import base64
+
 import database
 import web_app
+
+# Basic Auth header for /ops and /api/ops/* routes (default admin:admin in tests)
+_OPS_AUTH = {"Authorization": "Basic " + base64.b64encode(b"admin:admin").decode()}
 
 
 def _make_test_db():
@@ -88,9 +93,13 @@ class TestOnboardRoutes(unittest.TestCase):
         self.assertIn(b"antigravity", resp.data.lower())
 
     def test_get_operator_dashboard_route_returns_200(self):
-        resp = self.client.get("/ops")
+        resp = self.client.get("/ops", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Antigravity", resp.data)
+
+    def test_ops_route_requires_basic_auth(self):
+        resp = self.client.get("/ops")
+        self.assertEqual(resp.status_code, 401)
 
     def test_post_onboard_missing_name_returns_form_with_error(self):
         resp = self.client.post("/onboard", data={
@@ -679,7 +688,7 @@ class TestOperatorClientFiltering(unittest.TestCase):
             pass
 
     def test_operator_dashboard_can_filter_to_selected_client(self):
-        resp = self.client.get(f"/ops?client_id={self.client_two_id}")
+        resp = self.client.get(f"/ops?client_id={self.client_two_id}", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Client Two Lead", resp.data)
         self.assertIn(b"Client Two Co", resp.data)
@@ -1135,7 +1144,7 @@ class TestOpsActionRoutes(unittest.TestCase):
             os.unlink(self.db)
 
     def test_pause_sets_campaign_paused(self):
-        resp = self.http.post(f"/api/ops/client/{self.client_id}/pause")
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/pause", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["ok"])
@@ -1145,7 +1154,7 @@ class TestOpsActionRoutes(unittest.TestCase):
 
     def test_resume_clears_campaign_paused(self):
         database.update_client(self.client_id, campaign_paused=1, db_path=self.db)
-        resp = self.http.post(f"/api/ops/client/{self.client_id}/resume")
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/resume", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["ok"])
@@ -1154,7 +1163,7 @@ class TestOpsActionRoutes(unittest.TestCase):
         self.assertEqual(client["campaign_paused"], 0)
 
     def test_toggle_review_mode_on(self):
-        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode")
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["ok"])
@@ -1164,7 +1173,7 @@ class TestOpsActionRoutes(unittest.TestCase):
 
     def test_toggle_review_mode_off(self):
         database.update_client(self.client_id, outreach_review_mode=1, db_path=self.db)
-        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode")
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertFalse(data["outreach_review_mode"])
@@ -1172,27 +1181,32 @@ class TestOpsActionRoutes(unittest.TestCase):
         self.assertEqual(client["outreach_review_mode"], 0)
 
     def test_unknown_client_returns_404(self):
-        resp = self.http.post("/api/ops/client/99999/pause")
+        resp = self.http.post("/api/ops/client/99999/pause", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 404)
         self.assertIn("error", resp.get_json())
+
+    def test_ops_api_requires_basic_auth(self):
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/pause")
+        self.assertEqual(resp.status_code, 401)
 
     def test_resend_welcome_returns_ok_when_email_sent(self):
         import unittest.mock as mock
         with mock.patch("web_app._route_send_email") as mock_send:
             mock_send.return_value = None
-            resp = self.http.post(f"/api/ops/client/{self.client_id}/resend-welcome")
+            resp = self.http.post(
+                f"/api/ops/client/{self.client_id}/resend-welcome", headers=_OPS_AUTH
+            )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json()["ok"])
         mock_send.assert_called_once()
 
     def test_resend_welcome_404_for_unknown_client(self):
-        resp = self.http.post("/api/ops/client/99999/resend-welcome")
+        resp = self.http.post("/api/ops/client/99999/resend-welcome", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 404)
 
     def test_resend_welcome_400_when_no_email(self):
         no_email_id = database.add_client(name="No Email Co", email="", db_path=self.db)
-        # Blank email — should get 400
-        resp = self.http.post(f"/api/ops/client/{no_email_id}/resend-welcome")
+        resp = self.http.post(f"/api/ops/client/{no_email_id}/resend-welcome", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 400)
 
 
