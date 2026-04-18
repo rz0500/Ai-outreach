@@ -1116,5 +1116,85 @@ class TestWeeklyReportHtml(unittest.TestCase):
         self.assertIn("0%", html)
 
 
+class TestOpsActionRoutes(unittest.TestCase):
+    """Tests for POST /api/ops/client/<id>/pause|resume|toggle-review-mode|resend-welcome."""
+
+    def setUp(self):
+        self.db = _make_test_db()
+        web_app.app.config["TESTING"] = True
+        self._orig_db_path = database.DB_PATH
+        database.DB_PATH = self.db
+        self.http = web_app.app.test_client()
+        self.client_id = database.add_client(
+            name="Ops Target", email="ops@example.com", db_path=self.db
+        )
+
+    def tearDown(self):
+        database.DB_PATH = self._orig_db_path
+        if os.path.exists(self.db):
+            os.unlink(self.db)
+
+    def test_pause_sets_campaign_paused(self):
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/pause")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["campaign_paused"])
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertEqual(client["campaign_paused"], 1)
+
+    def test_resume_clears_campaign_paused(self):
+        database.update_client(self.client_id, campaign_paused=1, db_path=self.db)
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/resume")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertFalse(data["campaign_paused"])
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertEqual(client["campaign_paused"], 0)
+
+    def test_toggle_review_mode_on(self):
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["outreach_review_mode"])
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertEqual(client["outreach_review_mode"], 1)
+
+    def test_toggle_review_mode_off(self):
+        database.update_client(self.client_id, outreach_review_mode=1, db_path=self.db)
+        resp = self.http.post(f"/api/ops/client/{self.client_id}/toggle-review-mode")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertFalse(data["outreach_review_mode"])
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertEqual(client["outreach_review_mode"], 0)
+
+    def test_unknown_client_returns_404(self):
+        resp = self.http.post("/api/ops/client/99999/pause")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("error", resp.get_json())
+
+    def test_resend_welcome_returns_ok_when_email_sent(self):
+        import unittest.mock as mock
+        with mock.patch("web_app._route_send_email") as mock_send:
+            mock_send.return_value = None
+            resp = self.http.post(f"/api/ops/client/{self.client_id}/resend-welcome")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()["ok"])
+        mock_send.assert_called_once()
+
+    def test_resend_welcome_404_for_unknown_client(self):
+        resp = self.http.post("/api/ops/client/99999/resend-welcome")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_resend_welcome_400_when_no_email(self):
+        no_email_id = database.add_client(name="No Email Co", email="", db_path=self.db)
+        # Blank email — should get 400
+        resp = self.http.post(f"/api/ops/client/{no_email_id}/resend-welcome")
+        self.assertEqual(resp.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

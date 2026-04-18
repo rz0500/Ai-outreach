@@ -532,6 +532,25 @@
     </div>
   </div>
 
+  <!-- ── Sender setup nudge ── -->
+  {% if not client.sender_email %}
+  <div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.22);border-radius:12px;padding:0.85rem 1.1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+    <div style="font-size:0.88rem;color:#fde68a;">
+      <strong style="color:#fbbf24;">Action needed:</strong> Your emails are sending from the system address. Add your own email in
+      <a href="/client/settings" style="color:#fbbf24;font-weight:600;">Settings</a> so outreach comes from you.
+    </div>
+    <a href="/client/settings" style="font-size:0.8rem;font-weight:600;color:#f8fafc;background:rgba(251,191,36,0.18);border:1px solid rgba(251,191,36,0.35);border-radius:7px;padding:0.35rem 0.9rem;text-decoration:none;white-space:nowrap;">Set up sender</a>
+  </div>
+  {% elif not client.sender_email_verified %}
+  <div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.22);border-radius:12px;padding:0.85rem 1.1rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+    <div style="font-size:0.88rem;color:#fde68a;">
+      <strong style="color:#fbbf24;">Verify your sender:</strong> {{ client.sender_email }} hasn't been verified yet. Emails will send from the system address until verified.
+      <a href="/client/settings" style="color:#fbbf24;font-weight:600;">Verify now</a>
+    </div>
+    <a href="/client/settings" style="font-size:0.8rem;font-weight:600;color:#f8fafc;background:rgba(251,191,36,0.18);border:1px solid rgba(251,191,36,0.35);border-radius:7px;padding:0.35rem 0.9rem;text-decoration:none;white-space:nowrap;">Go to Settings</a>
+  </div>
+  {% endif %}
+
   <!-- ── Stats ── -->
   <div class="stats-grid">
     <div class="stat">

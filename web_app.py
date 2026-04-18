@@ -32,6 +32,55 @@ import warmup_engine
 app = Flask(__name__)
 app.secret_key = get_secret_key()
 
+# ── Production safety checks ──────────────────────────────────────────────────
+def _check_production_safety() -> None:
+    """
+    Warn loudly on stdout when the app starts with insecure or missing
+    production configuration.  These are non-fatal so local dev still works,
+    but each warning is a hard blocker before going live.
+    """
+    warnings: list[str] = []
+
+    if get_secret_key() in (
+        "dev-secret-change-in-production",
+        "dev-secret-change-before-deploying",
+        "change-this-to-a-random-secret",
+        "",
+    ):
+        warnings.append(
+            "SECRET_KEY is the dev default — sessions can be forged. "
+            "Run: python -c \"import secrets; print(secrets.token_hex(32))\" "
+            "and set SECRET_KEY in your environment."
+        )
+
+    app_base = os.getenv("APP_BASE_URL", "").strip()
+    if not app_base or "localhost" in app_base or "127.0.0.1" in app_base:
+        warnings.append(
+            "APP_BASE_URL is not set or points to localhost. "
+            "Magic links and unsubscribe URLs will be broken in production. "
+            "Set APP_BASE_URL=https://yourdomain.com"
+        )
+
+    settings_pw = os.getenv("SETTINGS_PASSWORD", "admin").strip()
+    if settings_pw in ("admin", "change-me", "password", ""):
+        warnings.append(
+            "SETTINGS_PASSWORD is insecure (value: '{}'). "
+            "The /settings page will be trivially accessible. "
+            "Set SETTINGS_PASSWORD to a strong password.".format(settings_pw or "(empty)")
+        )
+
+    if warnings:
+        bar = "=" * 68
+        print(f"\n{bar}")
+        print("  ANTIGRAVITY — PRODUCTION SAFETY WARNINGS")
+        print(bar)
+        for i, w in enumerate(warnings, 1):
+            print(f"  [{i}] {w}")
+        print(bar)
+        print("  These are non-fatal in development. Fix before deploying.\n")
+
+_check_production_safety()
+
 # Pending client research queue — client_ids added by /onboard, drained by scheduler
 _pending_client_research: set = set()
 
@@ -484,6 +533,14 @@ def _render_operator_dashboard():
     except Exception:
         reply_drafts = []
 
+    # Pending outreach queue count for selected workspace
+    try:
+        pending_outreach_count = len(
+            database.get_pending_outreach_for_review(selected_client_id, db_path=_db)
+        )
+    except Exception:
+        pending_outreach_count = 0
+
     # Generate sample emails to showcase on dashboard
     sample_emails = _generate_sample_emails()
 
@@ -501,7 +558,58 @@ def _render_operator_dashboard():
         selected_client=selected_client,
         selected_client_id=selected_client_id,
         selected_client_analytics=selected_client_analytics,
+        pending_outreach_count=pending_outreach_count,
     )
+
+
+# ── Ops quick-action API endpoints ────────────────────────────────────────────
+
+@app.route("/api/ops/client/<int:client_id>/pause", methods=["POST"])
+def ops_pause_client(client_id: int):
+    """Ops: pause campaign for any client workspace."""
+    _db = database.DB_PATH
+    if not database.get_client(client_id, db_path=_db):
+        return jsonify({"error": "client not found"}), 404
+    database.update_client(client_id, campaign_paused=1, db_path=_db)
+    return jsonify({"ok": True, "campaign_paused": True})
+
+
+@app.route("/api/ops/client/<int:client_id>/resume", methods=["POST"])
+def ops_resume_client(client_id: int):
+    """Ops: resume campaign for any client workspace."""
+    _db = database.DB_PATH
+    if not database.get_client(client_id, db_path=_db):
+        return jsonify({"error": "client not found"}), 404
+    database.update_client(client_id, campaign_paused=0, db_path=_db)
+    return jsonify({"ok": True, "campaign_paused": False})
+
+
+@app.route("/api/ops/client/<int:client_id>/toggle-review-mode", methods=["POST"])
+def ops_toggle_review_mode(client_id: int):
+    """Ops: toggle outreach review mode for any client workspace."""
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    new_mode = 0 if client.get("outreach_review_mode") else 1
+    database.update_client(client_id, outreach_review_mode=new_mode, db_path=_db)
+    return jsonify({"ok": True, "outreach_review_mode": bool(new_mode)})
+
+
+@app.route("/api/ops/client/<int:client_id>/resend-welcome", methods=["POST"])
+def ops_resend_welcome(client_id: int):
+    """Ops: resend magic-link welcome email to any client."""
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    if not (client.get("email") or "").strip():
+        return jsonify({"error": "client has no email address"}), 400
+    try:
+        _send_onboard_welcome(client, _db)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/")
@@ -2220,6 +2328,7 @@ def onboard_submit():
     """
     Create a new client workspace from the onboarding form.
     Queues the client for their first research and outreach cycle.
+    Sends a welcome email with a magic login link.
     """
     data = request.form
     name          = (data.get("name") or "").strip()
@@ -2229,15 +2338,18 @@ def onboard_submit():
     calendar_link = (data.get("calendar_link") or "").strip()
     location      = (data.get("location") or "").strip()
     email         = (data.get("email") or "").strip().lower()
+    sender_name   = (data.get("sender_name") or "").strip()
+    sender_email  = (data.get("sender_email") or "").strip().lower()
 
     if not name or not email:
         return render_template("onboard.html", error="Business name and email are required.")
 
     _db = database.DB_PATH
 
-    # Prevent duplicate signups for the same email
+    # Prevent duplicate signups for the same email — re-send the welcome link
     existing = database.get_client_by_email(email, db_path=_db)
     if existing:
+        _send_onboard_welcome(existing, _db)
         return redirect(url_for("onboard_confirm"))
 
     client_id = database.add_client(
@@ -2247,6 +2359,8 @@ def onboard_submit():
         icp=icp or None,
         calendar_link=calendar_link or None,
         location=location or None,
+        sender_name=sender_name or None,
+        sender_email=sender_email or None,
         db_path=_db,
     )
 
@@ -2262,7 +2376,57 @@ def onboard_submit():
         )
 
     _pending_client_research.add(client_id)
+
+    # Send welcome email with magic login link
+    new_client = database.get_client(client_id, db_path=_db)
+    if new_client:
+        _send_onboard_welcome(new_client, _db)
+
     return redirect(url_for("onboard_confirm"))
+
+
+def _send_onboard_welcome(client: dict, db_path: str) -> None:
+    """
+    Create a 24-hour magic link and email it to the new client.
+    Called immediately after /onboard signup.
+    """
+    import uuid as _uuid
+    token      = str(_uuid.uuid4())
+    expires_at = (
+        datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    database.create_client_session(
+        client_id=client["id"],
+        token=token,
+        expires_at=expires_at,
+        db_path=db_path,
+    )
+    base_url   = settings.get_app_base_url().rstrip("/") or request.host_url.rstrip("/")
+    verify_url = f"{base_url}{url_for('client_verify')}?token={token}"
+    try:
+        _route_send_email(
+            to_address=client["email"],
+            subject="Welcome to Antigravity — access your dashboard",
+            respect_suppression=False,
+            client_id=client["id"],
+            skip_warmup_throttle=True,
+            body=(
+                f"Hi {client['name']},\n\n"
+                f"Your Antigravity workspace is set up and we're starting research now.\n\n"
+                f"Click here to access your dashboard:\n\n"
+                f"{verify_url}\n\n"
+                f"This link expires in 24 hours. You can always get a new one at /client/login.\n\n"
+                f"What happens next:\n"
+                f"  1. We research your target market (niche: {client.get('niche') or 'TBC'})\n"
+                f"  2. We write personalised cold emails for each prospect\n"
+                f"  3. Emails go out over the next few hours\n"
+                f"  4. Warm replies will appear in your dashboard automatically\n\n"
+                f"Questions? Just reply to this email.\n\n"
+                f"— The Antigravity Team\n"
+            ),
+        )
+    except Exception as exc:
+        print(f"[Onboard] Welcome email failed for client {client['id']}: {exc}")
 
 
 @app.route("/onboard/confirm")

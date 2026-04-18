@@ -1,4 +1,4 @@
-# Environment
+# Environment — never commit secrets
 .env
 
 # Database
@@ -7,4 +7,44 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env.local
+
+# Generated output — PDF proposals, decks, attachments
+proposals/
+decks/
+*.pdf
+*.pptx
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Playwright browsers (large — install separately)
+playwright-browsers/
+
+# Aider AI assistant
 .aider*

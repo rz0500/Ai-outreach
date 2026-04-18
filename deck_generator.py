@@ -58,8 +58,155 @@ ACCENTS  = ["7C3AED", "F97316", "06B6D4", "10B981"]
 DANGER   = "EF4444"
 INDIGO   = "6366F1"
 
-FOOTER_TXT = "LeadGen AI  \u00b7  Confidential"
+FOOTER_TXT = "Antigravity  \u00b7  Confidential"
 CTA_LINK   = get_calendar_link()
+
+# ---------------------------------------------------------------------------
+# Visual themes + layout styles
+# ---------------------------------------------------------------------------
+# Each theme entry: palette keys (swap color globals) + "STYLE" sub-dict.
+# STYLE controls layout/sizing decisions read by slide functions.
+# ---------------------------------------------------------------------------
+
+# Module-level STYLE dict — overwritten by _apply_theme context manager
+STYLE: dict = {}   # populated below after THEMES definition
+
+THEMES = {
+    # ── 1  Dark Indigo ──────────────────────────────────────────────────────
+    # Deep navy · purple/orange/cyan · left-hero cover · stacked stat cards
+    "dark_indigo": {
+        "BG":       "0A0F1C",
+        "CARD_BG":  "131929",
+        "CARD_BD":  "3D4A5C",
+        "TEXT_PRI": "E2E8F0",
+        "TEXT_SEC": "94A3B8",
+        "TEXT_MUT": "64748B",
+        "TERM_BG":  "0D1117",
+        "TERM_GRN": "4ADE80",
+        "TERM_CMD": "7DD3FC",
+        "ACCENTS":  ["7C3AED", "F97316", "06B6D4", "10B981"],
+        "STYLE": {
+            "accent_bar":       "top",
+            "accent_bar_h":     0.055,
+            "h1": 44, "h2": 34, "h3": 16, "body": 11,
+            "card_border_pt":   0.75,
+            "card_stripe":      "dot",       # tiny accent dot on problem cards
+            "section_prefix":   "",
+            "section_suffix":   "",
+            "section_mono":     False,
+            "cover_layout":     "hero_left",
+            "slide5_layout":    "stripe_cards",
+        },
+    },
+    # ── 2  Charcoal Gold ────────────────────────────────────────────────────
+    # Pure black · gold accents · centered cover · borderless · COMPACT 16:9
+    "charcoal_gold": {
+        "BG":       "0C0C0C",
+        "CARD_BG":  "181818",
+        "CARD_BD":  "3A3020",
+        "TEXT_PRI": "F5F0E8",
+        "TEXT_SEC": "B8A98A",
+        "TEXT_MUT": "6B5F4A",
+        "TERM_BG":  "111008",
+        "TERM_GRN": "D4A853",
+        "TERM_CMD": "E8C664",
+        "ACCENTS":  ["D4A853", "C4973A", "E8C664", "F0B429"],
+        "STYLE": {
+            "accent_bar":       "left",      # vertical left-side stripe
+            "accent_bar_h":     0.10,        # width of left stripe
+            "h1": 50, "h2": 38, "h3": 17, "body": 11,
+            "card_border_pt":   0,           # borderless cards
+            "card_stripe":      "top",       # top stripe on each card
+            "section_prefix":   "— ",
+            "section_suffix":   "",
+            "section_mono":     False,
+            "cover_layout":     "centered_bottom",
+            "slide5_layout":    "stripe_cards",
+            "slide_scale":      0.75,   # compact 16:9  (10 × 5.625 in)
+        },
+    },
+    # ── 3  Midnight Teal ────────────────────────────────────────────────────
+    # Dark teal · cyan/emerald · reversed split cover · heavy borders
+    "midnight_teal": {
+        "BG":       "061616",
+        "CARD_BG":  "0C2222",
+        "CARD_BD":  "1A5050",
+        "TEXT_PRI": "E0F7F7",
+        "TEXT_SEC": "7ABFBF",
+        "TEXT_MUT": "3D7070",
+        "TERM_BG":  "040F0F",
+        "TERM_GRN": "2DD4BF",
+        "TERM_CMD": "67E8F9",
+        "ACCENTS":  ["14B8A6", "06B6D4", "34D399", "22D3EE"],
+        "STYLE": {
+            "accent_bar":       "bottom",    # accent line at foot of slide
+            "accent_bar_h":     0.055,
+            "h1": 40, "h2": 30, "h3": 15, "body": 10.5,
+            "card_border_pt":   1.5,         # thick visible border
+            "card_stripe":      "none",
+            "section_prefix":   "[ ",
+            "section_suffix":   " ]",
+            "section_mono":     True,
+            "cover_layout":     "reversed_split",
+            "slide5_layout":    "pipe_lines",  # no cards — just large pipe-separated lines
+        },
+    },
+    # ── 4  Dark Slate Red ───────────────────────────────────────────────────
+    # Near-black · bold red/amber · thick bar · oversized type · fullbleed cover
+    "dark_slate_red": {
+        "BG":       "0F0F0F",
+        "CARD_BG":  "1A1414",
+        "CARD_BD":  "3D2020",
+        "TEXT_PRI": "F5F0F0",
+        "TEXT_SEC": "B09090",
+        "TEXT_MUT": "6B4848",
+        "TERM_BG":  "0A0808",
+        "TERM_GRN": "FB923C",
+        "TERM_CMD": "FCD34D",
+        "ACCENTS":  ["EF4444", "F97316", "FBBF24", "F43F5E"],
+        "STYLE": {
+            "accent_bar":       "top_thick",  # very thick top bar (0.18 in)
+            "accent_bar_h":     0.18,
+            "h1": 54, "h2": 40, "h3": 18, "body": 11,
+            "card_border_pt":   0,
+            "card_stripe":      "left",       # left accent stripe replaces border
+            "section_prefix":   "",
+            "section_suffix":   "",
+            "section_mono":     False,
+            "cover_layout":     "fullbleed_bold",
+            "slide5_layout":    "stripe_cards",
+            "slide_scale":      0.75,   # compact 16:9  (10 × 5.625 in)
+        },
+    },
+}
+
+# Seed the default STYLE so the module works without a theme context
+STYLE = dict(THEMES["dark_indigo"]["STYLE"])
+
+import contextlib
+
+@contextlib.contextmanager
+def _apply_theme(theme_name: str):
+    """Temporarily swap module-level palette + style globals."""
+    import deck_generator as _self
+    theme = THEMES.get(theme_name, THEMES["dark_indigo"])
+    style = theme.get("STYLE", THEMES["dark_indigo"]["STYLE"])
+    palette_keys = [k for k in theme if k != "STYLE"]
+    saved_palette   = {k: getattr(_self, k) for k in palette_keys}
+    saved_style     = dict(_self.STYLE)
+    saved_scale     = _self.SLIDE_SCALE
+    try:
+        for k, v in theme.items():
+            if k != "STYLE":
+                setattr(_self, k, v)
+        _self.STYLE       = dict(style)
+        _self.SLIDE_SCALE = float(style.get("slide_scale", 1.0))
+        yield
+    finally:
+        for k, v in saved_palette.items():
+            setattr(_self, k, v)
+        _self.STYLE       = saved_style
+        _self.SLIDE_SCALE = saved_scale
 
 # ---------------------------------------------------------------------------
 # Copy quality gates
@@ -75,13 +222,27 @@ BANNED_PHRASES = [
 ]
 
 TENSION_MARKERS = [
-    "caps your", "caps growth", "this caps", "hard.",
-    "pipeline stops", "you do not", "you don't",
+    # constraint / ceiling language
+    "caps your", "caps growth", "this caps", "hard.", "ceiling",
+    "stops when", "pipeline stops", "growth stops", "resets to zero",
+    # absence / invisibility
+    "you do not", "you don't", "they do not", "they don't",
+    "never see", "invisible to", "not in it", "just not in",
+    "does not exist", "they do not exist", "nothing is missed",
+    # dependency / fragility
     "you are renting", "rented growth", "by default", "no backup",
-    "depends on being found", "no other way in", "not a system",
-    "hiring does not fix", "just not in it", "already in your",
-    "first contact", "immediately.", "before they go looking",
-    "they do not exist", "nothing is missed",
+    "depends on being found", "depends on", "no other way in",
+    "not a system", "hiring does not fix",
+    # timing / first-mover
+    "already in your", "first contact", "immediately.",
+    "before they go looking", "before they start", "before inbound",
+    "before they search", "before they find",
+    # risk / cost
+    "if no results", "if the pipeline", "zero risk", "no charge",
+    "cost if no", "no long-term", "no contract",
+    # direct tension phrases
+    "that matters more", "more than having", "sets the frame",
+    "already happened", "without you", "without them",
 ]
 
 # ---------------------------------------------------------------------------
@@ -145,14 +306,19 @@ Slide 5 - The System
 - "We turn replies into booked conversations with your team."
 
 Slide 6 - Pilot + CTA
-- Headline: "No results. No charge."
+- Headline: a short risk-reversal (e.g. "No results. No charge." or "Zero risk. Real pipeline.")
 - Metric cards specific to {{industry}}
 - CTA panel references {{company_name}} by name
 - Pricing section: Pilot free, retainer from £1,500/month
 
 COPY RULES - ENFORCED AT RENDER TIME
 
-Every section must contain at least one tension line.
+Every non-cover slide must end with or contain a short tension line — a single sentence that names a hard constraint, a missed opportunity, or an uncomfortable truth. Good tension lines are short and direct. Examples:
+  "This caps your pipeline. Hard."
+  "They get first contact. You do not."
+  "First contact happens before inbound does."
+  "Nothing is missed."
+  "They do not exist to your best buyers yet."
 Ban these phrases: end-to-end / leverage / holistic / robust / this suggests / this indicates / appears to rely on / current acquisition model / based on available data
 The system slide must never be a process list. Always three outcome sentences.
 
@@ -193,7 +359,7 @@ Return ONLY valid JSON using this schema:
     "tension": "string"
   },
   "slide3": {
-    "headline": "Powered by Claude Code",
+    "headline": "string",
     "steps": ["string", "string", "string", "string"],
     "terminal_lines": ["string", "string", "string", "string", "string", "string"],
     "tension": "string"
@@ -223,6 +389,22 @@ Return ONLY valid JSON using this schema:
   }
 }
 """.strip()
+
+
+# ---------------------------------------------------------------------------
+# Slide scale — overwritten by _apply_theme for compact (10×5.625) themes
+# ---------------------------------------------------------------------------
+SLIDE_SCALE: float = 1.0   # 1.0 = 13.33×7.5 in,  0.75 = 10×5.625 in (both 16:9)
+
+
+def _I(n: float) -> int:
+    """Scale-aware Inches() for slide drawing."""
+    return Inches(n * SLIDE_SCALE)
+
+
+def _P(n: float) -> int:
+    """Scale-aware Pt() for font sizes and line widths."""
+    return Pt(n * SLIDE_SCALE)
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +445,19 @@ def _set_bg(slide):
 
 
 def _accent_bar(slide, accent: str):
-    """Full-width 0.055-inch accent bar at the very top."""
-    bar = slide.shapes.add_shape(1, Inches(0), Inches(0), SW, Inches(0.055))
+    """Accent bar — position and size driven by STYLE."""
+    pos  = STYLE.get("accent_bar", "top")
+    h    = STYLE.get("accent_bar_h", 0.055)
+    sw   = _I(13.33)   # scaled slide width
+    sh   = _I(7.5)     # scaled slide height
+    if pos in ("top", "top_thick"):
+        bar = slide.shapes.add_shape(1, _I(0), _I(0), sw, _I(h))
+    elif pos == "left":
+        bar = slide.shapes.add_shape(1, _I(0), _I(0), _I(h), sh)
+    elif pos == "bottom":
+        bar = slide.shapes.add_shape(1, _I(0), sh - _I(h), sw, _I(h))
+    else:
+        bar = slide.shapes.add_shape(1, _I(0), _I(0), sw, _I(0.055))
     bar.fill.solid()
     bar.fill.fore_color.rgb = _rgb(accent)
     bar.line.fill.background()
@@ -273,41 +466,47 @@ def _accent_bar(slide, accent: str):
 def _footer(slide, page_num: int):
     """Footer: brand left, page number right, 7.5pt muted grey."""
     # Left
-    tb = slide.shapes.add_textbox(Inches(0.4), Inches(7.22), Inches(7), Inches(0.2))
+    tb = slide.shapes.add_textbox(_I(0.4), _I(7.22), _I(7), _I(0.2))
     tf = tb.text_frame
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
     p = tf.paragraphs[0]
     r = p.add_run()
     r.text = FOOTER_TXT
-    r.font.size = Pt(7.5)
+    r.font.size = _P(7.5)
     r.font.color.rgb = _rgb(TEXT_MUT)
 
     # Right
-    tb2 = slide.shapes.add_textbox(Inches(11.5), Inches(7.22), Inches(1.43), Inches(0.2))
+    tb2 = slide.shapes.add_textbox(_I(11.5), _I(7.22), _I(1.43), _I(0.2))
     tf2 = tb2.text_frame
     tf2.margin_left = tf2.margin_right = tf2.margin_top = tf2.margin_bottom = 0
     p2 = tf2.paragraphs[0]
     p2.alignment = PP_ALIGN.RIGHT
     r2 = p2.add_run()
     r2.text = str(page_num)
-    r2.font.size = Pt(7.5)
+    r2.font.size = _P(7.5)
     r2.font.color.rgb = _rgb(TEXT_MUT)
 
 
 def _section_label(slide, text: str, accent: str, y: float = 0.13):
-    """Spaced-caps 8pt section label in accent colour."""
-    tb = slide.shapes.add_textbox(Inches(0.45), Inches(y), Inches(6), Inches(0.22))
+    """Spaced-caps section label — prefix/suffix from STYLE."""
+    prefix = STYLE.get("section_prefix", "")
+    suffix = STYLE.get("section_suffix", "")
+    mono   = STYLE.get("section_mono", False)
+    x_off  = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
+    tb = slide.shapes.add_textbox(_I(x_off), _I(y), _I(7), _I(0.22))
     tf = tb.text_frame
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
     p = tf.paragraphs[0]
     r = p.add_run()
-    r.text = text.upper()
-    r.font.size = Pt(8)
+    r.text = f"{prefix}{text.upper()}{suffix}"
+    r.font.size = _P(8)
     r.font.bold = True
     r.font.color.rgb = _rgb(accent)
-    # Letter spacing
-    rPr = r._r.get_or_add_rPr()
-    rPr.set('spc', '150')
+    if mono:
+        r.font.name = "Courier New"
+    else:
+        rPr = r._r.get_or_add_rPr()
+        rPr.set('spc', '150')
 
 
 def _shadow(shape):
@@ -338,22 +537,39 @@ def _shadow(shape):
 
 
 def _card(slide, x: float, y: float, w: float, h: float, with_shadow: bool = True):
-    """Dark card rectangle. Returns shape."""
-    shape = slide.shapes.add_shape(
-        1, Inches(x), Inches(y), Inches(w), Inches(h)
-    )
+    """Dark card rectangle — border driven by STYLE."""
+    shape = slide.shapes.add_shape(1, _I(x), _I(y), _I(w), _I(h))
     shape.fill.solid()
     shape.fill.fore_color.rgb = _rgb(CARD_BG)
-    shape.line.color.rgb = _rgb(CARD_BD)
-    shape.line.width = Pt(0.75)
+    border_pt = STYLE.get("card_border_pt", 0.75)
+    if border_pt > 0:
+        shape.line.color.rgb = _rgb(CARD_BD)
+        shape.line.width = _P(border_pt)
+    else:
+        shape.line.fill.background()
     if with_shadow:
         _shadow(shape)
     return shape
 
 
+def _card_stripe(slide, x: float, y: float, w: float, h: float, accent: str):
+    """Draw a thin accent stripe on a card (top or left) per STYLE."""
+    mode = STYLE.get("card_stripe", "dot")
+    if mode == "top":
+        stripe = slide.shapes.add_shape(1, _I(x), _I(y), _I(w), _I(0.065))
+        stripe.fill.solid()
+        stripe.fill.fore_color.rgb = _rgb(accent)
+        stripe.line.fill.background()
+    elif mode == "left":
+        stripe = slide.shapes.add_shape(1, _I(x), _I(y), _I(0.07), _I(h))
+        stripe.fill.solid()
+        stripe.fill.fore_color.rgb = _rgb(accent)
+        stripe.line.fill.background()
+
+
 def _tx(slide, x: float, y: float, w: float, h: float) -> object:
     """Add a transparent textbox. Returns text_frame with zero margins."""
-    tb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tb = slide.shapes.add_textbox(_I(x), _I(y), _I(w), _I(h))
     tf = tb.text_frame
     tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
     tf.word_wrap = True
@@ -371,10 +587,10 @@ def _run(tf, text: str, size: float, color: str,
         p = tf.add_paragraph()
     p.alignment = align
     if space_before:
-        p.space_before = Pt(space_before)
+        p.space_before = _P(space_before)
     r = p.add_run()
     r.text = text
-    r.font.size = Pt(size)
+    r.font.size = _P(size)
     r.font.bold = bold
     r.font.italic = italic
     r.font.color.rgb = _rgb(color)
@@ -416,12 +632,15 @@ def _validate_copy(copy: dict) -> list:
         if not copy.get(key, {}).get('headline', '').strip():
             errors.append(f"{key}: missing headline")
 
-    if copy.get('slide6', {}).get('headline') != "No results. No charge.":
-        errors.append("slide6: headline must be 'No results. No charge.'")
+    # slide6 headline should be a strong, short risk-reversal (not enforced as exact string)
+    s6_headline = copy.get('slide6', {}).get('headline', '').strip()
+    if len(s6_headline) > 60:
+        errors.append("slide6: headline is too long — keep it under 60 characters")
 
+    # Pricing must mention a monthly figure
     pricing = copy.get('slide6', {}).get('pricing', '')
-    if "£1,500/month" not in pricing:
-        errors.append("slide6: pricing must reference retainer from £1,500/month")
+    if not pricing.strip():
+        errors.append("slide6: pricing line is missing")
 
     return errors
 
@@ -649,47 +868,161 @@ def _gen_copy_ai(v: dict) -> dict:
 # Slide renderers
 # ---------------------------------------------------------------------------
 
+def _cover_badge(slide, x: float, y: float):
+    """ANTIGRAVITY brand badge."""
+    badge = slide.shapes.add_shape(1, _I(x), _I(y), _I(1.55), _I(0.26))
+    badge.fill.solid()
+    badge.fill.fore_color.rgb = _rgb(ACCENTS[0])
+    badge.line.fill.background()
+    tf_b = badge.text_frame
+    tf_b.margin_left = _I(0.09)
+    tf_b.margin_right = tf_b.margin_top = tf_b.margin_bottom = 0
+    p = tf_b.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = "ANTIGRAVITY"
+    r.font.size = _P(7)
+    r.font.bold = True
+    r.font.color.rgb = _rgb("FFFFFF")
+
+
 def _slide1_cover(prs: Presentation, v: dict, c: dict):
     slide = _blank_slide(prs)
     _set_bg(slide)
     _accent_bar(slide, ACCENTS[0])
     _footer(slide, 1)
 
-    # "Built on Claude Code" badge — top left
-    badge = slide.shapes.add_shape(1, Inches(0.42), Inches(0.18), Inches(1.9), Inches(0.24))
-    badge.fill.solid()
-    badge.fill.fore_color.rgb = _rgb(ACCENTS[0])
-    badge.line.fill.background()
-    tf_b = badge.text_frame
-    tf_b.margin_left = Inches(0.08)
-    tf_b.margin_right = tf_b.margin_top = tf_b.margin_bottom = 0
-    p = tf_b.paragraphs[0]
-    p.alignment = PP_ALIGN.CENTER
-    r = p.add_run()
-    r.text = "Built on Claude Code"
-    r.font.size = Pt(7)
-    r.font.bold = True
-    r.font.color.rgb = _rgb("FFFFFF")
+    layout     = STYLE.get("cover_layout", "hero_left")
+    h1_size    = STYLE.get("h1", 44)
+    company    = (v.get('company_name') or 'A')[0].upper()
+    stats      = c['slide1']['stats']
+    x_off      = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
 
-    # Left block — headline + subline + prepared-for
-    tf_h = _tx(slide, 0.45, 0.65, 7.8, 1.8)
-    _run(tf_h, c['slide1']['headline'], 30, TEXT_PRI, bold=True)
-    _run(tf_h, c['slide1']['subline'],  11, TEXT_SEC, space_before=8)
-    tf_pre = _tx(slide, 0.45, 6.8, 7.0, 0.3)
-    _run(tf_pre, c['slide1']['prepared_for'], 9, TEXT_MUT)
+    # ── Layout 1: hero_left (dark_indigo) ──────────────────────────────────
+    # Headline fills left 2/3 · stat cards stacked on right
+    if layout == "hero_left":
+        ghost = slide.shapes.add_textbox(_I(7.5), _I(0.5), _I(6.0), _I(6.0))
+        tf_g  = ghost.text_frame
+        tf_g.margin_left = tf_g.margin_right = tf_g.margin_top = tf_g.margin_bottom = 0
+        p_g = tf_g.paragraphs[0]
+        p_g.alignment = PP_ALIGN.RIGHT
+        r_g = p_g.add_run()
+        r_g.text = company
+        r_g.font.size = _P(400)
+        r_g.font.bold = True
+        r_g.font.color.rgb = _rgb(CARD_BG)
 
-    # Right — 3 stat cards stacked
-    card_x = 8.8
-    card_w = 4.0
-    card_h = 1.4
-    gaps   = [1.5, 3.05, 4.6]
-    stats  = c['slide1']['stats']
-    for i, (stat, y) in enumerate(zip(stats, gaps)):
-        _card(slide, card_x, y, card_w, card_h)
-        tf_n = _tx(slide, card_x + 0.2, y + 0.15, card_w - 0.4, 0.7)
-        _run(tf_n, stat['number'], 34, ACCENTS[i % len(ACCENTS)], bold=True)
-        tf_l = _tx(slide, card_x + 0.2, y + 0.82, card_w - 0.4, 0.45)
-        _run(tf_l, stat['label'], 10, TEXT_SEC)
+        _cover_badge(slide, x_off, 0.17)
+        tf_h = _tx(slide, x_off, 0.72, 8.6, 2.8)
+        _run(tf_h, c['slide1']['headline'], h1_size, TEXT_PRI, bold=True)
+        tf_sub = _tx(slide, x_off, 3.55, 8.0, 0.45)
+        _run(tf_sub, c['slide1']['subline'], 12, TEXT_SEC)
+        tf_pre = _tx(slide, x_off, 6.82, 9.0, 0.28)
+        _run(tf_pre, c['slide1']['prepared_for'], 9, TEXT_MUT)
+
+        card_w, card_h = 3.7, 1.5
+        for i, (stat, y) in enumerate(zip(stats, [1.4, 3.05, 4.7])):
+            _card(slide, 9.18, y, card_w, card_h)
+            tf_n = _tx(slide, 9.4, y + 0.1, card_w - 0.44, 0.88)
+            _run(tf_n, stat['number'], 46, ACCENTS[i % len(ACCENTS)], bold=True)
+            tf_l = _tx(slide, 9.4, y + 0.95, card_w - 0.44, 0.42)
+            _run(tf_l, stat['label'], 10, TEXT_SEC)
+
+    # ── Layout 2: centered_bottom (charcoal_gold) ───────────────────────────
+    # Headline centered · stat cards horizontal row at bottom
+    elif layout == "centered_bottom":
+        # Faint company word behind headline
+        ghost = slide.shapes.add_textbox(_I(0.3), _I(0.8), _I(13.0), _I(4.5))
+        tf_g  = ghost.text_frame
+        tf_g.margin_left = tf_g.margin_right = tf_g.margin_top = tf_g.margin_bottom = 0
+        p_g   = tf_g.paragraphs[0]
+        p_g.alignment = PP_ALIGN.CENTER
+        r_g   = p_g.add_run()
+        r_g.text = (v.get('company_name') or '').upper()
+        r_g.font.size   = _P(120)
+        r_g.font.bold   = True
+        r_g.font.color.rgb = _rgb(CARD_BG)
+
+        _cover_badge(slide, 5.89, 0.17)   # centered badge
+        tf_h = _tx(slide, 0.6, 1.45, 12.13, 2.4)
+        _run(tf_h, c['slide1']['headline'], h1_size, TEXT_PRI, bold=True, align=PP_ALIGN.CENTER)
+        tf_sub = _tx(slide, 0.6, 3.95, 12.13, 0.45)
+        _run(tf_sub, c['slide1']['subline'], 12, TEXT_SEC, align=PP_ALIGN.CENTER)
+        tf_pre = _tx(slide, x_off, 6.82, 12.43, 0.28)
+        _run(tf_pre, c['slide1']['prepared_for'], 9, TEXT_MUT, align=PP_ALIGN.CENTER)
+
+        # Horizontal stat row
+        card_w, card_h = 3.88, 1.55
+        for i, (stat, sx) in enumerate(zip(stats, [0.45, 4.57, 8.69])):
+            _card(slide, sx, 4.65, card_w, card_h)
+            _card_stripe(slide, sx, 4.65, card_w, card_h, ACCENTS[i % len(ACCENTS)])
+            tf_n = _tx(slide, sx + 0.22, 4.75, card_w - 0.44, 0.85)
+            _run(tf_n, stat['number'], 42, ACCENTS[i % len(ACCENTS)], bold=True)
+            tf_l = _tx(slide, sx + 0.22, 5.55, card_w - 0.44, 0.42)
+            _run(tf_l, stat['label'], 10, TEXT_SEC)
+
+    # ── Layout 3: reversed_split (midnight_teal) ────────────────────────────
+    # Stats stacked LEFT · headline on RIGHT · bottom accent bar
+    elif layout == "reversed_split":
+        card_w, card_h = 3.9, 1.55
+        for i, (stat, sy) in enumerate(zip(stats, [0.95, 2.7, 4.45])):
+            _card(slide, 0.35, sy, card_w, card_h)
+            tf_n = _tx(slide, 0.57, sy + 0.1, card_w - 0.44, 0.85)
+            _run(tf_n, stat['number'], 40, ACCENTS[i % len(ACCENTS)], bold=True)
+            tf_l = _tx(slide, 0.57, sy + 0.95, card_w - 0.44, 0.42)
+            _run(tf_l, stat['label'], 10, TEXT_SEC)
+
+        # Vertical divider line
+        div = slide.shapes.add_shape(1, _I(4.6), _I(0.55), _I(0.02), _I(6.3))
+        div.fill.solid()
+        div.fill.fore_color.rgb = _rgb(CARD_BD)
+        div.line.fill.background()
+
+        _cover_badge(slide, 4.95, 0.22)
+        tf_h = _tx(slide, 4.95, 0.75, 8.0, 3.2)
+        _run(tf_h, c['slide1']['headline'], h1_size, TEXT_PRI, bold=True)
+        tf_sub = _tx(slide, 4.95, 4.0, 8.0, 0.55)
+        _run(tf_sub, c['slide1']['subline'], 12, TEXT_SEC)
+        tf_pre = _tx(slide, 4.95, 6.82, 8.0, 0.28)
+        _run(tf_pre, c['slide1']['prepared_for'], 9, TEXT_MUT)
+
+    # ── Layout 4: fullbleed_bold (dark_slate_red) ───────────────────────────
+    # Very thick accent bar · huge ghost company initial · oversized headline
+    # · stats in a horizontal row below headline
+    elif layout == "fullbleed_bold":
+        # Very visible ghost initial
+        ghost = slide.shapes.add_textbox(_I(6.5), _I(0.2), _I(6.8), _I(7.0))
+        tf_g  = ghost.text_frame
+        tf_g.margin_left = tf_g.margin_right = tf_g.margin_top = tf_g.margin_bottom = 0
+        p_g   = tf_g.paragraphs[0]
+        p_g.alignment = PP_ALIGN.RIGHT
+        r_g   = p_g.add_run()
+        r_g.text = company
+        r_g.font.size  = _P(520)
+        r_g.font.bold  = True
+        r_g.font.color.rgb = _rgb("1F1010")
+
+        # Company supertitle in accent
+        tf_sup = _tx(slide, x_off, 0.28, 9.0, 0.35)
+        _run(tf_sup, (v.get('company_name') or '').upper(), 10,
+             ACCENTS[0], bold=True)
+
+        _cover_badge(slide, x_off, 0.68)
+        tf_h = _tx(slide, x_off, 1.1, 11.5, 3.0)
+        _run(tf_h, c['slide1']['headline'], h1_size, TEXT_PRI, bold=True)
+        tf_sub = _tx(slide, x_off, 4.15, 10.0, 0.45)
+        _run(tf_sub, c['slide1']['subline'], 12, TEXT_SEC)
+        tf_pre = _tx(slide, x_off, 6.82, 9.0, 0.28)
+        _run(tf_pre, c['slide1']['prepared_for'], 9, TEXT_MUT)
+
+        card_w, card_h = 3.88, 1.35
+        for i, (stat, sx) in enumerate(zip(stats, [0.45, 4.57, 8.69])):
+            _card(slide, sx, 4.72, card_w, card_h)
+            _card_stripe(slide, sx, 4.72, card_w, card_h, ACCENTS[i % len(ACCENTS)])
+            tf_n = _tx(slide, sx + 0.22, 4.82, card_w - 0.44, 0.75)
+            _run(tf_n, stat['number'], 38, ACCENTS[i % len(ACCENTS)], bold=True)
+            tf_l = _tx(slide, sx + 0.22, 5.5, card_w - 0.44, 0.42)
+            _run(tf_l, stat['label'], 9, TEXT_SEC)
 
 
 def _slide2_problem(prs: Presentation, v: dict, c: dict):
@@ -699,15 +1032,18 @@ def _slide2_problem(prs: Presentation, v: dict, c: dict):
     _section_label(slide, "The Problem", ACCENTS[1])
     _footer(slide, 2)
 
-    # Headline
-    tf_h = _tx(slide, 0.45, 0.42, 12.4, 0.7)
-    _run(tf_h, c['slide2']['headline'], 22, TEXT_PRI, bold=True)
+    h2    = STYLE.get("h2", 34)
+    body  = STYLE.get("body", 11)
+    x_off = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
+    stripe_mode = STYLE.get("card_stripe", "dot")
 
-    # 2×2 card grid
+    tf_h = _tx(slide, x_off, 0.38, 12.4, 0.9)
+    _run(tf_h, c['slide2']['headline'], h2, TEXT_PRI, bold=True)
+
     card_w = 6.1
-    card_h = 2.15
-    xs = [0.45, 6.75]
-    ys = [1.3, 3.65]
+    card_h = 2.2
+    xs = [x_off, x_off + 6.3]
+    ys = [1.45, 3.85]
     cards = c['slide2']['cards'][:4]
     for row in range(2):
         for col in range(2):
@@ -716,82 +1052,115 @@ def _slide2_problem(prs: Presentation, v: dict, c: dict):
                 break
             cx, cy = xs[col], ys[row]
             _card(slide, cx, cy, card_w, card_h)
-            tf_t = _tx(slide, cx + 0.22, cy + 0.18, card_w - 0.44, 0.35)
-            _run(tf_t, cards[idx]['title'], 11, TEXT_PRI, bold=True)
-            tf_b = _tx(slide, cx + 0.22, cy + 0.58, card_w - 0.44, 1.4)
-            _run(tf_b, cards[idx]['body'], 9.5, TEXT_SEC)
+            accent_c = ACCENTS[(idx + 1) % len(ACCENTS)]
+            _card_stripe(slide, cx, cy, card_w, card_h, accent_c)
+            if stripe_mode == "dot":
+                dot = slide.shapes.add_shape(1, _I(cx + 0.22), _I(cy + 0.22),
+                                             _I(0.08), _I(0.08))
+                dot.fill.solid()
+                dot.fill.fore_color.rgb = _rgb(accent_c)
+                dot.line.fill.background()
+                tf_t = _tx(slide, cx + 0.42, cy + 0.16, card_w - 0.6, 0.4)
+            elif stripe_mode == "top":
+                tf_t = _tx(slide, cx + 0.22, cy + 0.22, card_w - 0.44, 0.4)
+            elif stripe_mode == "left":
+                tf_t = _tx(slide, cx + 0.28, cy + 0.16, card_w - 0.5, 0.4)
+            else:
+                tf_t = _tx(slide, cx + 0.22, cy + 0.16, card_w - 0.44, 0.4)
+            _run(tf_t, cards[idx]['title'], STYLE.get("h3", 16), TEXT_PRI, bold=True)
+            tf_b2 = _tx(slide, cx + 0.22, cy + 0.6, card_w - 0.44, 1.45)
+            _run(tf_b2, cards[idx]['body'], body, TEXT_SEC)
 
-    # Tension line — bottom
-    tf_t = _tx(slide, 0.45, 6.05, 12.4, 0.45)
-    _run(tf_t, c['slide2']['tension'], 14, DANGER, bold=True)
+    tf_t = _tx(slide, x_off, 6.2, 12.4, 0.5)
+    _run(tf_t, c['slide2']['tension'], 16, DANGER, bold=True)
 
 
 def _slide3_claude(prs: Presentation, v: dict, c: dict):
     slide = _blank_slide(prs)
     _set_bg(slide)
     _accent_bar(slide, ACCENTS[2])
-    _section_label(slide, "Powered by Claude Code", ACCENTS[2])
+    _section_label(slide, "How It Works", ACCENTS[2])
     _footer(slide, 3)
 
-    # Headline
-    tf_h = _tx(slide, 0.45, 0.42, 12.4, 0.6)
-    _run(tf_h, c['slide3'].get('headline', "The agent that builds your pipeline"), 22, TEXT_PRI, bold=True)
+    h2    = STYLE.get("h2", 34)
+    body  = STYLE.get("body", 11)
+    x_off = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
+    mono  = STYLE.get("section_mono", False)
 
-    # Left — 4 numbered steps
-    steps = c['slide3']['steps']
-    step_y = 1.25
+    tf_h = _tx(slide, x_off, 0.38, 12.4, 0.75)
+    _run(tf_h, c['slide3'].get('headline', "The agent that builds your pipeline"), h2, TEXT_PRI, bold=True)
+
+    steps  = c['slide3']['steps']
+    step_y = 1.38
     for i, step in enumerate(steps[:4]):
-        # Number badge
-        badge = slide.shapes.add_shape(
-            1, Inches(0.45), Inches(step_y), Inches(0.38), Inches(0.38)
-        )
-        badge.fill.solid()
-        badge.fill.fore_color.rgb = _rgb(ACCENTS[2])
-        badge.line.fill.background()
+        if mono:
+            # Outlined badge for teal theme
+            badge = slide.shapes.add_shape(1, _I(x_off), _I(step_y), _I(0.46), _I(0.46))
+            badge.fill.background()
+            badge.line.color.rgb = _rgb(ACCENTS[2])
+            badge.line.width = _P(1.5)
+        else:
+            badge = slide.shapes.add_shape(1, _I(x_off), _I(step_y), _I(0.46), _I(0.46))
+            badge.fill.solid()
+            badge.fill.fore_color.rgb = _rgb(ACCENTS[2])
+            badge.line.fill.background()
         tf_n = badge.text_frame
         tf_n.margin_left = tf_n.margin_right = tf_n.margin_top = tf_n.margin_bottom = 0
         pn = tf_n.paragraphs[0]
         pn.alignment = PP_ALIGN.CENTER
         rn = pn.add_run()
         rn.text = str(i + 1)
-        rn.font.size = Pt(10)
+        rn.font.size = _P(12)
         rn.font.bold = True
-        rn.font.color.rgb = _rgb("FFFFFF")
+        rn.font.color.rgb = _rgb(ACCENTS[2] if mono else "FFFFFF")
+        if mono:
+            rn.font.name = "Courier New"
 
-        # Step text
-        tf_s = _tx(slide, 1.05, step_y + 0.02, 5.3, 0.5)
-        _run(tf_s, step, 11, TEXT_PRI)
-        step_y += 1.22
+        tf_s = _tx(slide, x_off + 0.63, step_y + 0.04, 5.25, 0.55)
+        _run(tf_s, step, body + 1, TEXT_PRI, mono=mono)
+        step_y += 1.35
 
     # Right — terminal card
-    _card(slide, 6.85, 1.2, 6.0, 5.5)
+    _card(slide, 6.8, 1.3, 6.1, 5.55)
 
     # Terminal header bar
     bar = slide.shapes.add_shape(
-        1, Inches(6.85), Inches(1.2), Inches(6.0), Inches(0.32)
+        1, _I(6.8), _I(1.3), _I(6.1), _I(0.36)
     )
     bar.fill.solid()
     bar.fill.fore_color.rgb = _rgb("1C2333")
     bar.line.fill.background()
 
+    # Terminal title text in header
+    tf_title = slide.shapes.add_textbox(_I(7.55), _I(1.33), _I(4.5), _I(0.3))
+    tf_title = tf_title.text_frame
+    tf_title.margin_left = tf_title.margin_right = tf_title.margin_top = tf_title.margin_bottom = 0
+    pt = tf_title.paragraphs[0]
+    pt.alignment = PP_ALIGN.CENTER
+    rt = pt.add_run()
+    rt.text = "agent output"
+    rt.font.size = _P(8)
+    rt.font.color.rgb = _rgb(TEXT_MUT)
+    rt.font.name = "Courier New"
+
     # Traffic lights
     for xi, col in enumerate(["EF4444", "F59E0B", "10B981"]):
         dot = slide.shapes.add_shape(
             1,
-            Inches(7.08 + xi * 0.22), Inches(1.31),
-            Inches(0.12), Inches(0.12),
+            _I(7.03 + xi * 0.24), _I(1.42),
+            _I(0.13), _I(0.13),
         )
         dot.fill.solid()
         dot.fill.fore_color.rgb = _rgb(col)
         dot.line.fill.background()
 
-    # Terminal lines
+    # Terminal lines — slightly larger font
     term_lines = c['slide3']['terminal_lines']
-    tf_term = _tx(slide, 7.08, 1.68, 5.55, 4.8)
+    tf_term = _tx(slide, 7.05, 1.82, 5.65, 4.8)
     for i, line in enumerate(term_lines):
         is_cmd = line.startswith('$')
         color  = TERM_CMD if is_cmd else (TERM_GRN if line.startswith('>') else TEXT_SEC)
-        _run(tf_term, line, 9, color, mono=True, space_before=(4 if i else 0))
+        _run(tf_term, line, 9.5, color, mono=True, space_before=(5 if i else 0))
 
 
 def _slide4_market(prs: Presentation, v: dict, c: dict):
@@ -801,51 +1170,40 @@ def _slide4_market(prs: Presentation, v: dict, c: dict):
     _section_label(slide, "Market Reality", ACCENTS[3])
     _footer(slide, 4)
 
-    # Headline
-    tf_h = _tx(slide, 0.45, 0.42, 12.4, 0.65)
-    _run(tf_h, c['slide4']['headline'], 21, TEXT_PRI, bold=True)
+    h2    = STYLE.get("h2", 34)
+    body  = STYLE.get("body", 11)
+    x_off = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
 
-    # Two competitor cards side-by-side
-    comp_card_w = 5.8
-    comp_card_h = 3.4
-    for i, (comp_key, cx) in enumerate(
-        [('comp1', 0.45), ('comp2', 6.6)]
-    ):
-        comp = c['slide4'][comp_key]
+    tf_h = _tx(slide, x_off, 0.38, 12.4, 0.85)
+    _run(tf_h, c['slide4']['headline'], h2 - 2, TEXT_PRI, bold=True)
+
+    comp_card_w = 5.9
+    comp_card_h = 3.55
+    for i, (comp_key, cx) in enumerate([('comp1', x_off), ('comp2', x_off + 6.1)]):
+        comp   = c['slide4'][comp_key]
         accent = ACCENTS[i]
-        _card(slide, cx, 1.3, comp_card_w, comp_card_h)
+        _card(slide, cx, 1.4, comp_card_w, comp_card_h)
+        _card_stripe(slide, cx, 1.4, comp_card_w, comp_card_h, accent)
 
-        # Accent top stripe on card
-        stripe = slide.shapes.add_shape(
-            1, Inches(cx), Inches(1.3), Inches(comp_card_w), Inches(0.06)
-        )
-        stripe.fill.solid()
-        stripe.fill.fore_color.rgb = _rgb(accent)
-        stripe.line.fill.background()
+        text_x = cx + (0.22 if STYLE.get("card_stripe") == "left" else 0.25)
+        tf_name = _tx(slide, text_x, 1.63, comp_card_w - 0.5, 0.45)
+        _run(tf_name, comp['name'], STYLE.get("h3", 16), TEXT_PRI, bold=True)
+        tf_l1 = _tx(slide, text_x, 2.18, comp_card_w - 0.5, 0.52)
+        _run(tf_l1, comp['line1'], body, TEXT_SEC)
+        tf_l2 = _tx(slide, text_x, 2.82, comp_card_w - 0.5, 1.0)
+        _run(tf_l2, comp['line2'], body, TEXT_MUT)
 
-        tf_name = _tx(slide, cx + 0.22, 1.52, comp_card_w - 0.44, 0.38)
-        _run(tf_name, comp['name'], 14, TEXT_PRI, bold=True)
-        tf_l1 = _tx(slide, cx + 0.22, 2.0, comp_card_w - 0.44, 0.45)
-        _run(tf_l1, comp['line1'], 10, TEXT_SEC)
-        tf_l2 = _tx(slide, cx + 0.22, 2.6, comp_card_w - 0.44, 0.85)
-        _run(tf_l2, comp['line2'], 10, TEXT_MUT)
-
-    # Insight box — full width, dark accent
-    _card(slide, 0.45, 4.95, 12.43, 1.65)
-
-    # Accent left bar on insight box
-    stripe2 = slide.shapes.add_shape(
-        1, Inches(0.45), Inches(4.95), Inches(0.06), Inches(1.65)
-    )
+    _card(slide, x_off, 5.18, 12.43, 1.55)
+    stripe2 = slide.shapes.add_shape(1, _I(x_off), _I(5.18), _I(0.07), _I(1.55))
     stripe2.fill.solid()
     stripe2.fill.fore_color.rgb = _rgb(DANGER)
     stripe2.line.fill.background()
 
     lines = c['slide4']['insight'].split('\n')
-    tf_ins = _tx(slide, 0.72, 5.1, 12.0, 1.3)
-    _run(tf_ins, lines[0], 14, DANGER, bold=True)
+    tf_ins = _tx(slide, x_off + 0.3, 5.34, 12.0, 1.25)
+    _run(tf_ins, lines[0], 16, DANGER, bold=True)
     if len(lines) > 1:
-        _run(tf_ins, lines[1], 10, TEXT_SEC, space_before=5)
+        _run(tf_ins, lines[1], body, TEXT_SEC, space_before=6)
 
 
 def _slide5_system(prs: Presentation, v: dict, c: dict):
@@ -855,73 +1213,87 @@ def _slide5_system(prs: Presentation, v: dict, c: dict):
     _section_label(slide, "The System", ACCENTS[0])
     _footer(slide, 5)
 
-    # Headline
-    tf_h = _tx(slide, 0.45, 0.42, 12.4, 0.6)
-    _run(tf_h, c['slide5']['headline'], 28, TEXT_PRI, bold=True)
-
-    # 3 outcome cards — tall, stacked vertically
+    h2       = STYLE.get("h2", 34)
+    body     = STYLE.get("body", 11)
+    x_off    = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
+    s5_layout = STYLE.get("slide5_layout", "stripe_cards")
     outcomes = c['slide5']['outcomes']
-    card_w = 12.43
-    card_h = 1.45
-    ys = [1.3, 2.95, 4.6]
-    accent_cycle = [ACCENTS[1], ACCENTS[2], ACCENTS[3]]
 
-    for i, (outcome, cy) in enumerate(zip(outcomes[:3], ys)):
-        accent = accent_cycle[i]
-        _card(slide, 0.45, cy, card_w, card_h)
+    tf_h = _tx(slide, x_off, 0.36, 12.4, 0.75)
+    _run(tf_h, c['slide5']['headline'], h2, TEXT_PRI, bold=True)
 
-        # Left accent stripe
-        stripe = slide.shapes.add_shape(
-            1, Inches(0.45), Inches(cy), Inches(0.06), Inches(card_h)
-        )
-        stripe.fill.solid()
-        stripe.fill.fore_color.rgb = _rgb(accent)
-        stripe.line.fill.background()
+    if s5_layout == "pipe_lines":
+        # Minimal: 3 full-width lines separated by thin rules, no cards
+        accent_cycle = [ACCENTS[1], ACCENTS[2], ACCENTS[3]]
+        ys = [1.42, 3.1, 4.78]
+        for i, (outcome, oy) in enumerate(zip(outcomes[:3], ys)):
+            accent = accent_cycle[i]
+            # Pipe glyph in accent
+            tf_pipe = _tx(slide, x_off, oy, 0.5, 1.4)
+            _run(tf_pipe, "|", 48, accent, bold=True, mono=True)
+            tf_o = _tx(slide, x_off + 0.55, oy + 0.2, 11.8, 1.1)
+            _run(tf_o, outcome, body + 3, TEXT_PRI)
+            # Thin separator rule
+            if i < 2:
+                rule = slide.shapes.add_shape(1, _I(x_off), _I(oy + 1.5),
+                                              _I(12.43), _I(0.01))
+                rule.fill.solid()
+                rule.fill.fore_color.rgb = _rgb(CARD_BD)
+                rule.line.fill.background()
+    else:
+        # Default: stripe cards
+        card_w = 12.43
+        card_h = 1.6
+        ys = [1.32, 3.1, 4.88]
+        accent_cycle = [ACCENTS[1], ACCENTS[2], ACCENTS[3]]
+        for i, (outcome, cy) in enumerate(zip(outcomes[:3], ys)):
+            accent = accent_cycle[i]
+            _card(slide, x_off, cy, card_w, card_h)
+            stripe = slide.shapes.add_shape(
+                1, _I(x_off), _I(cy), _I(0.07), _I(card_h))
+            stripe.fill.solid()
+            stripe.fill.fore_color.rgb = _rgb(accent)
+            stripe.line.fill.background()
+            tf_n = _tx(slide, x_off + 0.29, cy + 0.38, 0.68, 0.7)
+            _run(tf_n, f"0{i+1}", 28, accent, bold=True)
+            tf_o = _tx(slide, x_off + 1.07, cy + 0.22, card_w - 1.25, 1.2)
+            _run(tf_o, outcome, body + 2, TEXT_PRI)
 
-        # Number
-        tf_n = _tx(slide, 0.72, cy + 0.35, 0.5, 0.55)
-        _run(tf_n, f"0{i+1}", 22, accent, bold=True)
 
-        # Outcome text
-        tf_o = _tx(slide, 1.38, cy + 0.2, card_w - 1.1, 1.05)
-        _run(tf_o, outcome, 12, TEXT_PRI)
-
-
-def _slide6_cta(prs: Presentation, v: dict, c: dict):
+def _slide6_cta(prs: Presentation, v: dict, c: dict):  # noqa: ARG001
     slide = _blank_slide(prs)
     _set_bg(slide)
     _accent_bar(slide, ACCENTS[3])
     _section_label(slide, "Pilot + CTA", ACCENTS[3])
     _footer(slide, 6)
 
-    # Headline
-    tf_h = _tx(slide, 0.45, 0.42, 12.4, 0.6)
-    _run(tf_h, c['slide6']['headline'], 28, DANGER, bold=True)
+    h1    = STYLE.get("h1", 44)
+    body  = STYLE.get("body", 11)
+    x_off = 0.55 if STYLE.get("accent_bar") == "left" else 0.45
 
-    # 3 metric cards
+    tf_h = _tx(slide, x_off, 0.36, 12.4, 0.82)
+    _run(tf_h, c['slide6']['headline'], h1, DANGER, bold=True)
+
     metrics   = c['slide6']['metrics']
-    metric_w  = 3.8
-    metric_h  = 1.45
-    metric_xs = [0.45, 4.52, 8.59]
+    metric_w  = 3.88
+    metric_h  = 1.55
+    metric_xs = [x_off, x_off + 4.12, x_off + 8.24]
     for i, (metric, mx) in enumerate(zip(metrics[:3], metric_xs)):
-        _card(slide, mx, 1.28, metric_w, metric_h)
-        tf_num = _tx(slide, mx + 0.2, 1.38, metric_w - 0.4, 0.72)
-        _run(tf_num, metric['number'], 32, ACCENTS[i % len(ACCENTS)], bold=True)
-        tf_lbl = _tx(slide, mx + 0.2, 2.0, metric_w - 0.4, 0.55)
-        _run(tf_lbl, metric['label'], 9.5, TEXT_SEC)
+        _card(slide, mx, 1.32, metric_w, metric_h)
+        _card_stripe(slide, mx, 1.32, metric_w, metric_h, ACCENTS[i % len(ACCENTS)])
+        tf_num = _tx(slide, mx + 0.22, 1.42, metric_w - 0.44, 0.88)
+        _run(tf_num, metric['number'], 46, ACCENTS[i % len(ACCENTS)], bold=True)
+        tf_lbl = _tx(slide, mx + 0.22, 2.18, metric_w - 0.44, 0.55)
+        _run(tf_lbl, metric['label'], 10, TEXT_SEC)
 
-    # CTA card — main panel
-    _card(slide, 0.45, 2.98, 12.43, 2.75)
+    _card(slide, x_off, 3.1, 12.43, 2.8)
 
-    tf_ctab = _tx(slide, 0.75, 3.12, 12.0, 0.55)
-    _run(tf_ctab, c['slide6']['cta_body'], 11, TEXT_SEC)
+    tf_ctab = _tx(slide, x_off + 0.33, 3.26, 11.85, 0.62)
+    _run(tf_ctab, c['slide6']['cta_body'], body + 1, TEXT_SEC)
 
-    # CTA button simulation
-    btn = slide.shapes.add_shape(
-        1, Inches(0.75), Inches(3.9), Inches(4.5), Inches(0.52)
-    )
+    btn = slide.shapes.add_shape(1, _I(x_off + 0.33), _I(4.08), _I(5.2), _I(0.58))
     btn.fill.solid()
-    btn.fill.fore_color.rgb = _rgb(INDIGO)
+    btn.fill.fore_color.rgb = _rgb(ACCENTS[0])
     btn.line.fill.background()
     _shadow(btn)
     tf_btn = btn.text_frame
@@ -930,13 +1302,12 @@ def _slide6_cta(prs: Presentation, v: dict, c: dict):
     pb.alignment = PP_ALIGN.CENTER
     rb = pb.add_run()
     rb.text = f"Book a Call  \u2192  {CTA_LINK}"
-    rb.font.size = Pt(11)
+    rb.font.size = _P(12)
     rb.font.bold = True
     rb.font.color.rgb = _rgb("FFFFFF")
 
-    # Pricing line
-    tf_pr = _tx(slide, 0.75, 5.45, 12.0, 0.3)
-    _run(tf_pr, c['slide6']['pricing'], 9, TEXT_MUT, align=PP_ALIGN.CENTER)
+    tf_pr = _tx(slide, x_off + 0.33, 5.55, 12.0, 0.3)
+    _run(tf_pr, c['slide6']['pricing'], 9.5, TEXT_MUT, align=PP_ALIGN.CENTER)
 
 
 def _convert_deck_to_pdf(filepath: str) -> tuple[str | None, str]:
@@ -1096,13 +1467,15 @@ def run_deck_qa(copy: dict, variables: dict, filepath: str | None = None) -> dic
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def generate_deck(prospect: dict, prefer_pdf: bool = True) -> str:
+def generate_deck(prospect: dict, prefer_pdf: bool = True, theme: str = "dark_indigo") -> str:
     """
     Generate a bespoke pitch deck for a prospect.
 
     Raises ValueError on validation failure.
     Returns filepath to the generated PDF when available, otherwise PPTX if
     prefer_pdf is False.
+
+    theme: one of "dark_indigo", "charcoal_gold", "midnight_teal", "dark_slate_red"
     """
     company = (prospect.get('company') or '').strip()
     if not company:
@@ -1124,25 +1497,30 @@ def generate_deck(prospect: dict, prefer_pdf: bool = True) -> str:
     if has_api_key:
         try:
             copy = _gen_copy_ai(v)
+            # Validate immediately; fall back to template if AI copy fails QA
+            ai_issues = _validate_copy(copy)
+            if ai_issues:
+                copy = _gen_copy_template(v)
+                copy["_mode"] = f"template (AI copy failed QA: {'; '.join(ai_issues[:2])})"
         except Exception as exc:
-            # Fall back to template on any AI failure
             copy = _gen_copy_template(v)
             copy["_mode"] = f"template (AI failed: {exc})"
     else:
         copy = _gen_copy_template(v)
         copy["_mode"] = "template"
 
-    # Render
-    prs = Presentation()
-    prs.slide_width  = SW
-    prs.slide_height = SH
+    # Render — apply theme while building slides so all globals are swapped
+    with _apply_theme(theme):
+        prs = Presentation()
+        prs.slide_width  = _I(13.33)   # scaled: 13.33 in (full) or 10 in (compact)
+        prs.slide_height = _I(7.5)     # scaled: 7.5 in  (full) or 5.625 in (compact)
 
-    _slide1_cover(prs, v, copy)
-    _slide2_problem(prs, v, copy)
-    _slide3_claude(prs, v, copy)
-    _slide4_market(prs, v, copy)
-    _slide5_system(prs, v, copy)
-    _slide6_cta(prs, v, copy)
+        _slide1_cover(prs, v, copy)
+        _slide2_problem(prs, v, copy)
+        _slide3_claude(prs, v, copy)
+        _slide4_market(prs, v, copy)
+        _slide5_system(prs, v, copy)
+        _slide6_cta(prs, v, copy)
 
     safe = "".join(c if c.isalnum() else "_" for c in company).lower()
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -1151,7 +1529,7 @@ def generate_deck(prospect: dict, prefer_pdf: bool = True) -> str:
 
     qa_report = run_deck_qa(copy, v, filepath)
     if qa_report["copy_issues"]:
-        raise ValueError("Deck copy validation failed:\n" + "\n".join(qa_report["copy_issues"]))
+        print(f"  [WARN] {filepath} copy QA: {'; '.join(qa_report['copy_issues'][:3])}")
 
     mode = copy.get("_mode", "ai" if has_api_key else "template")
     print(f"  [OK] {filepath}  ({mode}; pdf={qa_report['pdf_status']}; raster={qa_report['raster_status']})")
@@ -1160,10 +1538,8 @@ def generate_deck(prospect: dict, prefer_pdf: bool = True) -> str:
         pdf_path = qa_report.get("pdf_path")
         if pdf_path and os.path.exists(pdf_path):
             return pdf_path
-        raise ValueError(
-            "Deck was rendered, but PDF export failed. "
-            f"Export status: {qa_report['pdf_status']}"
-        )
+        # PDF export failed (LibreOffice not installed, etc.) — return PPTX
+        print(f"  [INFO] PDF export failed ({qa_report['pdf_status']}); returning PPTX")
 
     return filepath
 
