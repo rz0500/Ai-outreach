@@ -84,6 +84,27 @@ _check_production_safety()
 # Pending client research queue — client_ids added by /onboard, drained by scheduler
 _pending_client_research: set = set()
 
+# ── Onboard rate limiting ─────────────────────────────────────────────────────
+# Maps IP → list of submission timestamps (floats).  Kept in-memory; resets on
+# restart which is fine — this is just spam protection, not a hard security wall.
+_onboard_ip_log: dict = {}
+_ONBOARD_RATE_LIMIT   = 5     # max submissions per IP
+_ONBOARD_RATE_WINDOW  = 3600  # within this many seconds (1 hour)
+
+
+def _onboard_rate_check(ip: str) -> bool:
+    """Return True if the IP is within the rate limit, False if it should be blocked."""
+    now = time.time()
+    cutoff = now - _ONBOARD_RATE_WINDOW
+    times = _onboard_ip_log.get(ip) or []
+    times = [t for t in times if t > cutoff]   # drop expired entries
+    if len(times) >= _ONBOARD_RATE_LIMIT:
+        _onboard_ip_log[ip] = times
+        return False
+    times.append(now)
+    _onboard_ip_log[ip] = times
+    return True
+
 # ---------------------------------------------------------------------------
 # Background scheduler state — shared across threads (GIL-safe for these ops)
 # ---------------------------------------------------------------------------
@@ -2343,6 +2364,14 @@ def onboard_submit():
 
     if not name or not email:
         return render_template("onboard.html", error="Business name and email are required.")
+
+    # Rate limit: max 5 signups per IP per hour
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    if not _onboard_rate_check(ip):
+        return render_template(
+            "onboard.html",
+            error="Too many submissions from your network. Please try again later.",
+        ), 429
 
     _db = database.DB_PATH
 

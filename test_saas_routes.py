@@ -1196,5 +1196,115 @@ class TestOpsActionRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class TestSenderVerification(unittest.TestCase):
+    """End-to-end tests for the sender email verification flow."""
+
+    def setUp(self):
+        self.db = _make_test_db()
+        web_app.app.config["TESTING"] = True
+        self._orig_db_path = database.DB_PATH
+        database.DB_PATH = self.db
+        self.http = web_app.app.test_client()
+        self.client_id = database.add_client(
+            name="Sender Co",
+            email="sender@example.com",
+            sender_email="outreach@sender.co",
+            db_path=self.db,
+        )
+
+    def tearDown(self):
+        database.DB_PATH = self._orig_db_path
+        if os.path.exists(self.db):
+            os.unlink(self.db)
+
+    def _login(self):
+        with self.http.session_transaction() as sess:
+            sess["client_id"] = self.client_id
+
+    # ── POST /client/settings/verify-sender ───────────────────────────────
+
+    def test_verify_sender_send_requires_session(self):
+        resp = self.http.post("/client/settings/verify-sender", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/client/login", resp.headers["Location"])
+
+    def test_verify_sender_send_no_email_redirects_with_error(self):
+        no_email_id = database.add_client(
+            name="No Sender", email="nosender@example.com", db_path=self.db
+        )
+        with self.http.session_transaction() as sess:
+            sess["client_id"] = no_email_id
+        resp = self.http.post("/client/settings/verify-sender", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("verify_error=no_email", resp.headers["Location"])
+
+    def test_verify_sender_send_emails_token_and_redirects(self):
+        import unittest.mock as mock
+        self._login()
+        with mock.patch("web_app._route_send_email") as mock_send:
+            mock_send.return_value = None
+            resp = self.http.post("/client/settings/verify-sender", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("verify_sent=1", resp.headers["Location"])
+        # Token must be stored in DB
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertIsNotNone(client.get("sender_verify_token"))
+        self.assertIsNotNone(client.get("sender_verify_expires_at"))
+        # Email was sent to the sender_email, not the account email
+        call_kwargs = mock_send.call_args
+        to_addr = call_kwargs[1].get("to_address") or call_kwargs[0][0]
+        self.assertEqual(to_addr, "outreach@sender.co")
+
+    # ── GET /client/verify-sender ─────────────────────────────────────────
+
+    def test_verify_sender_confirm_invalid_token_shows_error(self):
+        resp = self.http.get("/client/verify-sender?token=not-a-real-token")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Invalid or expired", resp.data)
+
+    def test_verify_sender_confirm_missing_token_redirects(self):
+        resp = self.http.get("/client/verify-sender", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/client/login", resp.headers["Location"])
+
+    def test_verify_sender_confirm_expired_token_shows_error(self):
+        import datetime as _dt
+        expired = (_dt.datetime.utcnow() - _dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        database.set_sender_verify_token(self.client_id, "expired-tok", expired, db_path=self.db)
+        resp = self.http.get("/client/verify-sender?token=expired-tok")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"expired", resp.data.lower())
+
+    def test_verify_sender_confirm_valid_token_marks_verified(self):
+        import datetime as _dt
+        import unittest.mock as mock
+        self._login()
+        with mock.patch("web_app._route_send_email"):
+            self.http.post("/client/settings/verify-sender")
+        client = database.get_client(self.client_id, db_path=self.db)
+        token = client["sender_verify_token"]
+        resp = self.http.get(f"/client/verify-sender?token={token}", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("verified=1", resp.headers["Location"])
+        client = database.get_client(self.client_id, db_path=self.db)
+        self.assertEqual(client["sender_email_verified"], 1)
+        # Token must be cleared after use
+        self.assertFalse(client.get("sender_verify_token"))
+
+    def test_verify_sender_confirm_without_session_redirects_to_login(self):
+        import unittest.mock as mock
+        self._login()
+        with mock.patch("web_app._route_send_email"):
+            self.http.post("/client/settings/verify-sender")
+        # Log out, then follow the verify link
+        self.http.post("/client/logout")
+        client = database.get_client(self.client_id, db_path=self.db)
+        token = client["sender_verify_token"]
+        resp = self.http.get(f"/client/verify-sender?token={token}", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/client/login", resp.headers["Location"])
+        self.assertIn("verified=1", resp.headers["Location"])
+
+
 if __name__ == "__main__":
     unittest.main()
