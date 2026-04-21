@@ -3,38 +3,43 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Antigravity | AI Outreach That Books Meetings</title>
+  <title>OutreachEmpower | The Premier AI Outbound Engine</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f5efe4;
-      --panel: rgba(255, 251, 245, 0.84);
-      --ink: #1d2a24;
-      --muted: #56645d;
-      --accent: #1f6f5f;
-      --accent-2: #b85c38;
-      --line: rgba(29, 42, 36, 0.12);
-      --shadow: 0 20px 60px rgba(31, 46, 40, 0.12);
+      --bg-dark: #0a0e17;
+      --bg-panel: rgba(18, 24, 38, 0.6);
+      --ink: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --accent-2: #8b5cf6;
+      --line: rgba(255, 255, 255, 0.08);
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
+      font-family: 'Inter', sans-serif;
       color: var(--ink);
-      background:
-        radial-gradient(circle at top left, rgba(184, 92, 56, 0.18), transparent 34%),
-        radial-gradient(circle at top right, rgba(31, 111, 95, 0.18), transparent 30%),
-        linear-gradient(180deg, #f8f3ea 0%, var(--bg) 52%, #efe7d8 100%);
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.15), transparent 40%),
+        radial-gradient(circle at 85% 90%, rgba(139, 92, 246, 0.15), transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.03), transparent 60%);
+      background-attachment: fixed;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
 
-    a { color: inherit; }
+    a { color: inherit; text-decoration: none; }
 
     .shell {
-      max-width: 1160px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 32px 20px 72px;
+      padding: 32px 24px 80px;
     }
 
     .topbar {
@@ -42,19 +47,22 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      margin-bottom: 32px;
+      margin-bottom: 48px;
+      animation: fadeInDown 0.8s ease-out;
     }
 
     .brand {
-      font-size: 1.05rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-weight: 700;
+      font-size: 1.25rem;
+      letter-spacing: 0.05em;
+      font-weight: 800;
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .topnav {
       display: flex;
-      gap: 12px;
+      gap: 16px;
       flex-wrap: wrap;
     }
 
@@ -65,230 +73,297 @@
       align-items: center;
       justify-content: center;
       text-decoration: none;
-      border-radius: 999px;
-      padding: 12px 18px;
+      border-radius: 12px;
+      padding: 12px 24px;
       font-size: 0.95rem;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      font-weight: 600;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
     .link-btn {
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.46);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+    }
+    .link-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--ink);
+      transform: translateY(-2px);
     }
 
     .primary-btn {
-      background: var(--accent);
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
       color: #fff;
-      box-shadow: var(--shadow);
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .primary-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5), 0 0 15px var(--accent-glow);
     }
 
     .secondary-btn {
-      border: 1px solid rgba(31, 111, 95, 0.2);
-      background: rgba(31, 111, 95, 0.08);
-      color: var(--accent);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      background: rgba(99, 102, 241, 0.08);
+      color: #a5b4fc;
     }
-
-    .link-btn:hover,
-    .primary-btn:hover,
     .secondary-btn:hover {
-      transform: translateY(-1px);
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.5);
+      transform: translateY(-2px);
+      color: #fff;
     }
 
     .hero {
       display: grid;
-      grid-template-columns: 1.2fr 0.9fr;
-      gap: 28px;
-      align-items: stretch;
-      margin-bottom: 28px;
-    }
-
-    .hero-copy,
-    .hero-card,
-    .section-card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 28px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(8px);
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 40px;
+      align-items: center;
+      margin-bottom: 40px;
+      animation: fadeInUp 0.8s ease-out 0.2s backwards;
     }
 
     .hero-copy {
-      padding: 40px;
+      padding: 20px 0;
+    }
+
+    .hero-card,
+    .section-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      transition: transform 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .hero-card:hover,
+    .section-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(99, 102, 241, 0.3);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.15);
     }
 
     .eyebrow {
-      display: inline-block;
-      padding: 8px 12px;
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
       border-radius: 999px;
-      background: rgba(184, 92, 56, 0.12);
-      color: var(--accent-2);
-      font-size: 0.82rem;
-      letter-spacing: 0.06em;
+      background: rgba(139, 92, 246, 0.15);
+      color: #c4b5fd;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      font-weight: 700;
       text-transform: uppercase;
-      margin-bottom: 18px;
+      margin-bottom: 24px;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);
     }
 
     h1 {
-      margin: 0 0 16px;
-      font-size: clamp(2.6rem, 5vw, 4.8rem);
-      line-height: 0.95;
-      font-weight: 700;
+      margin: 0 0 24px;
+      font-size: clamp(2.8rem, 5vw, 4.5rem);
+      line-height: 1.05;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
     .lede {
-      margin: 0 0 24px;
+      margin: 0 0 36px;
       color: var(--muted);
-      font-size: 1.12rem;
-      line-height: 1.6;
+      font-size: 1.15rem;
+      line-height: 1.7;
       max-width: 44rem;
+      font-weight: 400;
     }
 
     .cta-row {
       display: flex;
-      gap: 12px;
+      gap: 16px;
       flex-wrap: wrap;
-      margin-bottom: 24px;
+      margin-bottom: 40px;
     }
 
     .micro-proof {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      gap: 16px;
     }
 
     .proof {
-      padding: 14px 16px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.52);
-      border: 1px solid rgba(31, 42, 36, 0.08);
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line);
+      transition: background 0.3s ease;
+    }
+    .proof:hover {
+      background: rgba(255, 255, 255, 0.06);
     }
 
     .proof strong {
       display: block;
-      font-size: 1.25rem;
-      margin-bottom: 6px;
+      font-size: 1rem;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+      font-weight: 600;
     }
 
     .proof span {
       color: var(--muted);
-      font-size: 0.9rem;
-      line-height: 1.45;
+      font-size: 0.85rem;
+      line-height: 1.5;
     }
 
     .hero-card {
-      padding: 28px;
+      padding: 32px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
       overflow: hidden;
       position: relative;
+      animation: fadeInRight 0.8s ease-out 0.4s backwards;
     }
 
     .hero-card::after {
       content: "";
       position: absolute;
-      inset: auto -40px -60px auto;
-      width: 180px;
-      height: 180px;
+      inset: auto -60px -60px auto;
+      width: 200px;
+      height: 200px;
       border-radius: 50%;
-      background: rgba(31, 111, 95, 0.12);
-      filter: blur(6px);
+      background: rgba(99, 102, 241, 0.15);
+      filter: blur(40px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .hero-card > * {
+      position: relative;
+      z-index: 1;
     }
 
     .flow-tag {
       display: inline-flex;
-      padding: 8px 12px;
+      padding: 8px 14px;
       border-radius: 999px;
-      background: rgba(31, 111, 95, 0.1);
-      color: var(--accent);
-      font-size: 0.82rem;
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      color: #6ee7b7;
+      font-size: 0.75rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 20px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-bottom: 28px;
     }
 
     .flow-list {
       display: grid;
-      gap: 12px;
-      margin-bottom: 24px;
+      gap: 16px;
+      margin-bottom: 28px;
     }
 
     .flow-step {
       display: grid;
-      grid-template-columns: 42px 1fr;
-      gap: 12px;
+      grid-template-columns: 46px 1fr;
+      gap: 16px;
       align-items: start;
-      padding: 14px;
-      border-radius: 18px;
-      background: rgba(255, 255, 255, 0.55);
-      border: 1px solid rgba(31, 42, 36, 0.08);
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.3s ease;
+    }
+    .flow-step:hover {
+      background: rgba(0, 0, 0, 0.4);
+      border-color: rgba(99, 102, 241, 0.3);
+      transform: translateX(4px);
     }
 
     .step-num {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      background: var(--ink);
-      color: #fff;
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #818cf8;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
+      font-size: 1.1rem;
+      box-shadow: inset 0 2px 4px rgba(255,255,255,0.05);
     }
 
     .flow-step strong {
       display: block;
-      margin-bottom: 4px;
-      font-size: 1rem;
+      margin-bottom: 6px;
+      font-size: 1.05rem;
+      color: #f8fafc;
+      font-weight: 600;
     }
 
     .flow-step span {
       color: var(--muted);
-      font-size: 0.92rem;
-      line-height: 1.45;
+      font-size: 0.9rem;
+      line-height: 1.5;
     }
 
     .pilot-note {
       border-top: 1px solid var(--line);
-      padding-top: 18px;
-      color: var(--muted);
-      font-size: 0.95rem;
-      line-height: 1.55;
+      padding-top: 24px;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.6;
     }
 
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 20px;
-      margin-top: 20px;
+      gap: 24px;
+      margin-top: 24px;
+      animation: fadeInUp 0.8s ease-out 0.6s backwards;
     }
 
     .section-card {
-      padding: 24px;
+      padding: 32px;
     }
 
     .section-card h2,
     .section-card h3 {
-      margin: 0 0 10px;
+      margin: 0 0 16px;
+      font-size: 1.25rem;
+      color: #f8fafc;
+      font-weight: 700;
     }
 
     .section-card p,
     .section-card li {
       color: var(--muted);
-      line-height: 1.6;
-      font-size: 0.96rem;
+      line-height: 1.7;
+      font-size: 0.95rem;
+      margin-bottom: 12px;
     }
 
     .section-card ul {
       margin: 0;
-      padding-left: 18px;
+      padding-left: 20px;
+    }
+
+    .section-card li::marker {
+      color: var(--accent);
     }
 
     .launch-band {
-      margin-top: 20px;
+      margin-top: 24px;
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 20px;
+      gap: 24px;
+      animation: fadeInUp 0.8s ease-out 0.8s backwards;
     }
 
     .launch-band .section-card {
@@ -296,39 +371,70 @@
     }
 
     .footer-note {
-      margin-top: 20px;
+      margin-top: 48px;
       text-align: center;
-      color: var(--muted);
-      font-size: 0.92rem;
+      color: #64748b;
+      font-size: 0.9rem;
+      animation: fadeIn 1s ease-out 1s backwards;
+    }
+    
+    .footer-note a {
+      color: #818cf8;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+    }
+    .footer-note a:hover {
+      color: #c084fc;
     }
 
-    @media (max-width: 960px) {
-      .hero,
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInRight {
+      from { opacity: 0; transform: translateX(30px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @media (max-width: 1024px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+      .hero-card {
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .micro-proof {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
       .grid,
       .launch-band {
         grid-template-columns: 1fr;
       }
-
-      .hero-copy,
-      .hero-card,
-      .section-card {
-        border-radius: 22px;
+      .micro-proof {
+        grid-template-columns: 1fr;
       }
     }
 
     @media (max-width: 640px) {
       .shell {
-        padding: 18px 14px 48px;
+        padding: 20px 16px 48px;
       }
 
-      .hero-copy,
       .hero-card,
       .section-card {
-        padding: 22px;
-      }
-
-      .micro-proof {
-        grid-template-columns: 1fr;
+        padding: 24px;
       }
 
       .topbar {
@@ -341,7 +447,7 @@
 <body>
   <div class="shell">
     <div class="topbar">
-      <div class="brand">Antigravity</div>
+      <div class="brand">OutreachEmpower</div>
       <div class="topnav">
         <a class="link-btn" href="/client/login">Client login</a>
         <a class="link-btn" href="/ops">Operator dashboard</a>
@@ -350,120 +456,117 @@
 
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow">Phase 1 launch</div>
-        <h1>Outbound that finds leads, writes emails, and pushes meetings onto your calendar.</h1>
+        <div class="eyebrow">Enterprise-Grade Outbound</div>
+        <h1>AI Outreach that Finds Leads and Books Meetings Automatically.</h1>
         <p class="lede">
-          Antigravity is your self-serve outreach engine for service businesses and lean teams.
-          You tell us who you help, we stand up the first campaign, keep the pipeline moving,
-          and give you a client view of the results.
+          OutreachEmpower is your autonomous outbound engine designed for scaling teams. 
+          Define your target audience, and we will discover accounts, craft highly personalized emails, 
+          manage complex sequences, and deliver interested prospects straight to your inbox.
         </p>
 
         <div class="cta-row">
-          <a class="primary-btn" href="/checkout">Start pilot onboarding</a>
-          <a class="secondary-btn" href="{{ default_calendar_link }}" target="_blank" rel="noreferrer">Book a quick walkthrough</a>
+          <a class="primary-btn" href="/checkout">Start your pilot</a>
+          <a class="secondary-btn" href="{{ default_calendar_link }}" target="_blank" rel="noreferrer">Book a platform demo</a>
         </div>
 
         <div class="micro-proof">
           <div class="proof">
-            <strong>Maps discovery</strong>
-            <span>Real businesses found automatically from your target niche and location.</span>
+            <strong>Maps Discovery</strong>
+            <span>Real businesses targeted locally from high-intent Google Maps searches.</span>
           </div>
           <div class="proof">
-            <strong>AI email generation</strong>
-            <span>Hyper-personalized outreach written from website and research signals.</span>
+            <strong>Hyper-Personalization</strong>
+            <span>Individual emails written by AI, leveraging deep website and social signals.</span>
           </div>
           <div class="proof">
-            <strong>Auto sequences</strong>
-            <span>Once leads are in, the system keeps campaigns moving without manual chasing.</span>
+            <strong>Autonomous Engine</strong>
+            <span>Continuous delivery, automated follow-ups, and intelligent reply detection.</span>
           </div>
         </div>
       </div>
 
       <aside class="hero-card">
         <div>
-          <div class="flow-tag">What Phase 1 does today</div>
+          <div class="flow-tag">How the platform works</div>
           <div class="flow-list">
             <div class="flow-step">
               <div class="step-num">1</div>
               <div>
-                <strong>Tell us about your business</strong>
-                <span>Share your niche, website, ideal customer, and booking link in a simple onboarding flow.</span>
+                <strong>Define Your Audience</strong>
+                <span>Specify your niche, website, ideal customer profile, and sync your calendar in seconds.</span>
               </div>
             </div>
             <div class="flow-step">
               <div class="step-num">2</div>
               <div>
-                <strong>Launch your first campaign</strong>
-                <span>Antigravity enriches prospects, writes outreach, and starts the pipeline for you.</span>
+                <strong>Activate Campaigns</strong>
+                <span>OutreachEmpower scrapes leads, scores them, and immediately initiates personalized outreach.</span>
               </div>
             </div>
             <div class="flow-step">
               <div class="step-num">3</div>
               <div>
-                <strong>Track replies and booked calls</strong>
-                <span>Clients get a clean dashboard plus weekly reporting while the operator keeps the engine humming.</span>
+                <strong>Close Deals</strong>
+                <span>Monitor inbound interest via a pristine dashboard while our agents qualify responses.</span>
               </div>
             </div>
           </div>
         </div>
 
         <div class="pilot-note">
-          Billing is still in pilot mode, so the checkout step is currently a simple placeholder while we finish Stripe.
-          That means we can start shipping the product now without blocking the launch path.
+          OutreachEmpower is currently onboarding select pilot accounts. The checkout flow is streamlined for immediate access, allowing you to bypass billing barriers and launch today.
         </div>
       </aside>
     </section>
 
     <section class="grid">
       <div class="section-card">
-        <h2>Built already</h2>
+        <h2>Built for Scale</h2>
         <ul>
-          <li>Google Maps lead discovery</li>
-          <li>AI-generated outbound emails</li>
-          <li>Automated sequence enrollment</li>
-          <li>Client onboarding and dashboard basics</li>
+          <li>Intelligent Google Maps discovery</li>
+          <li>AI-crafted, context-aware messaging</li>
+          <li>Dynamic sequence enrollment</li>
+          <li>Real-time client analytics dashboard</li>
         </ul>
       </div>
 
       <div class="section-card">
-        <h2>Best for</h2>
+        <h2>Who It's For</h2>
         <ul>
-          <li>Agencies and consultants</li>
-          <li>Clinics, gyms, and local services</li>
-          <li>B2B operators who want pipeline without hiring a full SDR team</li>
+          <li>Agencies and high-ticket consultancies</li>
+          <li>B2B software platforms and SaaS</li>
+          <li>Organizations requiring massive pipeline generation without SDR bloat</li>
         </ul>
       </div>
 
       <div class="section-card">
-        <h2>Phase 1 promise</h2>
+        <h2>The Outreach Promise</h2>
         <p>
-          Don’t wait for the full SaaS stack. Launch with a simple, credible product that gets prospects into sequence,
-          tracks replies, and gives customers a visible pipeline from day one.
+          Don’t wait for outbound perfection. Launch today with a robust, enterprise-ready platform that populates your sequences and drives predictable revenue immediately.
         </p>
       </div>
     </section>
 
     <section class="launch-band">
       <div class="section-card">
-        <h3>Pilot onboarding flow</h3>
+        <h3>Accelerated Onboarding</h3>
         <p>
-          The current fastest path is:
-          landing page, dummy checkout, onboarding, campaign activation, dashboard access.
+          Our optimized path to revenue: land on the site, bypass initial friction, complete your targeting profile, activate your AI agents, and monitor the dashboard as meetings roll in.
         </p>
       </div>
       <div class="section-card">
-        <h3>Need a human in the loop?</h3>
+        <h3>Require Dedicated Strategy?</h3>
         <p>
-          If you want to talk before starting, book a walkthrough and we’ll help shape the first campaign around your niche.
+          If you are targeting complex enterprise accounts, schedule a strategy session. We'll fine-tune the AI personas specifically for your niche.
         </p>
-        <p style="margin-top:14px;">
-          <a class="secondary-btn" href="{{ default_calendar_link }}" target="_blank" rel="noreferrer">Open booking link</a>
+        <p style="margin-top:20px;">
+          <a class="secondary-btn" href="{{ default_calendar_link }}" target="_blank" rel="noreferrer">Schedule Strategy Call</a>
         </p>
       </div>
     </section>
 
     <div class="footer-note">
-      Antigravity is in active pilot. Start now at <a href="/checkout">/checkout</a> or continue to <a href="/onboard">/onboard</a>.
+      OutreachEmpower Active Pilot. Initialize now at <a href="/checkout">/checkout</a> or proceed to <a href="/onboard">/onboard</a>.
     </div>
   </div>
 </body>

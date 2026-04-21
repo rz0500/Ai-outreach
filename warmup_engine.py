@@ -50,7 +50,7 @@ from settings import (
 # Warmup identification header — inbox_monitor uses this to auto-reply
 # ---------------------------------------------------------------------------
 
-WARMUP_HEADER = "X-Antigravity-Warmup"
+WARMUP_HEADER = "X-OutreachEmpower-Warmup"
 WARMUP_HEADER_VALUE = "true"
 WARMUP_SUBJECT_PREFIX = ""  # no visible prefix — use the header instead
 
@@ -197,6 +197,47 @@ def get_warmup_status(db_path: str = database.DB_PATH) -> dict:
     }
 
 
+def get_combined_warmup_status(
+    client_id: int = 1,
+    db_path: str = database.DB_PATH,
+) -> dict:
+    """
+    Merge the built-in warmup status dict with live Mailivery data for a client.
+
+    Extra keys added:
+        mailivery_enabled     bool
+        mailivery_connected   bool
+        mailivery_campaign_id str | None
+        mailivery_health_score int | None  (cached value from clients table)
+        mailivery_status      str | None   (active / paused / None)
+        mailivery_emails_today int | None
+    """
+    import mailivery_client as _mc
+
+    status = get_warmup_status(db_path=db_path)
+
+    mc = _mc.get_client()
+    status["mailivery_enabled"] = mc is not None
+
+    client = database.get_client(client_id, db_path=db_path)
+    campaign_id = (client or {}).get("mailivery_campaign_id")
+    cached_score = (client or {}).get("mailivery_health_score")
+
+    status["mailivery_connected"]    = bool(campaign_id)
+    status["mailivery_campaign_id"]  = campaign_id
+    status["mailivery_health_score"] = cached_score
+    status["mailivery_status"]       = None
+    status["mailivery_emails_today"] = None
+
+    if mc and campaign_id:
+        mailbox = mc.get_mailbox(campaign_id)
+        if mailbox.get("ok"):
+            status["mailivery_status"]       = mailbox.get("status")
+            status["mailivery_emails_today"] = mailbox.get("emails_sent_today")
+
+    return status
+
+
 # ---------------------------------------------------------------------------
 # Warmup email content pool
 # ---------------------------------------------------------------------------
@@ -261,7 +302,7 @@ def warmup_reply_body() -> str:
 def is_warmup_email(subject: str, headers: dict | None = None) -> bool:
     """
     Return True if this email is a warmup message (should be auto-replied to).
-    Checks for the custom X-Antigravity-Warmup header first, then falls back
+    Checks for the custom X-OutreachEmpower-Warmup header first, then falls back
     to checking whether the sender is in our warmup address list.
     """
     if headers and headers.get(WARMUP_HEADER, "").lower() == "true":

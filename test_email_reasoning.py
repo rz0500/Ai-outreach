@@ -6,6 +6,7 @@ and internal quality scoring.
 """
 
 import unittest
+from unittest.mock import patch
 
 from email_validator import score_internal_quality, validate_email
 from outreach import analyze_company, choose_primary_angle, debug_email_reasoning, generate_email
@@ -90,7 +91,8 @@ class TestEmailReasoning(unittest.TestCase):
         self.assertNotIn("could be", body)
 
     def test_operator_style_uses_fast_multiline_structure(self):
-        email = generate_email(_prospect())
+        with patch("outreach.get_calendar_link", return_value=DEFAULT_CALENDAR_LINK):
+            email = generate_email(_prospect())
         body = email["body"]
         lines = [line.strip() for line in body.splitlines() if line.strip()]
 
@@ -102,7 +104,8 @@ class TestEmailReasoning(unittest.TestCase):
         self.assertLessEqual(len(body.split()), 140)
 
     def test_weak_data_email_still_stays_confident(self):
-        debug = debug_email_reasoning({"name": "Leah Morris", "company": "Harbor Studio"})
+        with patch("outreach.get_calendar_link", return_value=DEFAULT_CALENDAR_LINK):
+            debug = debug_email_reasoning({"name": "Leah Morris", "company": "Harbor Studio"})
         body = debug["email"]["body"].lower()
 
         self.assertIn("harbor studio", body)

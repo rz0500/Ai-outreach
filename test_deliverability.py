@@ -155,6 +155,7 @@ class TestDeliverability(unittest.TestCase):
             sender_email="taylor@senderco.com",
             db_path=TEST_DB,
         )
+        database.confirm_sender_email_verified(client_id, db_path=TEST_DB)
         pid = database.add_prospect(
             name="Jane Doe",
             company="Acme Corp",

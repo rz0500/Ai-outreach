@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ client.name }} — Pipeline</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Outfit', -apple-system, sans-serif;
+      font-family: 'Inter', -apple-system, sans-serif;
       background: #080c14;
       color: #e2e8f0;
       min-height: 100vh;
@@ -483,7 +483,7 @@
 <body>
 
 <header>
-  <div class="logo">Antigravity</div>
+  <div class="logo">OutreachEmpower</div>
   <div class="header-right">
     <span class="client-badge">{{ client.name }}</span>
     <a class="nav-link" href="/client/prospects">Prospects</a>
@@ -586,6 +586,40 @@
     </div>
     {% endif %}
   </div>
+
+  <!-- ── Mailivery warmup health card ── -->
+  {% if warmup_status and warmup_status.mailivery_connected %}
+  {% set score = warmup_status.mailivery_health_score %}
+  {% set mstatus = warmup_status.mailivery_status %}
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:0.75rem;padding:1.25rem 1.5rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+    <div style="flex:0 0 auto;">
+      {% if score is not none %}
+        {% if score >= 80 %}
+          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#059669,#10b981);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
+        {% elif score >= 50 %}
+          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#b45309,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
+        {% else %}
+          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#b91c1c,#ef4444);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
+        {% endif %}
+      {% else %}
+        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:#334155;display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#94a3b8;">—</div>
+      {% endif %}
+    </div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:0.8rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Email Reputation</div>
+      <div style="font-size:1rem;font-weight:600;color:#f1f5f9;">
+        {% if score is not none and score >= 80 %}Your sender reputation is excellent
+        {% elif score is not none and score >= 50 %}Your reputation is building
+        {% elif score is not none %}Reputation needs attention
+        {% else %}Warmup active — score loading{% endif %}
+      </div>
+      <div style="font-size:0.8rem;color:#64748b;margin-top:0.2rem;">
+        Status: <span style="color:{% if mstatus == 'active' %}#34d399{% else %}#fbbf24{% endif %}">{{ mstatus or 'unknown' }}</span>
+        {% if warmup_status.mailivery_emails_today is not none %} · {{ warmup_status.mailivery_emails_today }} warmup emails today{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- ── Funnel ── -->
   {% set total = analytics.total_prospects or 1 %}

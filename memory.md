@@ -29,6 +29,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 - SMTP-first deliverability hardening is live: suppression enforcement, failure classification, and operator-visible deliverability summary
 - SendGrid webhook handling is live for bounce, dropped, unsubscribe, group_unsubscribe, and spamreport events
 - SendGrid webhook signature verification is supported via `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- Mailivery webhook handling is live at `/webhook/mailivery`, requires `MAILIVERY_WEBHOOK_SECRET`, and clears cached campaign state on disconnect
 - Find-and-Fire now has additive backend job state for stage, message, current company, current index, item-level statuses, and partial results
 - Find-and-Fire operator UI now polls and renders incremental results with per-lead stage badges
 - Operator dashboard now supports per-client workspace filtering on `/ops` and client-scoped analytics refreshes
@@ -70,6 +71,8 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Per-client sender identity:** `client.sender_name` and `client.sender_email` are now persisted and used by `deliverability.py` when routing outbound email through SMTP or SendGrid. Full mailbox/domain verification status is still not built.
 
 **SendGrid webhook security:** `/webhook/sendgrid` can verify signed webhook requests using `SENDGRID_WEBHOOK_PUBLIC_KEY`. If the key is unset, the route remains permissive for local/dev use.
+
+**Mailivery webhook security:** `/webhook/mailivery` requires a shared secret (`MAILIVERY_WEBHOOK_SECRET`) sent as `X-Mailivery-Webhook-Secret` or `Authorization: Bearer ...`. Disconnect events clear `clients.mailivery_campaign_id` and cached health score.
 
 **Operator workspace filtering:** `/ops` now accepts `client_id` and renders stats, pipeline rows, deliverability summary, reply drafts, outreach tracker, and analytics refreshes for the selected client workspace instead of always forcing house account data. Operator-side AJAX calls append the selected `client_id`.
 

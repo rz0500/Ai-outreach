@@ -16,11 +16,14 @@ import os
 import datetime
 import tempfile
 import unittest
+from unittest.mock import patch
 
 # Prevent any real outbound sends or API calls during tests
 os.environ.setdefault("ANTHROPIC_API_KEY", "")
 os.environ.setdefault("SMTP_HOST", "")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ["SETTINGS_USER"] = "admin"
+os.environ["SETTINGS_PASSWORD"] = "admin"
 
 import base64
 
@@ -36,6 +39,7 @@ def _make_test_db():
     db = tempfile.mktemp(suffix=".db")
     database.initialize_database(db)
     database.initialize_outreach_table(db)
+    database.initialize_send_counters_table(db)
     return db
 
 
@@ -80,26 +84,55 @@ class TestOnboardRoutes(unittest.TestCase):
     def test_get_onboard_returns_200(self):
         resp = self.client.get("/onboard")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Antigravity", resp.data)
+        self.assertIn(b"OutreachEmpower", resp.data)
 
     def test_get_landing_page_returns_200(self):
         resp = self.client.get("/")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Antigravity", resp.data)
+        self.assertIn(b"OutreachEmpower", resp.data)
 
     def test_get_checkout_returns_200(self):
         resp = self.client.get("/checkout")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"antigravity", resp.data.lower())
+        self.assertIn(b"outreachempower", resp.data.lower())
 
     def test_get_operator_dashboard_route_returns_200(self):
         resp = self.client.get("/ops", headers=_OPS_AUTH)
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"Antigravity", resp.data)
+        self.assertIn(b"OutreachEmpower", resp.data)
 
     def test_ops_route_requires_basic_auth(self):
         resp = self.client.get("/ops")
         self.assertEqual(resp.status_code, 401)
+
+    def test_mailivery_webhook_requires_shared_secret(self):
+        with patch.dict(os.environ, {"MAILIVERY_WEBHOOK_SECRET": "top-secret"}):
+            resp = self.client.post(
+                "/webhook/mailivery",
+                json={
+                    "event": "health_score.updated",
+                    "data": {"email": "owner@test.com", "health_score": 88},
+                },
+            )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_mailivery_disconnect_webhook_clears_campaign(self):
+        client_id = database.add_client("Sender Co", "owner@test.com", db_path=self.db)
+        database.update_client(client_id, mailivery_campaign_id="camp_123", db_path=self.db)
+
+        with patch.dict(os.environ, {"MAILIVERY_WEBHOOK_SECRET": "top-secret"}):
+            resp = self.client.post(
+                "/webhook/mailivery",
+                headers={"X-Mailivery-Webhook-Secret": "top-secret"},
+                json={
+                    "event": "campaign.disconnected",
+                    "data": {"email": "owner@test.com"},
+                },
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        client = database.get_client(client_id, db_path=self.db)
+        self.assertIsNone(client["mailivery_campaign_id"])
 
     def test_post_onboard_missing_name_returns_form_with_error(self):
         resp = self.client.post("/onboard", data={
@@ -1121,7 +1154,7 @@ class TestWeeklyReportHtml(unittest.TestCase):
             "outreach": {"draft": 0, "approved": 0, "sent": 0},
         }
         html = reporter.generate_weekly_report_html(summary)
-        self.assertIn("Antigravity", html)
+        self.assertIn("OutreachEmpower", html)
         self.assertIn("0%", html)
 
 

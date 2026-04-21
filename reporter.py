@@ -320,7 +320,7 @@ def generate_weekly_report_html(
   <!-- Header -->
   <tr><td style="padding-bottom:24px;">
     <div style="font-size:13px;font-weight:700;color:#a78bfa;letter-spacing:0.1em;
-                text-transform:uppercase;">Antigravity</div>
+                text-transform:uppercase;">OutreachEmpower</div>
     <h1 style="margin:8px 0 4px;font-size:22px;font-weight:700;color:#f8fafc;">
       Your pipeline — week of {week_str}</h1>
     <p style="margin:0;font-size:14px;color:#64748b;">{greeting}</p>
@@ -395,7 +395,7 @@ def generate_weekly_report_html(
       {cta}
       <tr><td style="padding-top:24px;border-top:1px solid rgba(255,255,255,0.06);">
         <p style="margin:0;font-size:12px;color:#475569;text-align:center;">
-          — The Antigravity Team
+          — The OutreachEmpower Team
         </p>
       </td></tr>
     </table>

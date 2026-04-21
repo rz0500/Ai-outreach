@@ -175,3 +175,17 @@ def get_max_real_sends_override() -> int:
     except ValueError:
         val = 0
     return max(0, val)
+
+
+# ---------------------------------------------------------------------------
+# Mailivery external warmup
+# ---------------------------------------------------------------------------
+
+def get_mailivery_api_key() -> str:
+    """Return the Mailivery API key, or empty string if not configured."""
+    return os.getenv("MAILIVERY_API_KEY", "").strip()
+
+
+def get_mailivery_enabled() -> bool:
+    """Return True if Mailivery warmup integration is enabled."""
+    return os.getenv("MAILIVERY_ENABLED", "false").strip().lower() in ("1", "true", "yes")

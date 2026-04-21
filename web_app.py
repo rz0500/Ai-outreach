@@ -2,6 +2,7 @@ import os
 import time
 import datetime
 import uuid
+import hmac
 from flask import (
     Flask, render_template, send_from_directory, jsonify,
     request, session, redirect, url_for,
@@ -28,6 +29,7 @@ from settings import (
     get_secret_key,
 )
 import warmup_engine
+import mailivery_client
 
 app = Flask(__name__)
 app.secret_key = get_secret_key()
@@ -81,7 +83,7 @@ def _check_production_safety() -> None:
     if warnings:
         bar = "=" * 68
         print(f"\n{bar}")
-        print("  ANTIGRAVITY — PRODUCTION SAFETY WARNINGS")
+        print("  OUTREACHEMPOWER — PRODUCTION SAFETY WARNINGS")
         print(bar)
         for i, w in enumerate(warnings, 1):
             print(f"  [{i}] {w}")
@@ -273,6 +275,13 @@ def _background_scheduler() -> None:
                 warmup_engine.run_warmup_cycle(db_path=database.DB_PATH)
             except Exception as exc:
                 print(f"[Scheduler] warmup cycle error: {exc}")
+
+            # Refresh Mailivery health scores for all connected clients
+            try:
+                _refresh_mailivery_health_scores()
+            except Exception as exc:
+                print(f"[Scheduler] Mailivery health score refresh error: {exc}")
+
             last_warmup_cycle_hour = (today, warmup_slot)
 
         time.sleep(get_inbox_poll_interval())
@@ -654,6 +663,107 @@ def ops_resend_welcome(client_id: int):
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/ops/client/<int:client_id>/mailivery/connect", methods=["POST"])
+def ops_mailivery_connect(client_id: int):
+    """Ops: manually connect a client mailbox to Mailivery."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    mc = mailivery_client.get_client()
+    if not mc:
+        return jsonify({"error": "Mailivery not enabled"}), 400
+    _mailivery_auto_connect(client_id, _db)
+    updated = database.get_client(client_id, db_path=_db)
+    return jsonify({"ok": True, "mailivery_campaign_id": (updated or {}).get("mailivery_campaign_id")})
+
+
+@app.route("/api/ops/client/<int:client_id>/mailivery/start", methods=["POST"])
+def ops_mailivery_start(client_id: int):
+    """Ops: start Mailivery warmup for a client campaign."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+    if not campaign_id:
+        return jsonify({"error": "no Mailivery campaign linked"}), 400
+    mc = mailivery_client.get_client()
+    if not mc:
+        return jsonify({"error": "Mailivery not enabled"}), 400
+    result = mc.start_warmup(campaign_id)
+    return jsonify(result)
+
+
+@app.route("/api/ops/client/<int:client_id>/mailivery/pause", methods=["POST"])
+def ops_mailivery_pause(client_id: int):
+    """Ops: pause Mailivery warmup for a client campaign."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+    if not campaign_id:
+        return jsonify({"error": "no Mailivery campaign linked"}), 400
+    mc = mailivery_client.get_client()
+    if not mc:
+        return jsonify({"error": "Mailivery not enabled"}), 400
+    result = mc.pause_warmup(campaign_id)
+    return jsonify(result)
+
+
+@app.route("/api/ops/client/<int:client_id>/mailivery/resume", methods=["POST"])
+def ops_mailivery_resume(client_id: int):
+    """Ops: resume Mailivery warmup for a client campaign."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+    if not campaign_id:
+        return jsonify({"error": "no Mailivery campaign linked"}), 400
+    mc = mailivery_client.get_client()
+    if not mc:
+        return jsonify({"error": "Mailivery not enabled"}), 400
+    result = mc.resume_warmup(campaign_id)
+    return jsonify(result)
+
+
+@app.route("/api/ops/client/<int:client_id>/mailivery/status")
+def ops_mailivery_status(client_id: int):
+    """Ops: fetch live Mailivery warmup status for a client campaign."""
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    if not client:
+        return jsonify({"error": "client not found"}), 404
+    campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+    if not campaign_id:
+        return jsonify({"ok": True, "connected": False})
+    mc = mailivery_client.get_client()
+    if not mc:
+        return jsonify({"error": "Mailivery not enabled"}), 400
+    mailbox = mc.get_mailbox(campaign_id)
+    health  = mc.get_health_score(campaign_id)
+    return jsonify({
+        "ok":           True,
+        "connected":    True,
+        "campaign_id":  campaign_id,
+        "mailbox":      mailbox,
+        "health_score": health,
+    })
+
+
 @app.route("/")
 def landing_page():
     """Public marketing page for the self-serve product launch."""
@@ -701,7 +811,7 @@ def _ops_auth_required():
         return (
             "Unauthorised",
             401,
-            {"WWW-Authenticate": 'Basic realm="Antigravity Ops"'},
+            {"WWW-Authenticate": 'Basic realm="OutreachEmpower Ops"'},
         )
     return None
 
@@ -1284,21 +1394,31 @@ def api_reply_draft_action(draft_id):
     # reply into the original conversation thread.
     inbound_message_id = (draft.get("inbound_message_id") or "").strip()
 
-    delivery = deliver_prospect_email(
+    draft_client_id = draft.get("client_id", 1)
+    ok, err = _route_send_email(
         to_address=recipient,
         subject=subject,
         body=body,
-        prospect_id=draft["prospect_id"],
-        event_type="reply_draft_sent",
-        client_id=draft.get("client_id", 1),
-        db_path=database.DB_PATH,
-        content_excerpt=body[:250],
-        metadata=f"draft_id={draft_id};recipient={recipient};subject={subject}",
         in_reply_to=inbound_message_id,
         references=inbound_message_id,
+        respect_suppression=True,
+        client_id=draft_client_id,
+        db_path=database.DB_PATH,
     )
-    if not delivery["sent"]:
-        return jsonify({"error": f"Send failed: {delivery['error']}"}), 500
+    if not ok:
+        return jsonify({"error": f"Send failed: {err}"}), 500
+
+    database.log_communication_event(
+        prospect_id=draft["prospect_id"],
+        channel="email",
+        direction="outbound",
+        event_type="reply_draft_sent",
+        status="sent",
+        content_excerpt=body[:250],
+        metadata=f"draft_id={draft_id};recipient={recipient};subject={subject}",
+        client_id=draft_client_id,
+        db_path=database.DB_PATH,
+    )
 
     database.update_reply_draft_status(draft_id, "sent")
     database.update_status(draft["prospect_id"], "replied")
@@ -2296,7 +2416,8 @@ def api_sample_decks():
 @app.route("/api/warmup-status")
 def api_warmup_status():
     """Return email warmup ramp progress for the dashboard widget."""
-    return jsonify(warmup_engine.get_warmup_status(db_path=database.DB_PATH))
+    client_id = session.get("client_id", 1)
+    return jsonify(warmup_engine.get_combined_warmup_status(client_id=client_id, db_path=database.DB_PATH))
 
 
 @app.route("/api/monitor-reset", methods=["POST"])
@@ -2327,7 +2448,7 @@ def _send_weekly_client_reports() -> None:
     Called by the background scheduler every Monday at 08:00 UTC.
     """
     monday = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday()))
-    subject = f"Your Antigravity pipeline — week of {monday.strftime('%d %b %Y')}"
+    subject = f"Your OutreachEmpower pipeline — week of {monday.strftime('%d %b %Y')}"
 
     clients = database.get_active_clients()
     for client in clients:
@@ -2341,13 +2462,13 @@ def _send_weekly_client_reports() -> None:
             # Plain-text fallback
             plain_body = (
                 f"Hi {client['name']},\n\n"
-                f"Here's your Antigravity pipeline update for the week of {monday}:\n\n"
+                f"Here's your OutreachEmpower pipeline update for the week of {monday}:\n\n"
                 f"  Prospects found : {prospects_total}\n"
                 f"  Emails sent     : {outreach.get('sent', 0)}\n"
                 f"  Replies         : {funnel.get('replied', 0)}\n"
                 f"  Booked calls    : {funnel.get('booked', 0)}\n\n"
                 f"Your pipeline is active. We'll be in touch as results come in.\n\n"
-                f"— The Antigravity Team\n"
+                f"— The OutreachEmpower Team\n"
             )
             base_url = settings.get_app_base_url().rstrip("/")
             html_body = reporter.generate_weekly_report_html(
@@ -2441,6 +2562,9 @@ def onboard_submit():
 
     _pending_client_research.add(client_id)
 
+    # Auto-connect Mailivery warmup if enabled and sender SMTP credentials exist
+    _mailivery_auto_connect(client_id, _db)
+
     # Send welcome email with magic login link
     new_client = database.get_client(client_id, db_path=_db)
     if new_client:
@@ -2470,13 +2594,13 @@ def _send_onboard_welcome(client: dict, db_path: str) -> None:
     try:
         _route_send_email(
             to_address=client["email"],
-            subject="Welcome to Antigravity — access your dashboard",
+            subject="Welcome to OutreachEmpower — access your dashboard",
             respect_suppression=False,
             client_id=client["id"],
             skip_warmup_throttle=True,
             body=(
                 f"Hi {client['name']},\n\n"
-                f"Your Antigravity workspace is set up and we're starting research now.\n\n"
+                f"Your OutreachEmpower workspace is set up and we're starting research now.\n\n"
                 f"Click here to access your dashboard:\n\n"
                 f"{verify_url}\n\n"
                 f"This link expires in 24 hours. You can always get a new one at /client/login.\n\n"
@@ -2486,11 +2610,85 @@ def _send_onboard_welcome(client: dict, db_path: str) -> None:
                 f"  3. Emails go out over the next few hours\n"
                 f"  4. Warm replies will appear in your dashboard automatically\n\n"
                 f"Questions? Just reply to this email.\n\n"
-                f"— The Antigravity Team\n"
+                f"— The OutreachEmpower Team\n"
             ),
         )
     except Exception as exc:
         print(f"[Onboard] Welcome email failed for client {client['id']}: {exc}")
+
+
+def _mailivery_auto_connect(client_id: int, db_path: str) -> None:
+    """
+    If Mailivery is enabled and the client has SMTP credentials configured,
+    auto-connect their mailbox to Mailivery warmup and start the campaign.
+    Silently skips if Mailivery is disabled or credentials are missing.
+    """
+    mc = mailivery_client.get_client()
+    if not mc:
+        return
+    client = database.get_client(client_id, db_path=db_path)
+    if not client:
+        return
+    sender_email = (client.get("sender_email") or "").strip()
+    if not sender_email:
+        return
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USERNAME", os.getenv("SMTP_USER", "")).strip()
+    smtp_pass = os.getenv("SMTP_PASSWORD", os.getenv("SMTP_PASS", "")).strip()
+    if not (smtp_host and smtp_user and smtp_pass):
+        return
+    owner_email = os.getenv("MAILIVERY_OWNER_EMAIL", smtp_user).strip()
+    first_name  = (client.get("sender_name") or client.get("name") or "").split()[0]
+    last_name   = " ".join((client.get("sender_name") or client.get("name") or "").split()[1:]) or "."
+    result = mc.connect_smtp_mailbox(
+        first_name=first_name,
+        last_name=last_name,
+        email=sender_email,
+        owner_email=owner_email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+        smtp_username=smtp_user,
+        smtp_password=smtp_pass,
+        imap_host=os.getenv("IMAP_HOST", smtp_host),
+        imap_port=int(os.getenv("IMAP_PORT", "993")),
+        imap_username=smtp_user,
+        imap_password=smtp_pass,
+    )
+    if not result.get("ok"):
+        print(f"[Mailivery] Auto-connect failed for client {client_id}: {result.get('error')}")
+        return
+    campaign_id = result.get("id") or result.get("campaign_id")
+    if campaign_id:
+        database.update_client(client_id, mailivery_campaign_id=str(campaign_id), db_path=db_path)
+        mc.start_warmup(str(campaign_id))
+        print(f"[Mailivery] Connected and started warmup for client {client_id} (campaign {campaign_id})")
+
+
+def _refresh_mailivery_health_scores() -> None:
+    """
+    Fetch and cache Mailivery health scores for all active clients that have
+    a linked campaign. Runs every 4 hours from the background scheduler.
+    Warns to stdout if any score drops below 50.
+    """
+    mc = mailivery_client.get_client()
+    if not mc:
+        return
+    _db = database.DB_PATH
+    for client in database.get_active_clients(db_path=_db):
+        campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+        if not campaign_id:
+            continue
+        result = mc.get_health_score(campaign_id)
+        if not result.get("ok"):
+            continue
+        score = result.get("health_score")
+        if score is None:
+            continue
+        database.update_client(client["id"], mailivery_health_score=int(score), db_path=_db)
+        if score < 50:
+            print(f"[Mailivery] WARNING: health score {score}/100 for client {client['id']} "
+                  f"({client.get('email')}) — campaign {campaign_id}")
 
 
 @app.route("/onboard/confirm")
@@ -2547,16 +2745,16 @@ def client_login_submit():
     try:
         _route_send_email(
             to_address=email,
-            subject="Your Antigravity login link",
+            subject="Your OutreachEmpower login link",
             respect_suppression=False,
             client_id=client["id"],
             skip_warmup_throttle=True,
             body=(
                 f"Hi {client['name']},\n\n"
-                f"Click this link to access your Antigravity dashboard:\n\n"
+                f"Click this link to access your OutreachEmpower dashboard:\n\n"
                 f"{verify_url}\n\n"
                 f"This link expires in 24 hours and can only be used once.\n\n"
-                f"— The Antigravity Team\n"
+                f"— The OutreachEmpower Team\n"
             ),
         )
     except Exception as exc:
@@ -2610,11 +2808,13 @@ def client_dashboard():
 
     analytics             = database.get_client_analytics(client_id, db_path=_db)
     outreach_queue_count  = len(database.get_pending_outreach_for_review(client_id, db_path=_db))
+    warmup_status         = warmup_engine.get_combined_warmup_status(client_id=client_id, db_path=_db)
     return render_template(
         "client_dashboard.html",
         client=client,
         analytics=analytics,
         outreach_queue_count=outreach_queue_count,
+        warmup_status=warmup_status,
     )
 
 
@@ -3127,7 +3327,7 @@ def client_verify_sender_send():
     try:
         _route_send_email(
             to_address=sender_email,
-            subject="Verify your sending address — Antigravity",
+            subject="Verify your sending address — OutreachEmpower",
             body=(
                 f"Hi {client.get('name', '')},\n\n"
                 f"Click the link below to verify {sender_email} as your campaign "
@@ -3135,7 +3335,7 @@ def client_verify_sender_send():
                 f"{verify_url}\n\n"
                 f"This link expires in 24 hours. If you didn't request this, "
                 f"you can ignore this email.\n\n"
-                f"— The Antigravity Team\n"
+                f"— The OutreachEmpower Team\n"
             ),
             respect_suppression=False,
             client_id=client_id,
@@ -3904,14 +4104,53 @@ def unsubscribe():
 @app.route("/health")
 def health():
     """Lightweight health check for load balancers and uptime monitors."""
-    return jsonify({"status": "ok", "service": "antigravity"}), 200
+    return jsonify({"status": "ok", "service": "outreachempower"}), 200
+
+
+@app.route("/webhook/mailivery", methods=["POST"])
+def mailivery_webhook():
+    """
+    Receive Mailivery event notifications.
+    Supported events: campaign.disconnected, campaign.error, health_score.updated.
+    """
+    secret = os.getenv("MAILIVERY_WEBHOOK_SECRET", "").strip()
+    provided = (
+        request.headers.get("X-Mailivery-Webhook-Secret", "")
+        or request.headers.get("X-Webhook-Secret", "")
+    ).strip()
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.lower().startswith("bearer "):
+        provided = auth_header[7:].strip()
+    if not secret or not provided or not hmac.compare_digest(secret, provided):
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    event    = payload.get("event", "")
+    data     = payload.get("data", {})
+    email    = (data.get("email") or "").strip().lower()
+
+    import logging as _logging
+    _logging.getLogger("mailivery_webhook").info("[Mailivery webhook] event=%s data=%s", event, data)
+
+    if email and event in ("campaign.disconnected", "campaign.error", "health_score.updated"):
+        _db = database.DB_PATH
+        client = database.get_client_by_email(email, db_path=_db)
+        if client:
+            if event == "health_score.updated":
+                score = data.get("health_score")
+                if score is not None:
+                    database.update_client(client["id"], mailivery_health_score=int(score), db_path=_db)
+            elif event == "campaign.disconnected":
+                database.clear_client_mailivery_campaign(client["id"], db_path=_db)
+
+    return jsonify({"ok": True})
 
 
 @app.errorhandler(404)
 def not_found(_e):
     return (
         f"<!doctype html><html><head><title>Not found</title>{_ERROR_STYLE}</head>"
-        f"<body><div class='card'><div class='brand'>Antigravity</div>"
+        f"<body><div class='card'><div class='brand'>OutreachEmpower</div>"
         f"<div class='code'>404</div>"
         f"<p class='msg'>This page doesn't exist.</p>"
         f"<a href='/'>Go home</a></div></body></html>"
@@ -3922,7 +4161,7 @@ def not_found(_e):
 def server_error(_e):
     return (
         f"<!doctype html><html><head><title>Server error</title>{_ERROR_STYLE}</head>"
-        f"<body><div class='card'><div class='brand'>Antigravity</div>"
+        f"<body><div class='card'><div class='brand'>OutreachEmpower</div>"
         f"<div class='code'>500</div>"
         f"<p class='msg'>Something went wrong on our end. We're on it.</p>"
         f"<a href='/'>Go home</a></div></body></html>"

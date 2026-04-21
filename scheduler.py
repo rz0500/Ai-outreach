@@ -28,7 +28,7 @@ if __name__ == "__main__":
     logging.info("Initialising database…")
     database.initialize_database()
 
-    logging.info("Starting Antigravity background scheduler (standalone mode).")
+    logging.info("Starting OutreachEmpower background scheduler (standalone mode).")
     logging.info("Web server is NOT started. Run web_app.py separately.")
 
     # Import after DB init so all modules see a ready database

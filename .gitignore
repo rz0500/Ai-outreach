@@ -48,3 +48,6 @@ playwright-browsers/
 
 # Aider AI assistant
 .aider*
+
+# Claude/Codex local worktree scratch
+.claude/worktrees/

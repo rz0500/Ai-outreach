@@ -58,7 +58,7 @@ ACCENTS  = ["7C3AED", "F97316", "06B6D4", "10B981"]
 DANGER   = "EF4444"
 INDIGO   = "6366F1"
 
-FOOTER_TXT = "Antigravity  \u00b7  Confidential"
+FOOTER_TXT = "OutreachEmpower  \u00b7  Confidential"
 CTA_LINK   = get_calendar_link()
 
 # ---------------------------------------------------------------------------
@@ -869,7 +869,7 @@ def _gen_copy_ai(v: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def _cover_badge(slide, x: float, y: float):
-    """ANTIGRAVITY brand badge."""
+    """OUTREACHEMPOWER brand badge."""
     badge = slide.shapes.add_shape(1, _I(x), _I(y), _I(1.55), _I(0.26))
     badge.fill.solid()
     badge.fill.fore_color.rgb = _rgb(ACCENTS[0])
@@ -880,7 +880,7 @@ def _cover_badge(slide, x: float, y: float):
     p = tf_b.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     r = p.add_run()
-    r.text = "ANTIGRAVITY"
+    r.text = "OUTREACHEMPOWER"
     r.font.size = _P(7)
     r.font.bold = True
     r.font.color.rgb = _rgb("FFFFFF")

@@ -4,7 +4,7 @@ This file gives the current working context for this repository. It should match
 
 ## Project Overview
 
-`leadgen` / **Antigravity** is a Python-based AI lead generation and outreach SaaS. Current working capabilities include:
+`leadgen` / **OutreachEmpower** is a Python-based AI lead generation and outreach SaaS. Current working capabilities include:
 
 - **multi-tenant** prospect storage with `client_id` on every data table; house account = 1
 - public landing page at `/`
@@ -86,8 +86,9 @@ If a meaningful repo-level change is made, update all three files.
   - `POST /api/ops/client/<id>/resend-welcome` — **Basic Auth required**
   - `POST /api/find-and-fire`
   - `GET /api/find-and-fire/<job_id>`
-  - `POST /webhook/sendgrid`
-  - `POST /webhook/stripe`
+- `POST /webhook/sendgrid`
+- `POST /webhook/stripe`
+- `POST /webhook/mailivery`
   - `GET /unsubscribe`
   - `GET /health`
 
@@ -103,6 +104,7 @@ If a meaningful repo-level change is made, update all three files.
 - Find-and-Fire uses job-id polling, not SSE
 - `get_prospect_by_id()` must be used to reload a prospect after research
 - SendGrid signed webhook verification is optional and controlled by `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- Mailivery webhook verification is required via `MAILIVERY_WEBHOOK_SECRET`
 - Per-client sender identity is stored and used during outbound sends; only used when `sender_email_verified=1`
 - `outreach_review_mode=1` on a client makes the sequencer hold emails as `pending_review` instead of sending
 - `_route_send_email` and all DB-writing routes must pass `db_path=_db` explicitly — default arg values are frozen at import time
@@ -137,6 +139,7 @@ SECRET_KEY=<secrets.token_hex(32)>
 APP_BASE_URL=https://yourdomain.com
 SETTINGS_PASSWORD=<strong password>
 DB_PATH=/var/data/prospects.db    # persistent volume path
+MAILIVERY_WEBHOOK_SECRET=<strong shared secret if Mailivery webhooks are enabled>
 ```
 
 Procfile defines two processes (both needed):
@@ -171,7 +174,25 @@ scheduler: python scheduler.py
 | Onboarding rate limiting | Done |
 | Startup safety warnings | Done |
 | Persistent DB via DB_PATH env var | Done |
-| 79 passing tests | Done |
+| 215 passing tests | Done |
+
+## Mailivery Integration
+
+External email warmup via Mailivery API (`mailivery_client.py`).
+
+| Component | Detail |
+|---|---|
+| `mailivery_client.py` | Thin REST client. `MailiveryClient` class + `get_client()` factory. Returns `{"ok": False}` on failure, never raises. |
+| DB columns | `clients.mailivery_campaign_id TEXT`, `clients.mailivery_health_score INTEGER` (nullable, added via migration). |
+| Settings | `get_mailivery_api_key()`, `get_mailivery_enabled()` — gated by `MAILIVERY_ENABLED` env var. |
+| `warmup_engine.get_combined_warmup_status()` | Merges built-in warmup dict with live Mailivery fields (connected, status, health_score, emails_today). |
+| Onboarding hook | `_mailivery_auto_connect()` — called after client creation; connects SMTP mailbox and starts campaign. |
+| Ops endpoints | `POST /api/ops/client/<id>/mailivery/connect|start|pause|resume`, `GET /api/ops/client/<id>/mailivery/status` — all Basic Auth protected. |
+| Webhook | `POST /webhook/mailivery` — requires `MAILIVERY_WEBHOOK_SECRET`; handles `campaign.disconnected`, `campaign.error`, `health_score.updated`. Disconnects clear cached campaign state. |
+| Scheduler | `_refresh_mailivery_health_scores()` runs every 4 hours; warns to stdout if score < 50. |
+| Client dashboard | Warmup health card shown when `warmup_status.mailivery_connected` is true. |
+| Tests | `test_mailivery_client.py` — all HTTP calls mocked, 21 tests. |
+| Env vars | `MAILIVERY_ENABLED=false`, `MAILIVERY_API_KEY=`, `MAILIVERY_WEBHOOK_SECRET=`, `MAILIVERY_OWNER_EMAIL=` |
 
 ## Planned Next Tasks
 

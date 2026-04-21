@@ -88,11 +88,14 @@ class TestReplyApproveSend(unittest.TestCase):
         self.assertEqual(data["status"], "sent")
         self.assertEqual(data["subject"], "Re: Harbor Studio")
         mock_send_email.assert_called_once_with(
-            "leah@harborstudio.co",
-            "Re: Harbor Studio",
-            "Leah,\n\nThursday at 2pm works on my side.\n\nBest,\nAlex",
+            to_address="leah@harborstudio.co",
+            subject="Re: Harbor Studio",
+            body="Leah,\n\nThursday at 2pm works on my side.\n\nBest,\nAlex",
             in_reply_to="<msg-123@test>",
             references="<msg-123@test>",
+            respect_suppression=True,
+            client_id=1,
+            db_path=web_app.database.DB_PATH,
         )
         mock_update_reply_status.assert_called_once_with(7, "sent")
         mock_update_status.assert_called_once_with(12, "replied")

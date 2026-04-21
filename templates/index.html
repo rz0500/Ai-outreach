@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ops — Antigravity</title>
+    <title>Ops — OutreachEmpower</title>
     <!-- Use modern typography -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
@@ -21,7 +21,7 @@
         const OPERATOR_QUERY = `?client_id=${OPERATOR_CLIENT_ID}`;
     </script>
     <header>
-        <h1>Antigravity <span style="font-size:0.65rem;font-weight:500;color:#475569;text-transform:uppercase;letter-spacing:0.12em;margin-left:0.5rem;vertical-align:middle;">Ops</span></h1>
+        <h1>OutreachEmpower <span style="font-size:0.65rem;font-weight:500;color:#475569;text-transform:uppercase;letter-spacing:0.12em;margin-left:0.5rem;vertical-align:middle;">Ops</span></h1>
         <div class="user-profile">
             <span class="status-pill status-in_sequence" id="scheduler-pill">System Active</span>
             <span id="inbox-status-label" style="font-size:0.75rem;color:#94a3b8;margin-left:0.75rem;">Inbox: checking...</span>
@@ -38,7 +38,7 @@
         <form method="get" action="/ops" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
             <div>
                 <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.35rem;">Workspace View</div>
-                <select name="client_id" onchange="this.form.submit()" style="min-width:260px;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.65rem 0.8rem;color:#e2e8f0;font-family:'Outfit',sans-serif;">
+                <select name="client_id" onchange="this.form.submit()" style="min-width:260px;background:#0f172a;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:0.65rem 0.8rem;color:#e2e8f0;font-family:'Inter',sans-serif;">
                     {% for client in clients %}
                     <option value="{{ client.id }}" {% if client.id == selected_client_id %}selected{% endif %}>
                         #{{ client.id }} - {{ client.name }}{% if client.email %} ({{ client.email }}){% endif %}
@@ -158,16 +158,16 @@
         <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,0.05);display:flex;gap:0.6rem;flex-wrap:wrap;" id="ops-actions-{{ selected_client.id }}">
             <button onclick="opsAction('{{ selected_client.id }}','{% if selected_client.campaign_paused %}resume{% else %}pause{% endif %}')"
                     id="ops-pause-btn-{{ selected_client.id }}"
-                    style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:7px;padding:0.35rem 0.9rem;color:#c4b5fd;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;">
+                    style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:7px;padding:0.35rem 0.9rem;color:#c4b5fd;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;">
                 {% if selected_client.campaign_paused %}▶ Resume campaign{% else %}⏸ Pause campaign{% endif %}
             </button>
             <button onclick="opsAction('{{ selected_client.id }}','toggle-review-mode')"
                     id="ops-review-btn-{{ selected_client.id }}"
-                    style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:7px;padding:0.35rem 0.9rem;color:#a78bfa;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;">
+                    style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:7px;padding:0.35rem 0.9rem;color:#a78bfa;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;">
                 {% if selected_client.outreach_review_mode %}Disable review mode{% else %}Enable review mode{% endif %}
             </button>
             <button onclick="opsAction('{{ selected_client.id }}','resend-welcome')"
-                    style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:7px;padding:0.35rem 0.9rem;color:#6ee7b7;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;">
+                    style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:7px;padding:0.35rem 0.9rem;color:#6ee7b7;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;">
                 Resend welcome email
             </button>
             <span id="ops-action-msg-{{ selected_client.id }}" style="font-size:0.78rem;color:#64748b;align-self:center;"></span>
@@ -286,7 +286,7 @@
             <span style="flex:1;"></span>
             <button onclick="generateSampleDecks(this)"
                 id="sample-decks-btn"
-                style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#818cf8;border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#818cf8;border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;"
                 onmouseover="this.style.background='rgba(99,102,241,0.25)'"
                 onmouseout="this.style.background='rgba(99,102,241,0.15)'">Generate Samples</button>
         </div>
@@ -761,7 +761,7 @@
             <span id="sent-replies-badge" style="display:none; background: rgba(99,102,241,0.15); color: #a5b4fc; font-size: 0.73rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 99px; border: 1px solid rgba(99,102,241,0.3);"></span>
             <span style="flex:1;"></span>
             <button onclick="refreshSentReplies(this)"
-                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;"
                 onmouseover="this.style.background='rgba(255,255,255,0.08)'"
                 onmouseout="this.style.background='rgba(255,255,255,0.04)'">
                 ↻ Refresh
@@ -785,7 +785,7 @@
             <span id="warmup-badge" style="display:none;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.35);border-radius:99px;padding:0.15rem 0.6rem;font-size:0.72rem;font-weight:700;color:#6ee7b7;"></span>
             <span style="flex:1;"></span>
             <button onclick="loadWarmupStatus()"
-                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;"
                 onmouseover="this.style.background='rgba(255,255,255,0.08)'"
                 onmouseout="this.style.background='rgba(255,255,255,0.04)'">↻ Refresh</button>
         </div>
@@ -801,7 +801,7 @@
             <span id="oq-count-badge" style="display:none;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.35);border-radius:99px;padding:0.15rem 0.6rem;font-size:0.72rem;font-weight:700;color:#c4b5fd;"></span>
             <span style="flex:1;"></span>
             <button onclick="loadOutreachQueue()"
-                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;"
+                style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:7px;padding:0.35rem 0.85rem;font-size:0.78rem;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;"
                 onmouseover="this.style.background='rgba(255,255,255,0.08)'"
                 onmouseout="this.style.background='rgba(255,255,255,0.04)'">↻ Refresh</button>
         </div>
@@ -817,7 +817,7 @@
             <h2 style="font-weight: 500; margin: 0;">Outreach Tracker</h2>
             <span style="flex:1;"></span>
             <button onclick="refreshTracker(this)"
-                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); border-radius: 7px; padding: 0.35rem 0.85rem; font-size: 0.78rem; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;"
                 onmouseover="this.style.background='rgba(255,255,255,0.08)'"
                 onmouseout="this.style.background='rgba(255,255,255,0.04)'">
                 ↻ Refresh
@@ -865,7 +865,7 @@
                         border: none; border-radius: 8px;
                         padding: 0.5rem 1.1rem;
                         color: #fff; font-size: 0.8rem; font-weight: 600;
-                        font-family: 'Outfit', sans-serif;
+                        font-family: 'Inter', sans-serif;
                         cursor: pointer; transition: opacity 0.2s;
                         white-space: nowrap;
                     "
@@ -905,7 +905,7 @@
                     border: none; border-radius: 10px;
                     padding: 0.65rem 1.2rem;
                     color: #fff; font-size: 0.82rem; font-weight: 700;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     cursor: pointer; transition: opacity 0.2s;
                     white-space: nowrap;
                 "
@@ -928,7 +928,7 @@
                     padding: 0.75rem 1rem;
                     color: var(--text-primary);
                     font-size: 0.9rem;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     outline: none;
                 "
             />
@@ -944,7 +944,7 @@
                     padding: 0.75rem 1rem;
                     color: var(--text-primary);
                     font-size: 0.9rem;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     outline: none;
                 "
             />
@@ -959,7 +959,7 @@
                     color: #fff;
                     font-size: 0.88rem;
                     font-weight: 700;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     cursor: pointer;
                     white-space: nowrap;
                 "
@@ -1009,7 +1009,7 @@
                     padding: 0.75rem 1rem;
                     color: var(--text-primary);
                     font-size: 0.9rem;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     outline: none;
                     transition: border-color 0.2s;
                 "
@@ -1028,7 +1028,7 @@
                     padding: 0.75rem 1rem;
                     color: var(--text-primary);
                     font-size: 0.9rem;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     outline: none;
                     transition: border-color 0.2s;
                 "
@@ -1046,7 +1046,7 @@
                     color: #fff;
                     font-size: 0.9rem;
                     font-weight: 600;
-                    font-family: 'Outfit', sans-serif;
+                    font-family: 'Inter', sans-serif;
                     cursor: pointer;
                     transition: opacity 0.2s, transform 0.15s;
                     white-space: nowrap;
@@ -1105,7 +1105,7 @@
                                 padding: 0.3rem 0.8rem;
                                 color: var(--text-muted);
                                 font-size: 0.75rem;
-                                font-family: 'Outfit', sans-serif;
+                                font-family: 'Inter', sans-serif;
                                 cursor: pointer;
                                 transition: background 0.2s;
                             "
@@ -1982,7 +1982,7 @@
                     type="email"
                     placeholder="Recipient email..."
                     value="${escHtml(r.prospect_email || '')}"
-                    style="flex:1; min-width:180px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.5rem 0.8rem; color:var(--text-primary); font-size:0.83rem; font-family:'Outfit',sans-serif; outline:none;"
+                    style="flex:1; min-width:180px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.5rem 0.8rem; color:var(--text-primary); font-size:0.83rem; font-family:'Inter',sans-serif; outline:none;"
                     onfocus="this.style.borderColor='rgba(16,185,129,0.5)'"
                     onblur="this.style.borderColor='rgba(255,255,255,0.1)'"
                 />
@@ -1990,7 +1990,7 @@
                     id="ff-send-btn-${idx}"
                     onclick="ffSendEmail(${idx}, ${r.outreach_id || 'null'})"
                     ${!hasEmail || !r.outreach_id ? 'disabled title="No email draft available"' : ''}
-                    style="background:${hasEmail && r.outreach_id ? 'linear-gradient(135deg,#059669,#0284c7)' : 'rgba(255,255,255,0.05)'}; border:none; border-radius:8px; padding:0.5rem 1.1rem; color:${hasEmail && r.outreach_id ? '#fff' : 'var(--text-muted)'}; font-size:0.83rem; font-weight:600; font-family:'Outfit',sans-serif; cursor:${hasEmail && r.outreach_id ? 'pointer' : 'not-allowed'}; white-space:nowrap;"
+                    style="background:${hasEmail && r.outreach_id ? 'linear-gradient(135deg,#059669,#0284c7)' : 'rgba(255,255,255,0.05)'}; border:none; border-radius:8px; padding:0.5rem 1.1rem; color:${hasEmail && r.outreach_id ? '#fff' : 'var(--text-muted)'}; font-size:0.83rem; font-weight:600; font-family:'Inter',sans-serif; cursor:${hasEmail && r.outreach_id ? 'pointer' : 'not-allowed'}; white-space:nowrap;"
                 >Send Email</button>
                 <span id="ff-send-status-${idx}" style="font-size:0.78rem; color:var(--text-muted);"></span>
             </div>

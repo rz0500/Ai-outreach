@@ -241,22 +241,22 @@ class TestRunSequence(unittest.TestCase):
         results = run_sequence(dry_run=True, db_path=TEST_DB)
         self.assertEqual(results, [])
 
-    @patch("sequencer.send_email", return_value=(True, ""))
-    def test_live_run_sends_email_and_updates_db(self, mock_send):
+    @patch("sequencer.deliver_prospect_email", return_value={"sent": True, "error": ""})
+    def test_live_run_sends_email_and_updates_db(self, mock_delivery):
         pid = _seed(TEST_DB)
         results = run_sequence(dry_run=False, db_path=TEST_DB)
 
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0]["sent"])
-        mock_send.assert_called_once()
+        mock_delivery.assert_called_once()
 
         # DB should now show step=1 and today's date
         prospects = get_prospects_in_sequence(TEST_DB)
         self.assertEqual(prospects[0]["sequence_step"], 1)
         self.assertEqual(prospects[0]["last_contacted_date"], date.today().isoformat())
 
-    @patch("sequencer.send_email", return_value=(False, "Auth failed"))
-    def test_live_run_records_error_on_failed_send(self, mock_send):
+    @patch("sequencer.deliver_prospect_email", return_value={"sent": False, "error": "Auth failed"})
+    def test_live_run_records_error_on_failed_send(self, mock_delivery):
         _seed(TEST_DB)
         results = run_sequence(dry_run=False, db_path=TEST_DB)
 
@@ -276,8 +276,8 @@ class TestRunSequence(unittest.TestCase):
         self.assertFalse(results[0]["sent"])
         self.assertIn("No email", results[0]["error"])
 
-    @patch("sequencer.send_email", return_value=(True, ""))
-    def test_final_step_moves_status_to_contacted(self, mock_send):
+    @patch("sequencer.deliver_prospect_email", return_value={"sent": True, "error": ""})
+    def test_final_step_moves_status_to_contacted(self, mock_delivery):
         """After step 3 is sent, the prospect should exit the sequence."""
         seven_days_ago = (date.today() - timedelta(days=7)).isoformat()
         pid = _seed(TEST_DB)

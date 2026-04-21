@@ -246,6 +246,15 @@ def initialize_database(db_path: str = DB_PATH) -> None:
         except sqlite3.OperationalError:
             pass  # already exists
 
+        for col, definition in [
+            ("mailivery_campaign_id", "TEXT"),
+            ("mailivery_health_score", "INTEGER"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE clients ADD COLUMN {col} {definition}")
+            except sqlite3.OperationalError:
+                pass  # already exists
+
         # Multi-tenancy: add client_id to every data table (DEFAULT 1 = house account)
         _client_id_tables = [
             "prospects",
@@ -372,21 +381,25 @@ def update_client(
     sender_email: Optional[str] = None,
     campaign_paused: Optional[int] = None,
     outreach_review_mode: Optional[int] = None,
+    mailivery_campaign_id: Optional[str] = None,
+    mailivery_health_score: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> bool:
     """Update any subset of fields on a client record. Returns True if found."""
     fields: list[tuple] = []
-    if name                  is not None: fields.append(("name", name.strip()))
-    if email                 is not None: fields.append(("email", email.strip().lower()))
-    if status                is not None: fields.append(("status", status))
-    if niche                 is not None: fields.append(("niche", niche))
-    if icp                   is not None: fields.append(("icp", icp))
-    if calendar_link         is not None: fields.append(("calendar_link", calendar_link))
-    if location              is not None: fields.append(("location", location))
-    if sender_name           is not None: fields.append(("sender_name", sender_name))
-    if sender_email          is not None: fields.append(("sender_email", sender_email.strip().lower() if sender_email else sender_email))
-    if campaign_paused       is not None: fields.append(("campaign_paused", int(campaign_paused)))
-    if outreach_review_mode  is not None: fields.append(("outreach_review_mode", int(outreach_review_mode)))
+    if name                    is not None: fields.append(("name", name.strip()))
+    if email                   is not None: fields.append(("email", email.strip().lower()))
+    if status                  is not None: fields.append(("status", status))
+    if niche                   is not None: fields.append(("niche", niche))
+    if icp                     is not None: fields.append(("icp", icp))
+    if calendar_link           is not None: fields.append(("calendar_link", calendar_link))
+    if location                is not None: fields.append(("location", location))
+    if sender_name             is not None: fields.append(("sender_name", sender_name))
+    if sender_email            is not None: fields.append(("sender_email", sender_email.strip().lower() if sender_email else sender_email))
+    if campaign_paused         is not None: fields.append(("campaign_paused", int(campaign_paused)))
+    if outreach_review_mode    is not None: fields.append(("outreach_review_mode", int(outreach_review_mode)))
+    if mailivery_campaign_id   is not None: fields.append(("mailivery_campaign_id", mailivery_campaign_id))
+    if mailivery_health_score  is not None: fields.append(("mailivery_health_score", int(mailivery_health_score)))
     if not fields:
         return False
     set_clause = ", ".join(f"{col} = ?" for col, _ in fields)
@@ -394,6 +407,25 @@ def update_client(
     with _get_connection(db_path) as conn:
         cursor = conn.execute(
             f"UPDATE clients SET {set_clause} WHERE id = ?", values
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def clear_client_mailivery_campaign(
+    client_id: int,
+    db_path: str = DB_PATH,
+) -> bool:
+    """Clear cached Mailivery campaign state for a client."""
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            UPDATE clients
+               SET mailivery_campaign_id = NULL,
+                   mailivery_health_score = NULL
+             WHERE id = ?
+            """,
+            (client_id,),
         )
         conn.commit()
         return cursor.rowcount > 0

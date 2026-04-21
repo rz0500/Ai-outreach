@@ -7,7 +7,7 @@ Read this at the start of every session. Update after meaningful changes.
 ## Recently Completed
 
 ### Foundation through current SaaS state
-Full pipeline is now in place across the repo: multi-tenant DB, background scheduler, operator dashboard, email validation, analytics, CSV import, SendGrid routing, reply classification, deliverability hardening, Find-and-Fire polling/UI, client prospects flow, SendGrid webhook security, and per-client sender identity.
+Full pipeline is now in place across the repo: multi-tenant DB, background scheduler, operator dashboard, email validation, analytics, CSV import, SendGrid routing, reply classification, deliverability hardening, Find-and-Fire polling/UI, client prospects flow, SendGrid webhook security, Mailivery warmup integration, and per-client sender identity.
 
 ### Current shipped client/product layer
 
@@ -38,6 +38,7 @@ Full pipeline is now in place across the repo: multi-tenant DB, background sched
 - SMTP-first outcome mapping is live
 - SendGrid bounce/drop/unsubscribe webhook handling is live at `/webhook/sendgrid`
 - SendGrid signed event verification is supported via `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- Mailivery warmup webhooks are live at `/webhook/mailivery` and require `MAILIVERY_WEBHOOK_SECRET`
 - per-client sender identity is persisted and used during outbound sends
 
 ---
