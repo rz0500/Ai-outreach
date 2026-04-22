@@ -848,11 +848,16 @@
         document.getElementById('scraper-status-text').textContent = '✓ Done';
         document.getElementById('scraper-bar').style.width = '100%';
         const results = d.results || [];
-        document.getElementById('scraper-results').innerHTML = results.map(r =>
-          '<div style="padding:0.2rem 0;color:' + (r.status==='sent'?'#34d399':r.status==='exists'?'#94a3b8':'#f87171') + ';">' +
-          (r.status==='sent'?'✓':r.status==='exists'?'–':'✗') + ' ' + (r.name||r.business_name||'') +
-          ' <span style="color:#475569;">(' + r.status + ')</span></div>'
-        ).join('');
+        const items = d.items || d.results || [];
+        document.getElementById('scraper-results').innerHTML = items.map(r => {
+          const ok = r.status === 'completed';
+          const skip = r.status === 'exists';
+          const color = ok ? '#34d399' : skip ? '#94a3b8' : '#f87171';
+          const icon  = ok ? '✓' : skip ? '–' : '✗';
+          const name  = r.company || r.business_name || r.name || '';
+          return '<div style="padding:0.2rem 0;color:' + color + ';">' + icon + ' ' + name +
+            ' <span style="color:#475569;">(' + r.status + ')</span></div>';
+        }).join('');
         btn.disabled = false;
         btn.textContent = '▶ Run scraper now';
       } else if (d.status === 'error') {

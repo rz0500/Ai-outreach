@@ -356,7 +356,9 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
         f"If competitor names are listed above, you may reference them by name. "
         f"If none are listed, do not invent competitors.\n"
         f"If the enrichment data is thin, write a shorter honest email rather than "
-        f"faking specificity."
+        f"faking specificity.\n"
+        f"IMPORTANT: Always respond with the JSON object only. Never refuse or explain — "
+        f"if data is limited, write a shorter simpler email but always return valid JSON."
     )
 
     response = _client.messages.create(

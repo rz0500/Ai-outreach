@@ -1692,7 +1692,8 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             {"company": company, "error": result["stage_errors"].get("pdf", "")},
         )
 
-    if all(status in ("done", "skipped") for status in result["stage_statuses"].values()):
+    email_ok = result["stage_statuses"].get("email") in ("done", "skipped")
+    if email_ok:
         result["status"] = "completed"
     elif any(status == "done" for status in result["stage_statuses"].values()):
         result["status"] = "partial_error"
@@ -1796,12 +1797,19 @@ def _run_find_fire_job(job_id: str, query: str, location: str, limit: int, finde
                 _set_find_fire_stage(job, stage, f"{stage.title()} {company} ({i + 1}/{job['total']})")
             elif state == "error":
                 item["error"] = meta.get("error", "")
-                item["status"] = "partial_error"
+                # Research firewall/scrape errors are non-fatal — email can still send
+                if stage == "research":
+                    item["status"] = "partial_error"
+                else:
+                    item["status"] = "partial_error"
                 _set_find_fire_stage(job, stage, f"{stage.title()} issue for {company}")
-            elif state in ("done", "skipped") and all(
-                s in ("done", "skipped") for s in item["stage_statuses"].values()
+            elif state in ("done", "skipped", "error") and all(
+                s in ("done", "skipped", "error") for s in item["stage_statuses"].values()
             ):
-                item["status"] = "completed"
+                # Complete if email is done even if research hit a firewall
+                email_ok = item["stage_statuses"].get("email") in ("done", "skipped")
+                if email_ok:
+                    item["status"] = "completed"
 
         try:
             result = _run_pipeline_for_db_prospect(prospect, stage_hook=_stage_hook)
