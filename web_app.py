@@ -1559,6 +1559,7 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             "research": "pending",
             "email": "pending",
             "pdf": "pending",
+            "send": "pending",
         },
         "stage_errors": {},
         "status": "running",
@@ -1691,6 +1692,47 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             result["stage_statuses"]["pdf"],
             {"company": company, "error": result["stage_errors"].get("pdf", "")},
         )
+
+    # Step 4 — Send
+    to_email = enriched.get("email", "")
+    subject  = result["email"].get("subject", "")
+    body     = result["email"].get("body", "")
+    client_id = enriched.get("client_id", 1)
+    if to_email and subject and body:
+        if stage_hook:
+            stage_hook("send", "active", {"company": company})
+        sent_ok, send_err = _route_send_email(
+            to_address=to_email,
+            subject=subject,
+            body=body,
+            attachment_path=pdf_filepath,
+            client_id=client_id,
+            db_path=database.DB_PATH,
+        )
+        if sent_ok:
+            result["stage_statuses"]["send"] = "done"
+            result["sent"] = True
+            database.update_status(prospect_id, "contacted", db_path=database.DB_PATH)
+            database.log_communication_event(
+                prospect_id=prospect_id,
+                channel="email",
+                direction="outbound",
+                event_type="sent",
+                status="sent",
+                content_excerpt=f"{subject[:80]}",
+                db_path=database.DB_PATH,
+            )
+            if stage_hook:
+                stage_hook("send", "done", {"company": company})
+        else:
+            result["stage_statuses"]["send"] = "error"
+            result["stage_errors"]["send"] = send_err
+            result["sent"] = False
+            if stage_hook:
+                stage_hook("send", "error", {"company": company, "error": send_err})
+    else:
+        result["stage_statuses"]["send"] = "skipped"
+        result["sent"] = False
 
     email_ok = result["stage_statuses"].get("email") in ("done", "skipped")
     if email_ok:
