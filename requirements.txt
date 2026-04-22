@@ -43,3 +43,4 @@ stripe
 
 # Production WSGI server
 gunicorn>=21.0.0
+cloudscraper>=1.2.71

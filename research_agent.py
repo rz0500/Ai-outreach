@@ -21,7 +21,7 @@ the [Research Hook] marker).
 """
 
 import logging
-import requests
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from database import (
@@ -32,35 +32,73 @@ from ai_engine import analyze_website
 
 logger = logging.getLogger(__name__)
 
+# Extra pages to try when homepage text is thin
+_EXTRA_PATHS = ["/about", "/about-us", "/services", "/what-we-do", "/team"]
+_MIN_TEXT_LEN = 200
+
+
+def _get_session():
+    """Return a cloudscraper session (bypasses Cloudflare JS challenges)."""
+    try:
+        import cloudscraper
+        return cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
+    except Exception:
+        import requests
+        s = requests.Session()
+        s.headers["User-Agent"] = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+        return s
+
+
+def _parse_text(html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+        tag.decompose()
+    return soup.get_text(separator=" ", strip=True)
+
 
 # ---------------------------------------------------------------------------
 # Scraper
 # ---------------------------------------------------------------------------
 
 def scrape_website_text(url: str) -> str:
-    """Safely scrape the visible text of a given URL."""
+    """
+    Scrape visible text from a URL using cloudscraper (Cloudflare bypass).
+    If the homepage returns thin content, also tries /about and /services pages
+    and concatenates results.
+    """
     if not url.startswith("http"):
-        url = "http://" + url
+        url = "https://" + url
+    session = _get_session()
+    texts = []
     try:
-        resp = requests.get(
-            url,
-            timeout=10,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/91.0.4472.124 Safari/537.36"
-                )
-            },
-        )
+        resp = session.get(url, timeout=12)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        # Strip noise
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            tag.decompose()
-        return soup.get_text(separator=" ", strip=True)
+        text = _parse_text(resp.text)
+        if text:
+            texts.append(text)
     except Exception as e:
         return f"[Scrape Error: {e}]"
+
+    # If homepage text is thin, try extra pages
+    if len(" ".join(texts)) < _MIN_TEXT_LEN:
+        for path in _EXTRA_PATHS:
+            try:
+                r = session.get(urljoin(url, path), timeout=8)
+                if r.status_code == 200:
+                    t = _parse_text(r.text)
+                    if t:
+                        texts.append(t)
+                if len(" ".join(texts)) >= _MIN_TEXT_LEN:
+                    break
+            except Exception:
+                continue
+
+    combined = " ".join(texts)[:8000]
+    return combined if combined else "[Scrape Error: no text extracted]"
 
 
 # ---------------------------------------------------------------------------

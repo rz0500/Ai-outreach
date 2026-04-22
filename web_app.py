@@ -1623,6 +1623,22 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     # Reload prospect from DB so enrichment fields are present
     enriched = database.get_prospect_by_id(prospect_id) or prospect
 
+    # If research failed, inject niche/location from the client record as fallback context
+    if result["stage_statuses"].get("research") == "error":
+        client_rec = database.get_client(enriched.get("client_id", 1), db_path=database.DB_PATH)
+        fallback_niche = (client_rec or {}).get("niche") or ""
+        fallback_location = (client_rec or {}).get("location") or ""
+        if fallback_niche or fallback_location:
+            enriched = dict(enriched)
+            if not enriched.get("niche") and fallback_niche:
+                enriched["niche"] = fallback_niche
+            if not enriched.get("notes"):
+                enriched["notes"] = ""
+            context = f"Located in {fallback_location}. " if fallback_location else ""
+            context += f"Industry: {fallback_niche}." if fallback_niche else ""
+            if context and "[Research Hook]" not in enriched["notes"]:
+                enriched["notes"] += f"\n[Research Hook]\n{context}"
+
     # Auto-extract email if the prospect has no email on file
     if not enriched.get("email") and website:
         extracted = _extract_email_from_website(website)
