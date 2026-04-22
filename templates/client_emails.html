@@ -119,8 +119,16 @@
         <tr class="expand-row" id="expand-{{ loop.index }}" data-status="{{ e.event_type | lower }}">
           <td colspan="5">
             <div class="expand-inner" id="body-{{ loop.index }}">
+              {% if e.pdf_url %}
+              <div style="margin-bottom:0.9rem;">
+                <a href="{{ e.pdf_url }}" target="_blank"
+                   onclick="event.stopPropagation()"
+                   style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);border-radius:6px;color:#a78bfa;font-size:0.73rem;font-weight:600;padding:0.3rem 0.85rem;text-decoration:none;">
+                  ↓ View proposal PDF
+                </a>
+              </div>
+              {% endif %}
               {% if meta %}
-                {% set parsed = meta | tojson %}
                 <div class="expand-subject" id="subj-{{ loop.index }}"></div>
                 <div class="expand-body" id="text-{{ loop.index }}"></div>
                 <script>
@@ -133,7 +141,7 @@
                 })();
                 </script>
               {% else %}
-                <div class="expand-body">No full text stored for this email.</div>
+                <div class="expand-body" style="color:#475569;">No body stored for this email.</div>
               {% endif %}
             </div>
           </td>

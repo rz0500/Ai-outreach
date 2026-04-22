@@ -2935,7 +2935,9 @@ def client_emails_page():
                    (SELECT o.subject FROM outreach o
                     WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_subject,
                    (SELECT o.body FROM outreach o
-                    WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_body
+                    WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_body,
+                   (SELECT o.pdf_path FROM outreach o
+                    WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_pdf_path
             FROM communication_events ce
             LEFT JOIN prospects p ON p.id = ce.prospect_id
             WHERE ce.direction = 'outbound'
@@ -2952,6 +2954,11 @@ def client_emails_page():
         if not e.get("metadata") and (e.get("o_subject") or e.get("o_body")):
             body = (e.get("o_body") or "").replace("[Your name]", sender).replace("[Name]", sender)
             e["metadata"] = _json.dumps({"subject": e.get("o_subject") or "", "body": body})
+        pdf_path = e.pop("o_pdf_path", None) or ""
+        if pdf_path:
+            e["pdf_url"] = "/proposals/" + os.path.basename(pdf_path)
+        else:
+            e["pdf_url"] = ""
         events.append(e)
     return render_template("client_emails.html", client=client, events=events)
 
