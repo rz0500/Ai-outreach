@@ -1990,7 +1990,9 @@ def _route_send_email(
     warmup emails themselves) that should not count against the daily outreach cap.
     """
     if not skip_warmup_throttle:
-        allowed, reason = warmup_engine.can_send_today(db_path=db_path)
+        _client_rec = database.get_client(client_id, db_path=db_path) if client_id else None
+        _client_limit = int((_client_rec or {}).get("daily_send_limit") or 0)
+        allowed, reason = warmup_engine.can_send_today(db_path=db_path, client_limit=_client_limit)
         if not allowed:
             return False, reason
 
@@ -2413,11 +2415,31 @@ def api_sample_decks():
     return jsonify({"samples": results})
 
 
+@app.route("/api/warmup-advice")
+def api_warmup_advice():
+    """Ask Claude to analyse warmup + real delivery data and recommend a safe daily send limit."""
+    client_id = session.get("client_id", 1)
+    _db = database.DB_PATH
+    status = warmup_engine.get_combined_warmup_status(client_id=client_id, db_path=_db)
+    client = database.get_client(client_id, db_path=_db)
+    status["daily_send_limit"] = int((client or {}).get("daily_send_limit") or 0)
+    delivery_metrics = database.get_delivery_metrics(client_id=client_id, days=30, db_path=_db)
+    try:
+        from ai_engine import get_warmup_advice
+        advice = get_warmup_advice(status, delivery_metrics)
+        return jsonify({"ok": True, "delivery_metrics": delivery_metrics, **advice})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/api/warmup-status")
 def api_warmup_status():
     """Return email warmup ramp progress for the dashboard widget."""
     client_id = session.get("client_id", 1)
-    return jsonify(warmup_engine.get_combined_warmup_status(client_id=client_id, db_path=database.DB_PATH))
+    status = warmup_engine.get_combined_warmup_status(client_id=client_id, db_path=database.DB_PATH)
+    client = database.get_client(client_id, db_path=database.DB_PATH)
+    status["daily_send_limit"] = int((client or {}).get("daily_send_limit") or 0)
+    return jsonify(status)
 
 
 @app.route("/api/monitor-reset", methods=["POST"])
@@ -3170,6 +3192,38 @@ def client_settings_submit():
         db_path=_db,
     )
     return redirect(url_for("client_settings_page") + "?saved=1")
+
+
+@app.route("/client/warmup/set-daily-limit", methods=["POST"])
+def client_set_daily_limit():
+    """Set the per-client daily outreach email limit. 0 = use warmup ramp schedule."""
+    client_id = _client_login_required()
+    if not client_id:
+        return jsonify({"error": "not authenticated"}), 401
+    _db = database.DB_PATH
+    try:
+        limit = int(request.get_json(silent=True, force=True).get("limit", 0))
+    except (TypeError, ValueError, AttributeError):
+        return jsonify({"error": "invalid limit"}), 400
+    limit = max(0, min(500, limit))
+    database.update_client(client_id, daily_send_limit=limit, db_path=_db)
+
+    # Mirror to Mailivery if connected and limit > 0
+    if limit > 0:
+        client = database.get_client(client_id, db_path=_db)
+        campaign_id = (client.get("mailivery_campaign_id") or "").strip()
+        if campaign_id:
+            mc = mailivery_client.get_client()
+            if mc:
+                mc.update_emails_per_day(campaign_id, limit)
+
+    ramp_limit = warmup_engine.get_daily_limit()
+    return jsonify({
+        "ok":             True,
+        "daily_send_limit": limit,
+        "effective_limit":  limit if limit > 0 else ramp_limit,
+        "using_ramp":       limit == 0,
+    })
 
 
 @app.route("/client/campaign/pause", methods=["POST"])

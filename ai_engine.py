@@ -561,3 +561,115 @@ def classify_reply(prospect: dict, reply_body: str) -> dict:
         "reasoning": str(result.get("reasoning") or ""),
         "drafted_reply": str(result.get("drafted_reply") or ""),
     }
+
+
+def get_warmup_advice(warmup_status: dict, delivery_metrics: dict | None = None) -> dict:
+    """
+    Analyse warmup and real deliverability data, return a safe daily send
+    recommendation with plain-English reasoning.
+
+    Args:
+        warmup_status:     dict from warmup_engine.get_combined_warmup_status().
+        delivery_metrics:  dict from database.get_delivery_metrics() — real
+                           bounce/reply/delivery rates from communication_events.
+                           Pass None if no data yet (new account).
+
+    Returns:
+        {
+            "recommended_limit": int,
+            "confidence":        str,   # "high" | "medium" | "low"
+            "summary":           str,
+            "reasoning":         str,
+            "warnings":          list[str],
+        }
+    """
+    score        = warmup_status.get("mailivery_health_score")
+    connected    = warmup_status.get("mailivery_connected", False)
+    m_status     = warmup_status.get("mailivery_status")
+    emails_today = warmup_status.get("mailivery_emails_today")
+    ramp_day     = warmup_status.get("day", 0)
+    ramp_limit   = warmup_status.get("daily_limit", 0)
+    sent_today   = warmup_status.get("sent_today", 0)
+    warmup_tot   = warmup_status.get("warmup_total", 0)
+    warmup_td    = warmup_status.get("warmup_today", 0)
+    fully_warmed = warmup_status.get("fully_warmed", False)
+    tier_label   = warmup_status.get("tier_label", "unknown")
+    configured   = warmup_status.get("configured", False)
+
+    dm = delivery_metrics or {}
+
+    snapshot = f"""
+WARMUP SNAPSHOT
+===============
+Ramp configured:  {configured}
+Day in warmup:    {ramp_day} {'(fully warmed)' if fully_warmed else ''}
+Current tier:     {tier_label}
+Schedule limit:   {ramp_limit if ramp_limit else 'no cap'} emails/day
+Sent today:       {sent_today}
+Warmup sent today: {warmup_td}
+Warmup sent total: {warmup_tot}
+
+MAILIVERY REPUTATION
+Connected:        {connected}
+Campaign status:  {m_status or 'not connected'}
+Health score:     {score if score is not None else 'not available'} / 100
+Warmup emails today (Mailivery): {emails_today if emails_today is not None else 'n/a'}
+
+REAL DELIVERY SIGNAL (last {dm.get('days_window', 30)} days from actual sends)
+Total emails sent:   {dm.get('total_sent', 'no data')}
+Delivery rate:       {dm.get('delivery_rate_pct', 'n/a')}%
+Bounce rate:         {dm.get('bounce_rate_pct', 'n/a')}%  ← danger if >3%
+Spam reports:        {dm.get('spam_reports', 'n/a')}      ← danger if >0
+Unsubscribes:        {dm.get('unsubscribes', 'n/a')}
+Reply rate:          {dm.get('reply_rate_pct', 'n/a')}%
+Recent failures:     {'; '.join(dm.get('recent_failures') or []) or 'none'}
+""".strip()
+
+    response = _client.messages.create(
+        model=MODEL,
+        max_tokens=600,
+        system=[
+            {
+                "type": "text",
+                "text": (
+                    "You are a senior email deliverability advisor. "
+                    "You analyse warmup progress AND real delivery metrics (bounces, spam reports, reply rates) "
+                    "to give precise, conservative, actionable send-volume recommendations.\n\n"
+                    "Key rules you must apply:\n"
+                    "- Bounce rate >3% → recommend cutting volume by 50% immediately\n"
+                    "- Any spam reports → recommend pausing until resolved\n"
+                    "- Mailivery health score <50 → reduce volume, focus on warmup\n"
+                    "- Delivery rate <85% → flag as serious risk\n"
+                    "- Reply rate >5% → positive signal, can be slightly more aggressive\n"
+                    "- If no real delivery data yet, base advice on warmup schedule + reputation score only\n"
+                    "- Never recommend more than the warmup schedule limit unless fully warmed\n\n"
+                    "Return valid JSON only — no markdown, no prose outside JSON:\n"
+                    '{"recommended_limit": <int>, "confidence": "<high|medium|low>", '
+                    '"summary": "<one-line headline under 12 words>", '
+                    '"reasoning": "<2-4 sentences — reference the actual numbers>", '
+                    '"warnings": ["<short specific warning>", ...]}'
+                ),
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Here is my deliverability data:\n\n{snapshot}\n\n"
+                    "How many outreach emails per day is safe to send right now? "
+                    "Reference the specific numbers in your reasoning — bounce rate, score, ramp day, etc. "
+                    "Be conservative. Return JSON only."
+                ),
+            }
+        ],
+    )
+
+    result = _extract_json(response)
+    return {
+        "recommended_limit": int(result.get("recommended_limit", ramp_limit or 10)),
+        "confidence":        str(result.get("confidence", "medium")),
+        "summary":           str(result.get("summary", "")),
+        "reasoning":         str(result.get("reasoning", "")),
+        "warnings":          list(result.get("warnings") or []),
+    }

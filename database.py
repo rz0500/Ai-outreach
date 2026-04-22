@@ -249,6 +249,7 @@ def initialize_database(db_path: str = DB_PATH) -> None:
         for col, definition in [
             ("mailivery_campaign_id", "TEXT"),
             ("mailivery_health_score", "INTEGER"),
+            ("daily_send_limit",      "INTEGER NOT NULL DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE clients ADD COLUMN {col} {definition}")
@@ -383,6 +384,7 @@ def update_client(
     outreach_review_mode: Optional[int] = None,
     mailivery_campaign_id: Optional[str] = None,
     mailivery_health_score: Optional[int] = None,
+    daily_send_limit: Optional[int] = None,
     db_path: str = DB_PATH,
 ) -> bool:
     """Update any subset of fields on a client record. Returns True if found."""
@@ -400,6 +402,7 @@ def update_client(
     if outreach_review_mode    is not None: fields.append(("outreach_review_mode", int(outreach_review_mode)))
     if mailivery_campaign_id   is not None: fields.append(("mailivery_campaign_id", mailivery_campaign_id))
     if mailivery_health_score  is not None: fields.append(("mailivery_health_score", int(mailivery_health_score)))
+    if daily_send_limit        is not None: fields.append(("daily_send_limit", int(daily_send_limit)))
     if not fields:
         return False
     set_clause = ", ".join(f"{col} = ?" for col, _ in fields)
@@ -1175,6 +1178,82 @@ def get_communication_events(
                 (prospect_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+
+def get_delivery_metrics(
+    client_id: int = 1,
+    days: int = 30,
+    db_path: str = DB_PATH,
+) -> dict:
+    """
+    Aggregate real deliverability signal from communication_events for a client.
+
+    Returns a dict with:
+        total_sent          int   — outbound email attempts in last `days` days
+        delivered           int   — status='sent' or event_type='delivered'
+        bounced             int   — event_type contains 'bounce'
+        dropped             int   — event_type contains 'drop'
+        spam_reports        int   — event_type contains 'spam'
+        unsubscribes        int   — event_type contains 'unsubscribe'
+        replies             int   — inbound direction events (replies received)
+        reply_rate_pct      float — replies / total_sent * 100 (0 if no sends)
+        bounce_rate_pct     float — bounced / total_sent * 100
+        delivery_rate_pct   float — delivered / total_sent * 100
+        recent_failures     list[str] — last 5 failure event types with metadata
+    """
+    since = (
+        __import__("datetime").datetime.utcnow()
+        - __import__("datetime").timedelta(days=days)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT direction, event_type, status, metadata, created_at
+            FROM communication_events
+            WHERE client_id = ?
+              AND channel   = 'email'
+              AND created_at >= ?
+            ORDER BY created_at DESC
+            """,
+            (client_id, since),
+        ).fetchall()
+
+    events = [dict(r) for r in rows]
+
+    total_sent    = sum(1 for e in events if e["direction"] == "outbound")
+    delivered     = sum(1 for e in events if e["direction"] == "outbound"
+                        and (e["status"] == "sent" or "deliver" in (e["event_type"] or "")))
+    bounced       = sum(1 for e in events if "bounce" in (e["event_type"] or "").lower())
+    dropped       = sum(1 for e in events if "drop"   in (e["event_type"] or "").lower())
+    spam_reports  = sum(1 for e in events if "spam"   in (e["event_type"] or "").lower())
+    unsubscribes  = sum(1 for e in events if "unsub"  in (e["event_type"] or "").lower())
+    replies       = sum(1 for e in events if e["direction"] == "inbound")
+
+    reply_rate    = round(replies   / total_sent * 100, 1) if total_sent else 0.0
+    bounce_rate   = round(bounced   / total_sent * 100, 1) if total_sent else 0.0
+    delivery_rate = round(delivered / total_sent * 100, 1) if total_sent else 0.0
+
+    failures = [
+        f"{e['event_type']} — {(e['metadata'] or '')[:80]}"
+        for e in events
+        if e["direction"] == "outbound" and e["status"] == "failed"
+    ][:5]
+
+    return {
+        "total_sent":        total_sent,
+        "delivered":         delivered,
+        "bounced":           bounced,
+        "dropped":           dropped,
+        "spam_reports":      spam_reports,
+        "unsubscribes":      unsubscribes,
+        "replies":           replies,
+        "reply_rate_pct":    reply_rate,
+        "bounce_rate_pct":   bounce_rate,
+        "delivery_rate_pct": delivery_rate,
+        "recent_failures":   failures,
+        "days_window":       days,
+    }
 
 
 def ensure_sequence_enrollment(

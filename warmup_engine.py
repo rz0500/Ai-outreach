@@ -60,11 +60,11 @@ WARMUP_SUBJECT_PREFIX = ""  # no visible prefix — use the header instead
 
 # (max_day_inclusive, daily_limit)
 _RAMP: list[tuple[int, int]] = [
-    (7,   15),
-    (14,  30),
-    (21,  60),
-    (28,  100),
-    (35,  150),
+    (7,   10),
+    (14,  20),
+    (21,  40),
+    (28,  70),
+    (35,  120),
     (9999, 200),
 ]
 
@@ -96,15 +96,21 @@ def get_daily_limit() -> int:
     return 200
 
 
-def can_send_today(db_path: str = database.DB_PATH) -> tuple[bool, str]:
+def can_send_today(
+    db_path: str = database.DB_PATH,
+    client_limit: int = 0,
+) -> tuple[bool, str]:
     """
     Check whether another real outreach email can be sent today.
+
+    client_limit: per-client override (from clients.daily_send_limit).
+                  0 means "use the global warmup ramp schedule."
 
     Returns:
         (True, "")                       — send allowed
         (False, "Daily limit reached…")  — throttled
     """
-    limit = get_daily_limit()
+    limit = client_limit if client_limit > 0 else get_daily_limit()
     if limit == 0:
         return True, ""
 

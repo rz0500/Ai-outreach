@@ -587,39 +587,285 @@
     {% endif %}
   </div>
 
-  <!-- ── Mailivery warmup health card ── -->
-  {% if warmup_status and warmup_status.mailivery_connected %}
-  {% set score = warmup_status.mailivery_health_score %}
-  {% set mstatus = warmup_status.mailivery_status %}
-  <div style="background:#1e293b;border:1px solid #334155;border-radius:0.75rem;padding:1.25rem 1.5rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
-    <div style="flex:0 0 auto;">
-      {% if score is not none %}
-        {% if score >= 80 %}
-          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#059669,#10b981);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
-        {% elif score >= 50 %}
-          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#b45309,#f59e0b);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
-        {% else %}
-          <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:linear-gradient(135deg,#b91c1c,#ef4444);display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#fff;">{{ score }}</div>
-        {% endif %}
-      {% else %}
-        <div style="width:3.5rem;height:3.5rem;border-radius:50%;background:#334155;display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#94a3b8;">—</div>
-      {% endif %}
+  <!-- ── Live warmup & delivery control panel ── -->
+  <div id="warmup-panel" style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);border-radius:0.875rem;margin-bottom:1.75rem;overflow:hidden;">
+    <!-- header row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <span style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#475569;">Email Warmup &amp; Delivery</span>
+      <span id="warmup-live-dot" style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:#334155;">
+        <span style="width:6px;height:6px;border-radius:50%;background:#334155;display:inline-block;" id="warmup-dot"></span>
+        <span id="warmup-updated">loading…</span>
+      </span>
     </div>
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:0.8rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Email Reputation</div>
-      <div style="font-size:1rem;font-weight:600;color:#f1f5f9;">
-        {% if score is not none and score >= 80 %}Your sender reputation is excellent
-        {% elif score is not none and score >= 50 %}Your reputation is building
-        {% elif score is not none %}Reputation needs attention
-        {% else %}Warmup active — score loading{% endif %}
+    <!-- body -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-bottom:1px solid rgba(255,255,255,0.05);" id="warmup-stats-row">
+      <div style="padding:1rem 1.25rem;border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:0.68rem;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.35rem;">Sent today</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#e2e8f0;" id="ws-sent">—</div>
+        <div style="font-size:0.72rem;color:#334155;margin-top:0.2rem;" id="ws-limit">of — limit</div>
       </div>
-      <div style="font-size:0.8rem;color:#64748b;margin-top:0.2rem;">
-        Status: <span style="color:{% if mstatus == 'active' %}#34d399{% else %}#fbbf24{% endif %}">{{ mstatus or 'unknown' }}</span>
-        {% if warmup_status.mailivery_emails_today is not none %} · {{ warmup_status.mailivery_emails_today }} warmup emails today{% endif %}
+      <div style="padding:1rem 1.25rem;border-right:1px solid rgba(255,255,255,0.05);">
+        <div style="font-size:0.68rem;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.35rem;">Warmup emails</div>
+        <div style="font-size:1.6rem;font-weight:700;color:#a78bfa;" id="ws-warmup">—</div>
+        <div style="font-size:0.72rem;color:#334155;margin-top:0.2rem;" id="ws-tier">today</div>
       </div>
+      <div style="padding:1rem 1.25rem;">
+        <div style="font-size:0.68rem;color:#475569;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.35rem;">Reputation score</div>
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-top:0.1rem;">
+          <div id="ws-score-circle" style="width:2.75rem;height:2.75rem;border-radius:50%;background:#1e293b;display:flex;align-items:center;justify-content:center;font-size:0.9rem;font-weight:700;color:#94a3b8;flex-shrink:0;">—</div>
+          <div>
+            <div style="font-size:0.8rem;font-weight:600;color:#e2e8f0;" id="ws-score-label">Loading…</div>
+            <div style="font-size:0.7rem;color:#334155;margin-top:0.1rem;" id="ws-mailivery-status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ramp progress bar -->
+    <div style="padding:0.85rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <div style="display:flex;justify-content:space-between;margin-bottom:0.4rem;">
+        <span style="font-size:0.7rem;color:#475569;" id="ws-ramp-label">Warmup ramp</span>
+        <span style="font-size:0.7rem;color:#475569;" id="ws-ramp-pct">0%</span>
+      </div>
+      <div style="height:5px;background:#1e293b;border-radius:3px;overflow:hidden;">
+        <div id="ws-ramp-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#7c3aed,#6366f1);border-radius:3px;transition:width 0.6s ease;"></div>
+      </div>
+    </div>
+    <!-- daily limit slider -->
+    <div style="padding:1rem 1.25rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem;">
+        <div>
+          <div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:#475569;">Daily outreach limit</div>
+          <div style="font-size:0.72rem;color:#334155;margin-top:0.15rem;">0 = follow warmup ramp automatically</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <span id="slider-val" style="font-size:1.1rem;font-weight:700;color:#a78bfa;min-width:2.5rem;text-align:right;">{{ warmup_status.daily_send_limit if warmup_status else 0 }}</span>
+          <span style="font-size:0.72rem;color:#475569;">/day</span>
+        </div>
+      </div>
+      <input type="range" id="daily-limit-slider" min="0" max="200" step="5"
+             value="{{ warmup_status.daily_send_limit if warmup_status else 0 }}"
+             style="width:100%;accent-color:#7c3aed;cursor:pointer;">
+      <div style="display:flex;justify-content:space-between;margin-top:0.3rem;">
+        <span style="font-size:0.65rem;color:#1e293b;">0 (auto)</span>
+        <span style="font-size:0.65rem;color:#1e293b;">200/day</span>
+      </div>
+      <div id="slider-save-msg" style="font-size:0.72rem;color:#34d399;margin-top:0.4rem;display:none;">Saved</div>
     </div>
   </div>
-  {% endif %}
+
+  <script>
+  (function() {
+    const dot        = document.getElementById('warmup-dot');
+    const updated    = document.getElementById('warmup-updated');
+    const wsSent     = document.getElementById('ws-sent');
+    const wsLimit    = document.getElementById('ws-limit');
+    const wsWarmup   = document.getElementById('ws-warmup');
+    const wsTier     = document.getElementById('ws-tier');
+    const wsScoreC   = document.getElementById('ws-score-circle');
+    const wsScoreL   = document.getElementById('ws-score-label');
+    const wsMStatus  = document.getElementById('ws-mailivery-status');
+    const wsRampBar  = document.getElementById('ws-ramp-bar');
+    const wsRampPct  = document.getElementById('ws-ramp-pct');
+    const wsRampLbl  = document.getElementById('ws-ramp-label');
+
+    function scoreColor(s) {
+      if (s === null) return '#1e293b';
+      if (s >= 80) return 'linear-gradient(135deg,#059669,#10b981)';
+      if (s >= 50) return 'linear-gradient(135deg,#b45309,#f59e0b)';
+      return 'linear-gradient(135deg,#b91c1c,#ef4444)';
+    }
+    function scoreLabel(s) {
+      if (s === null) return 'Score loading…';
+      if (s >= 80) return 'Excellent reputation';
+      if (s >= 50) return 'Reputation building';
+      return 'Needs attention';
+    }
+
+    function refresh() {
+      fetch('/api/warmup-status')
+        .then(r => r.json())
+        .then(d => {
+          const limit    = d.daily_send_limit > 0 ? d.daily_send_limit : (d.daily_limit || 0);
+          const sent     = d.sent_today ?? 0;
+          const warmupT  = d.warmup_today ?? 0;
+          const pct      = d.pct ?? 0;
+          const score    = d.mailivery_health_score ?? null;
+
+          wsSent.textContent   = sent;
+          wsLimit.textContent  = limit > 0 ? `of ${limit} limit` : 'no cap (auto ramp)';
+          wsWarmup.textContent = warmupT;
+          wsTier.textContent   = d.tier_label || 'today';
+          wsRampBar.style.width = pct + '%';
+          wsRampPct.textContent = pct + '%';
+          wsRampLbl.textContent = d.fully_warmed ? 'Fully warmed ✓' : 'Warmup ramp';
+
+          wsScoreC.style.background = scoreColor(score);
+          wsScoreC.style.color = score !== null ? '#fff' : '#94a3b8';
+          wsScoreC.textContent = score !== null ? score : '—';
+          wsScoreL.textContent = scoreLabel(score);
+
+          const ms = d.mailivery_status;
+          wsMStatus.textContent = ms ? `Mailivery: ${ms}` : (d.mailivery_enabled ? 'Mailivery: not connected' : '');
+          wsMStatus.style.color = ms === 'active' ? '#34d399' : '#fbbf24';
+
+          dot.style.background = '#34d399';
+          updated.textContent  = 'live · ' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        })
+        .catch(() => {
+          dot.style.background = '#ef4444';
+          updated.textContent  = 'error';
+        });
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+
+    // Slider
+    const slider  = document.getElementById('daily-limit-slider');
+    const sliderV = document.getElementById('slider-val');
+    const saveMsg = document.getElementById('slider-save-msg');
+    let saveTimer = null;
+
+    slider.addEventListener('input', () => {
+      sliderV.textContent = slider.value;
+    });
+
+    slider.addEventListener('change', () => {
+      clearTimeout(saveTimer);
+      fetch('/client/warmup/set-daily-limit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({limit: parseInt(slider.value)})
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          saveMsg.style.display = 'block';
+          saveTimer = setTimeout(() => { saveMsg.style.display = 'none'; }, 2500);
+          refresh();
+        }
+      });
+    });
+  })();
+  </script>
+
+  <!-- ── AI send advisor ── -->
+  <div id="ai-advisor-card" style="background:#0d1117;border:1px solid rgba(124,58,237,0.25);border-radius:0.875rem;margin-bottom:1.75rem;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <div style="display:flex;align-items:center;gap:0.6rem;">
+        <span style="font-size:0.95rem;">✦</span>
+        <span style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#475569;">AI Deliverability Advisor</span>
+      </div>
+      <button id="ai-advice-btn" onclick="fetchAdvice()" style="background:linear-gradient(135deg,#7c3aed,#6366f1);border:none;border-radius:6px;color:#fff;font-size:0.75rem;font-weight:600;padding:0.3rem 0.9rem;cursor:pointer;font-family:inherit;">Analyse now</button>
+    </div>
+    <div id="ai-advice-body" style="padding:1.25rem 1.5rem;">
+      <div style="font-size:0.82rem;color:#475569;">Click <strong style="color:#94a3b8;">Analyse now</strong> — Claude will review your warmup stats and tell you exactly how many emails are safe to send today.</div>
+    </div>
+  </div>
+
+  <script>
+  function fetchAdvice() {
+    const btn  = document.getElementById('ai-advice-btn');
+    const body = document.getElementById('ai-advice-body');
+    btn.disabled = true;
+    btn.textContent = 'Analysing…';
+    body.innerHTML = '<div style="font-size:0.82rem;color:#475569;display:flex;align-items:center;gap:0.5rem;"><span id="ai-spin">⟳</span> Reading your warmup data…</div>';
+
+    let angle = 0;
+    const spin = setInterval(() => {
+      const el = document.getElementById('ai-spin');
+      if (el) { angle += 30; el.style.transform = `rotate(${angle}deg)`; el.style.display = 'inline-block'; }
+    }, 100);
+
+    fetch('/api/warmup-advice')
+      .then(r => r.json())
+      .then(d => {
+        clearInterval(spin);
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+
+        if (!d.ok) {
+          body.innerHTML = `<div style="color:#ef4444;font-size:0.82rem;">Error: ${d.error || 'unknown'}</div>`;
+          return;
+        }
+
+        const confColor = d.confidence === 'high' ? '#34d399' : d.confidence === 'medium' ? '#fbbf24' : '#f87171';
+        const warnings  = (d.warnings || []).map(w =>
+          `<div style="display:flex;gap:0.5rem;align-items:flex-start;margin-top:0.4rem;">
+             <span style="color:#f87171;flex-shrink:0;">⚠</span>
+             <span style="font-size:0.78rem;color:#94a3b8;">${w}</span>
+           </div>`
+        ).join('');
+
+        body.innerHTML = `
+          <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="font-size:2.5rem;font-weight:800;color:#a78bfa;line-height:1;">${d.recommended_limit}</div>
+              <div style="font-size:0.65rem;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-top:0.15rem;">emails/day</div>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:0.95rem;font-weight:600;color:#f1f5f9;margin-bottom:0.3rem;">${d.summary}</div>
+              <div style="font-size:0.78rem;color:#94a3b8;line-height:1.5;">${d.reasoning}</div>
+            </div>
+            <div style="flex-shrink:0;text-align:center;">
+              <div style="font-size:0.65rem;color:#475569;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Confidence</div>
+              <span style="font-size:0.75rem;font-weight:600;color:${confColor};background:${confColor}22;padding:0.2rem 0.6rem;border-radius:20px;">${d.confidence}</span>
+            </div>
+          </div>
+          ${warnings ? `<div style="border-top:1px solid rgba(255,255,255,0.05);padding-top:0.75rem;">${warnings}</div>` : ''}
+          <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+            <button onclick="applyRecommendation(${d.recommended_limit})"
+              style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.35);border-radius:6px;color:#a78bfa;font-size:0.75rem;font-weight:600;padding:0.3rem 0.9rem;cursor:pointer;font-family:inherit;">
+              Apply this limit
+            </button>
+          </div>
+          ${d.delivery_metrics && d.delivery_metrics.total_sent > 0 ? `
+          <div style="margin-top:1rem;border-top:1px solid rgba(255,255,255,0.05);padding-top:0.85rem;">
+            <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.06em;color:#334155;margin-bottom:0.55rem;">Data Claude used — last ${d.delivery_metrics.days_window} days</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;">
+              ${[
+                ['Sent',      d.delivery_metrics.total_sent,         '#94a3b8'],
+                ['Delivered', d.delivery_metrics.delivery_rate_pct+'%', d.delivery_metrics.delivery_rate_pct >= 85 ? '#34d399' : '#f87171'],
+                ['Bounced',   d.delivery_metrics.bounce_rate_pct+'%',   d.delivery_metrics.bounce_rate_pct > 3 ? '#f87171' : '#34d399'],
+                ['Reply rate',d.delivery_metrics.reply_rate_pct+'%',    d.delivery_metrics.reply_rate_pct > 5 ? '#34d399' : '#94a3b8'],
+              ].map(([label,val,col]) => `
+                <div style="background:#0a0f1a;border:1px solid rgba(255,255,255,0.05);border-radius:6px;padding:0.5rem 0.65rem;text-align:center;">
+                  <div style="font-size:1rem;font-weight:700;color:${col};">${val}</div>
+                  <div style="font-size:0.62rem;color:#334155;margin-top:0.1rem;">${label}</div>
+                </div>`).join('')}
+            </div>
+            ${d.delivery_metrics.spam_reports > 0 ? `<div style="margin-top:0.5rem;font-size:0.75rem;color:#f87171;">⚠ ${d.delivery_metrics.spam_reports} spam report(s) detected — pause and investigate immediately</div>` : ''}
+          </div>` : `
+          <div style="margin-top:0.75rem;font-size:0.72rem;color:#334155;">No real delivery data yet — advice based on warmup schedule and reputation score only.</div>`
+          }`;
+      })
+      .catch(() => {
+        clearInterval(spin);
+        btn.disabled = false;
+        btn.textContent = 'Retry';
+        body.innerHTML = '<div style="color:#ef4444;font-size:0.82rem;">Failed to reach AI advisor. Check your API key.</div>';
+      });
+  }
+
+  function applyRecommendation(limit) {
+    const slider = document.getElementById('daily-limit-slider');
+    const sliderV = document.getElementById('slider-val');
+    if (slider) {
+      slider.value = limit;
+      sliderV.textContent = limit;
+      fetch('/client/warmup/set-daily-limit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({limit})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          const saveMsg = document.getElementById('slider-save-msg');
+          if (saveMsg) { saveMsg.style.display = 'block'; setTimeout(() => { saveMsg.style.display = 'none'; }, 2500); }
+        }
+      });
+    }
+  }
+  </script>
 
   <!-- ── Funnel ── -->
   {% set total = analytics.total_prospects or 1 %}
