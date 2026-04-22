@@ -19,7 +19,8 @@ This file gives the current working context for this repository. It should match
 - SMTP-first deliverability hardening
 - SendGrid routing plus signed webhook verification support
 - Mailivery warmup integration with authenticated webhook handling
-- Google Maps -> research -> email -> PDF -> send workflow
+- **find-and-fire scraper** - Google Maps → research → AI email → PDF → send in one button click from the dashboard
+- **sent emails tab** at `/client/emails` - expandable rows showing full email body + PDF download link
 - inbox monitoring, reply classification, and **warm client notifications** on interested/booked replies
 - **outreach approval queue** - per-client `outreach_review_mode` toggle; holds sequence emails for review before sending
 - weekly client reports with **HTML email template** (stat blocks, funnel bars, score bands, top prospects)
@@ -90,8 +91,12 @@ If a meaningful repo-level change is made, update all three files.
   - `POST /api/ops/client/<id>/mailivery/pause` - **Basic Auth required**
   - `POST /api/ops/client/<id>/mailivery/resume` - **Basic Auth required**
   - `GET /api/ops/client/<id>/mailivery/status` - **Basic Auth required**
+  - `GET /client/emails` - sent email log with expand/PDF
   - `POST /api/find-and-fire`
   - `GET /api/find-and-fire/<job_id>`
+  - `POST /client/prospecting/settings` - save niche/location/ICP for scraper
+  - `GET /api/warmup-status` - live Mailivery + ramp status
+  - `GET /api/warmup-advice` - Claude Haiku AI deliverability recommendation
   - `POST /webhook/sendgrid`
   - `POST /webhook/stripe`
   - `POST /webhook/mailivery`
@@ -107,7 +112,11 @@ If a meaningful repo-level change is made, update all three files.
 - `/` is public marketing and `/ops` is internal operator UI
 - `/client` requires `session["client_id"]`
 - House account is always `client_id=1`
-- Find-and-Fire uses job-id polling, not SSE
+- Find-and-Fire uses job-id polling, not SSE; pipeline sends immediately (research→email→PDF→send in one pass)
+- Find-and-Fire skips prospects with `status='contacted'` to prevent duplicate sends
+- `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
+- `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
+- Email extraction from websites uses `_valid()` check — rejects addresses with nav/path text appended
 - `get_prospect_by_id()` must be used to reload a prospect after research
 - SendGrid signed webhook verification is optional and controlled by `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - Mailivery webhook verification is required via `MAILIVERY_WEBHOOK_SECRET`
@@ -204,8 +213,18 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 | Tests | `test_mailivery_client.py` - all HTTP calls mocked, 21 tests. |
 | Env vars | `MAILIVERY_ENABLED=false`, `MAILIVERY_API_KEY=`, `MAILIVERY_WEBHOOK_SECRET=`, `MAILIVERY_OWNER_EMAIL=` |
 
+## Live State (as of 2026-04-22)
+
+- Mailivery campaign 137474 active for `info@outreachempower.com`, 10 emails/day
+- SendGrid enabled (`USE_SENDGRID=true`), outbound emails routing through it
+- House account (client_id=1) has `sender_email=info@outreachempower.com`, `sender_email_verified=1`
+- DB at `c:\Users\ritis\Projects\leadgen\data\prospects.db` locally; needs persistent volume for production
+- .env had UTF-8 BOM removed — was silently breaking dotenv parsing of first key
+
 ## Planned Next Tasks
 
-1. Set production host env vars and persistent disk, then deploy `master`.
-2. Configure the Mailivery dashboard webhook secret/header for the live domain.
-3. Stripe payments - uncomment keys and test `checkout.session.completed` webhook end-to-end when live billing is needed.
+1. Deploy to production (Render/Railway) with persistent disk, set `DB_PATH` and `APP_BASE_URL`
+2. Configure Mailivery webhook to `https://outreachempower.com/webhook/mailivery`
+3. Improve email quality — research fails for Cloudflare-protected sites; consider Hunter.io/Apollo for contact data
+4. Follow-up sequences — start `python scheduler.py` to send sequence steps 2/3/4 to contacted prospects
+5. Stripe payments — uncomment keys when ready to charge clients
