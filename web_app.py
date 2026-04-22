@@ -2921,20 +2921,30 @@ def client_emails_page():
     _db = database.DB_PATH
     client = database.get_client(client_id, db_path=_db)
     # fetch outbound email events with prospect info
+    import json as _json
+    sender = (client or {}).get("sender_name") or settings.get_sender_name()
     with database._get_connection(_db) as conn:
         rows = conn.execute("""
             SELECT ce.id, ce.prospect_id, ce.event_type, ce.status,
                    ce.content_excerpt, ce.metadata, ce.created_at,
-                   p.company as business_name, p.name as contact_name, p.email as prospect_email
+                   p.company as business_name, p.name as contact_name, p.email as prospect_email,
+                   o.subject as o_subject, o.body as o_body
             FROM communication_events ce
             LEFT JOIN prospects p ON p.id = ce.prospect_id
+            LEFT JOIN outreach o ON o.prospect_id = ce.prospect_id
             WHERE ce.direction = 'outbound'
               AND ce.channel = 'email'
               AND (p.client_id = ? OR ce.prospect_id IS NULL)
             ORDER BY ce.created_at DESC, ce.id DESC
             LIMIT 200
         """, (client_id,)).fetchall()
-    events = [dict(r) for r in rows]
+    events = []
+    for r in rows:
+        e = dict(r)
+        if not e.get("metadata") and (e.get("o_subject") or e.get("o_body")):
+            body = (e.get("o_body") or "").replace("[Your name]", sender).replace("[Name]", sender)
+            e["metadata"] = _json.dumps({"subject": e.get("o_subject") or "", "body": body})
+        events.append(e)
     return render_template("client_emails.html", client=client, events=events)
 
 
