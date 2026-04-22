@@ -15,6 +15,18 @@ dist/
 build/
 *.egg
 
+# Packages installed without virtualenv (pip install to repo root)
+bin/
+*.dist-info/
+certifi/
+charset_normalizer/
+cloudscraper/
+idna/
+pyparsing/
+requests/
+requests_toolbelt/
+urllib3/
+
 # Virtual environments
 venv/
 .venv/
