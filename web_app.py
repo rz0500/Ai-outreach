@@ -1732,13 +1732,15 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             result["stage_statuses"]["send"] = "done"
             result["sent"] = True
             database.update_status(prospect_id, "contacted", db_path=database.DB_PATH)
+            import json as _json
             database.log_communication_event(
                 prospect_id=prospect_id,
                 channel="email",
                 direction="outbound",
                 event_type="sent",
                 status="sent",
-                content_excerpt=f"{subject[:80]}",
+                content_excerpt=subject[:80],
+                metadata=_json.dumps({"subject": subject, "body": body}),
                 db_path=database.DB_PATH,
             )
             if stage_hook:
@@ -2922,7 +2924,7 @@ def client_emails_page():
     with database._get_connection(_db) as conn:
         rows = conn.execute("""
             SELECT ce.id, ce.prospect_id, ce.event_type, ce.status,
-                   ce.content_excerpt, ce.created_at,
+                   ce.content_excerpt, ce.metadata, ce.created_at,
                    p.business_name, p.contact_name, p.email as prospect_email
             FROM communication_events ce
             LEFT JOIN prospects p ON p.id = ce.prospect_id

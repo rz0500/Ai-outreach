@@ -20,8 +20,16 @@
     .page-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-bottom: 1.5rem; }
     .email-table { width: 100%; border-collapse: collapse; }
     .email-table th { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #475569; padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
-    .email-table td { padding: 0.85rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; vertical-align: top; }
-    .email-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .email-table td { padding: 0.85rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; vertical-align: middle; }
+    .email-row { cursor: pointer; }
+    .email-row:hover td { background: rgba(255,255,255,0.025); }
+    .expand-row td { padding: 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .expand-inner { display: none; padding: 1.25rem 1.5rem; background: #0a0f1a; border-top: 1px solid rgba(255,255,255,0.05); }
+    .expand-inner.open { display: block; }
+    .expand-subject { font-size: 0.82rem; font-weight: 600; color: #e2e8f0; margin-bottom: 0.75rem; }
+    .expand-body { font-size: 0.82rem; color: #94a3b8; white-space: pre-wrap; line-height: 1.65; border-left: 2px solid rgba(124,58,237,0.3); padding-left: 1rem; }
+    .expand-chevron { font-size: 0.65rem; color: #475569; margin-left: 0.4rem; transition: transform 0.2s; display: inline-block; }
+    .expand-chevron.open { transform: rotate(180deg); }
     .badge { display: inline-block; font-size: 0.65rem; font-weight: 600; border-radius: 4px; padding: 0.15rem 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .badge-sent { background: rgba(52,211,153,0.12); color: #34d399; }
     .badge-delivered { background: rgba(52,211,153,0.12); color: #34d399; }
@@ -30,7 +38,6 @@
     .badge-bounced { background: rgba(248,113,113,0.12); color: #f87171; }
     .badge-dropped { background: rgba(248,113,113,0.12); color: #f87171; }
     .badge-spam { background: rgba(251,146,60,0.12); color: #fb923c; }
-    .badge-default { background: rgba(100,116,139,0.15); color: #64748b; }
     .excerpt { color: #64748b; font-size: 0.77rem; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .empty { text-align: center; padding: 4rem 2rem; color: #475569; font-size: 0.9rem; }
     .filter-bar { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center; }
@@ -47,7 +54,7 @@
     <a class="nav-link" href="/client">Dashboard</a>
     <a class="nav-link" href="/client/prospects">Prospects</a>
     <a class="nav-link active" href="/client/emails">Emails</a>
-    <a class="nav-link" href="/client/settings" style="font-size:0.78rem;color:#64748b;text-decoration:none;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.3rem 0.75rem;">Settings</a>
+    <a class="nav-link" href="/client/settings">Settings</a>
     <form method="POST" action="/client/logout" style="margin:0">
       <button type="submit" class="logout-btn">Log out</button>
     </form>
@@ -73,17 +80,18 @@
         <tr>
           <th>Business</th>
           <th>Contact</th>
-          <th>Subject / Excerpt</th>
+          <th>Subject</th>
           <th>Status</th>
           <th>Date</th>
         </tr>
       </thead>
       <tbody>
         {% for e in events %}
-        <tr data-status="{{ e.event_type | lower }}">
+        {% set meta = e.metadata | default('') %}
+        <tr class="email-row" data-status="{{ e.event_type | lower }}" onclick="toggleExpand({{ loop.index }})">
           <td>
             {% if e.prospect_id %}
-              <a href="/client/prospects/{{ e.prospect_id }}" style="color:#e2e8f0;text-decoration:none;font-weight:500;" onmouseover="this.style.color='#a78bfa'" onmouseout="this.style.color='#e2e8f0'">
+              <a href="/client/prospects/{{ e.prospect_id }}" onclick="event.stopPropagation()" style="color:#e2e8f0;text-decoration:none;font-weight:500;" onmouseover="this.style.color='#a78bfa'" onmouseout="this.style.color='#e2e8f0'">
                 {{ e.business_name or '—' }}
               </a>
             {% else %}
@@ -93,26 +101,42 @@
           <td style="color:#94a3b8;">{{ e.contact_name or e.prospect_email or '—' }}</td>
           <td>
             <div class="excerpt">{{ e.content_excerpt or '—' }}</div>
+            <span class="expand-chevron" id="chev-{{ loop.index }}">▼</span>
           </td>
           <td>
             {% set s = (e.event_type or e.status or '') | lower %}
-            {% if 'bounce' in s %}
-              <span class="badge badge-bounced">bounced</span>
-            {% elif 'drop' in s %}
-              <span class="badge badge-dropped">dropped</span>
-            {% elif 'spam' in s %}
-              <span class="badge badge-spam">spam</span>
-            {% elif 'click' in s %}
-              <span class="badge badge-clicked">clicked</span>
-            {% elif 'open' in s %}
-              <span class="badge badge-opened">opened</span>
-            {% elif 'deliver' in s %}
-              <span class="badge badge-delivered">delivered</span>
-            {% else %}
-              <span class="badge badge-sent">sent</span>
+            {% if 'bounce' in s %}<span class="badge badge-bounced">bounced</span>
+            {% elif 'drop' in s %}<span class="badge badge-dropped">dropped</span>
+            {% elif 'spam' in s %}<span class="badge badge-spam">spam</span>
+            {% elif 'click' in s %}<span class="badge badge-clicked">clicked</span>
+            {% elif 'open' in s %}<span class="badge badge-opened">opened</span>
+            {% elif 'deliver' in s %}<span class="badge badge-delivered">delivered</span>
+            {% else %}<span class="badge badge-sent">sent</span>
             {% endif %}
           </td>
           <td style="color:#64748b;white-space:nowrap;">{{ (e.created_at or '')[:16] }}</td>
+        </tr>
+        <tr class="expand-row" id="expand-{{ loop.index }}" data-status="{{ e.event_type | lower }}">
+          <td colspan="5">
+            <div class="expand-inner" id="body-{{ loop.index }}">
+              {% if meta %}
+                {% set parsed = meta | tojson %}
+                <div class="expand-subject" id="subj-{{ loop.index }}"></div>
+                <div class="expand-body" id="text-{{ loop.index }}"></div>
+                <script>
+                (function() {
+                  try {
+                    var m = JSON.parse({{ meta | tojson }});
+                    document.getElementById('subj-{{ loop.index }}').textContent = m.subject || '';
+                    document.getElementById('text-{{ loop.index }}').textContent = m.body || '';
+                  } catch(e) {}
+                })();
+                </script>
+              {% else %}
+                <div class="expand-body">No full text stored for this email.</div>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -125,15 +149,25 @@
 </main>
 
 <script>
+function toggleExpand(idx) {
+  var body = document.getElementById('body-' + idx);
+  var chev = document.getElementById('chev-' + idx);
+  var open = body.classList.toggle('open');
+  chev.classList.toggle('open', open);
+}
+
 function filterTable(type, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  const rows = document.querySelectorAll('#email-table tbody tr');
-  let shown = 0;
-  rows.forEach(row => {
-    const status = row.dataset.status || '';
-    const show = type === 'all' || status.includes(type);
+  var rows = document.querySelectorAll('#email-table tbody tr.email-row');
+  var shown = 0;
+  rows.forEach(function(row, i) {
+    var status = row.dataset.status || '';
+    var show = type === 'all' || status.includes(type);
     row.style.display = show ? '' : 'none';
+    // also hide/show the paired expand row
+    var expandRow = row.nextElementSibling;
+    if (expandRow) expandRow.style.display = show ? '' : 'none';
     if (show) shown++;
   });
   document.getElementById('count-label').textContent = shown + ' emails';
