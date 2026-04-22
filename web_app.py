@@ -1514,11 +1514,30 @@ def _extract_email_from_website(url: str) -> str:
 
         return list(found)
 
+    def _valid(addr: str) -> bool:
+        """Basic sanity: local@domain.tld, domain ≤63 chars, local ≤64 chars, no spaces."""
+        if " " in addr or len(addr) > 254:
+            return False
+        parts = addr.split("@")
+        if len(parts) != 2:
+            return False
+        local, domain = parts
+        if not local or len(local) > 64:
+            return False
+        if "." not in domain or len(domain) > 63:
+            return False
+        # reject domains that look like they have path/nav text appended
+        tld = domain.rsplit(".", 1)[-1]
+        if len(tld) > 6 or not tld.isalpha():
+            return False
+        return True
+
     def _pick(emails: list[str]) -> str:
-        if not emails:
+        valid = [e for e in emails if _valid(e)]
+        if not valid:
             return ""
-        preferred = [e for e in emails if not any(e.startswith(s) for s in _SKIP)]
-        return (preferred or emails)[0]
+        preferred = [e for e in valid if not any(e.startswith(s) for s in _SKIP)]
+        return (preferred or valid)[0]
 
     if not url:
         return ""
