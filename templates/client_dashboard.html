@@ -749,6 +749,58 @@
   })();
   </script>
 
+  <!-- ── Prospecting target ── -->
+  <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.07);border-radius:0.875rem;margin-bottom:1.75rem;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <span style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#475569;">Prospecting Target</span>
+      <span style="font-size:0.72rem;color:#334155;">Google Maps scrapes this daily</span>
+    </div>
+    <div style="padding:1.25rem 1.5rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">
+      <div>
+        <label style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#475569;display:block;margin-bottom:0.4rem;">Business type / niche</label>
+        <input id="prospect-niche" type="text" placeholder="e.g. marketing agencies"
+          value="{{ client.niche or '' }}"
+          style="width:100%;background:#0a0f1a;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#e2e8f0;font-size:0.82rem;padding:0.5rem 0.75rem;font-family:inherit;outline:none;">
+      </div>
+      <div>
+        <label style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#475569;display:block;margin-bottom:0.4rem;">Location</label>
+        <input id="prospect-location" type="text" placeholder="e.g. London"
+          value="{{ client.location or '' }}"
+          style="width:100%;background:#0a0f1a;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#e2e8f0;font-size:0.82rem;padding:0.5rem 0.75rem;font-family:inherit;outline:none;">
+      </div>
+      <div>
+        <label style="font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:#475569;display:block;margin-bottom:0.4rem;">Ideal customer (ICP)</label>
+        <input id="prospect-icp" type="text" placeholder="e.g. SME owners"
+          value="{{ client.icp or '' }}"
+          style="width:100%;background:#0a0f1a;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#e2e8f0;font-size:0.82rem;padding:0.5rem 0.75rem;font-family:inherit;outline:none;">
+      </div>
+    </div>
+    <div style="padding:0 1.5rem 1.25rem;display:flex;align-items:center;gap:1rem;">
+      <button onclick="saveProspecting()" style="background:linear-gradient(135deg,#7c3aed,#6366f1);border:none;border-radius:6px;color:#fff;font-size:0.75rem;font-weight:600;padding:0.4rem 1.1rem;cursor:pointer;font-family:inherit;">Save &amp; activate</button>
+      <span id="prospect-save-msg" style="font-size:0.75rem;color:#34d399;display:none;">Saved — scraper will use this next run</span>
+    </div>
+  </div>
+
+  <script>
+  function saveProspecting() {
+    const niche    = document.getElementById('prospect-niche').value.trim();
+    const location = document.getElementById('prospect-location').value.trim();
+    const icp      = document.getElementById('prospect-icp').value.trim();
+    if (!niche || !location) { alert('Niche and location are required.'); return; }
+    fetch('/client/prospecting/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({niche, location, icp})
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        const msg = document.getElementById('prospect-save-msg');
+        msg.style.display = 'inline';
+        setTimeout(() => { msg.style.display = 'none'; }, 3000);
+      }
+    });
+  }
+  </script>
+
   <!-- ── AI send advisor ── -->
   <div id="ai-advisor-card" style="background:#0d1117;border:1px solid rgba(124,58,237,0.25);border-radius:0.875rem;margin-bottom:1.75rem;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.25rem;border-bottom:1px solid rgba(255,255,255,0.05);">

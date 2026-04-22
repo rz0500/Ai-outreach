@@ -190,8 +190,9 @@ def _background_scheduler() -> None:
         # ── Daily self-prospecting (house account) ────────────────────────
         sp_hour = get_self_prospect_run_hour()
         if now_utc.hour >= sp_hour and last_self_prospect_date != today:
-            niche    = get_self_prospect_niche()
-            location = get_self_prospect_location()
+            _house = database.get_client(1, db_path=database.DB_PATH)
+            niche    = (_house or {}).get("niche") or get_self_prospect_niche()
+            location = (_house or {}).get("location") or get_self_prospect_location()
             if niche and location:
                 try:
                     from google_maps_finder import find_and_add_prospects
@@ -3226,6 +3227,24 @@ def client_set_daily_limit():
     })
 
 
+@app.route("/client/prospecting/settings", methods=["POST"])
+def client_prospecting_settings():
+    """Save niche and location for Google Maps scraping."""
+    client_id = _client_login_required()
+    if not client_id:
+        return jsonify({"error": "not authenticated"}), 401
+    data     = request.get_json(silent=True, force=True) or {}
+    niche    = (data.get("niche") or "").strip()
+    location = (data.get("location") or "").strip()
+    icp      = (data.get("icp") or "").strip()
+    if not niche or not location:
+        return jsonify({"error": "niche and location are required"}), 400
+    _db = database.DB_PATH
+    database.update_client(client_id, niche=niche, location=location,
+                           icp=icp or None, db_path=_db)
+    return jsonify({"ok": True, "niche": niche, "location": location})
+
+
 @app.route("/client/campaign/pause", methods=["POST"])
 def client_campaign_pause():
     """Pause sequence dispatch for the logged-in client's workspace."""
@@ -4153,6 +4172,16 @@ def unsubscribe():
     )
     print(f"[Unsubscribe] prospect {prospect_id} suppressed via one-click link")
     return render_template("unsubscribe.html", success=True)
+
+
+@app.route("/dev-login/<int:client_id>")
+def dev_login(client_id: int):
+    """Dev-only shortcut — sets session directly. Blocked if request is not from localhost."""
+    remote = request.remote_addr or ""
+    if remote not in ("127.0.0.1", "::1", "localhost"):
+        return "Not available in production", 403
+    session["client_id"] = client_id
+    return redirect(url_for("client_dashboard"))
 
 
 @app.route("/health")

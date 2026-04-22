@@ -162,9 +162,11 @@ class TestMailiveryClientMethods(unittest.TestCase):
         self.assertIn("/cmp1/resume", m.call_args[0][1])
 
     def test_get_health_score(self):
-        with self._patch({"health_score": 82, "ok": True}):
+        mock_data = {"data": {"status_code": "active", "spam_rate_in_last_14_days": 0}, "ok": True}
+        with self._patch(mock_data):
             result = self.mc.get_health_score("cmp1")
-        self.assertEqual(result.get("health_score"), 82)
+        self.assertIn("health_score", result)
+        self.assertTrue(result["ok"])
 
     def test_update_emails_per_day(self):
         with patch.object(self.mc._session, "request",

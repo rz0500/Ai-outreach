@@ -5,17 +5,18 @@ This file is the long-term memory for the repo. Update it when significant archi
 ## Current State
 
 **Completed modules:**
-`database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`
+`database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 
 **Current product shape:**
 - **Multi-tenant SaaS** - `clients` table + `client_id` on every data table; house account = id 1
-- Public landing page at `/` for the Phase 1 client-facing entry point
+- Public OutreachEmpower landing page at `/` for the client-facing entry point
 - Pilot checkout/pricing page at `/checkout`; real Stripe hooks still exist in code but billing is not the current focus
 - Self-booking onboarding at `/onboard` - prospect fills form, client workspace is auto-created
 - Autonomous self-prospecting - scheduler finds new leads via Google Maps daily (house account)
 - Client-facing dashboard at `/client` - magic-link login, workspace-isolated view
 - Client-facing prospects experience is live: `/client/prospects`, `/client/prospects/<id>`, filtered CSV export, bulk actions, and in-page reply handling from prospect detail
 - Client settings now store sender identity (`sender_name`, `sender_email`) in addition to niche, ICP, location, and booking link
+- Client sender verification flow is live: requested sender emails get a tokenized verification email and only verified sender addresses are used for outbound identity
 - Weekly pipeline reports emailed to each active client every Monday 8am UTC
 - Full automated pipeline: Google Maps -> research -> email -> PDF -> send
 - Background scheduler for inbox polling, daily sequence dispatch, self-prospecting, weekly reports
@@ -30,15 +31,17 @@ This file is the long-term memory for the repo. Update it when significant archi
 - SendGrid webhook handling is live for bounce, dropped, unsubscribe, group_unsubscribe, and spamreport events
 - SendGrid webhook signature verification is supported via `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - Mailivery webhook handling is live at `/webhook/mailivery`, requires `MAILIVERY_WEBHOOK_SECRET`, and clears cached campaign state on disconnect
+- Mailivery ops endpoints can connect/start/pause/resume/status-check client warmup campaigns
 - Find-and-Fire now has additive backend job state for stage, message, current company, current index, item-level statuses, and partial results
 - Find-and-Fire operator UI now polls and renders incremental results with per-lead stage badges
 - Operator dashboard now supports per-client workspace filtering on `/ops` and client-scoped analytics refreshes
+- Entire platform rebranded to **OutreachEmpower** with a premium dark-mode aesthetic, dynamic gradients, glassmorphism UI, and Inter typography across all views.
 
 **Deferred / next later:**
-1. Pre-first-client hardening: onboarding sanity pass, sender verification visibility, deployment cleanup, docs/runbook cleanup
-2. Mailbox/domain verification workflow per client (current sender identity is stored and used, but verification UX is not built)
-3. More `/ops` polish and deeper workspace drilldowns
-4. Production deployment hardening and environment cleanup
+1. External deploy setup: production env vars, persistent disk path, web process, scheduler process
+2. Mailivery dashboard setup: live webhook URL plus `X-Mailivery-Webhook-Secret`
+3. Stripe billing go-live: test `checkout.session.completed` webhook end-to-end
+4. More `/ops` polish and deeper workspace drilldowns
 
 ---
 
@@ -48,7 +51,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Multi-tenancy isolation:** Enforced at the query layer. No prospect, outreach, event, draft, or enrollment is readable across `client_id` boundaries. The operator dashboard uses `client_id=1` implicitly. Client dashboard enforces `session["client_id"]`.
 
-**Phase 1 launch routing:** `/` is now the public landing page, `/checkout` is a launch-path pricing/pilot step, `/onboard` handles real signup, and `/ops` is the internal operator dashboard. This keeps the public product path separate from the internal workspace.
+**Launch routing:** `/` is the public OutreachEmpower landing page, `/checkout` is a launch-path pricing/pilot step, `/onboard` handles real signup, and `/ops` is the internal operator dashboard. This keeps the public product path separate from the internal workspace.
 
 **Client session auth:** Magic-link only. `client_sessions` table stores UUID token with 24h TTL. `POST /client/login` generates token and emails link. `GET /client/verify` validates, marks used, sets Flask session. No passwords.
 
@@ -68,11 +71,13 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Client prospect workflow:** `/client/prospects` supports search, filtering, sorting, pagination, CSV export, and bulk actions. `/client/prospects/<id>` shows research, outreach history, reply history, and lets the client approve or dismiss pending reply drafts in place.
 
-**Per-client sender identity:** `client.sender_name` and `client.sender_email` are now persisted and used by `deliverability.py` when routing outbound email through SMTP or SendGrid. Full mailbox/domain verification status is still not built.
+**Per-client sender identity:** `client.sender_name` and `client.sender_email` are persisted. Sender email changes create a verification token; `deliverability.py` only uses the custom sender address after `sender_email_verified=1`, otherwise it falls back to the system SMTP identity.
 
 **SendGrid webhook security:** `/webhook/sendgrid` can verify signed webhook requests using `SENDGRID_WEBHOOK_PUBLIC_KEY`. If the key is unset, the route remains permissive for local/dev use.
 
 **Mailivery webhook security:** `/webhook/mailivery` requires a shared secret (`MAILIVERY_WEBHOOK_SECRET`) sent as `X-Mailivery-Webhook-Secret` or `Authorization: Bearer ...`. Disconnect events clear `clients.mailivery_campaign_id` and cached health score.
+
+**Mailivery warmup integration:** `mailivery_client.py` wraps the external API. Onboarding can auto-connect SMTP/IMAP mailboxes when `MAILIVERY_ENABLED=true` and credentials are present. The scheduler refreshes health scores every 4 hours, and the client dashboard shows Mailivery health once connected.
 
 **Operator workspace filtering:** `/ops` now accepts `client_id` and renders stats, pipeline rows, deliverability summary, reply drafts, outreach tracker, and analytics refreshes for the selected client workspace instead of always forcing house account data. Operator-side AJAX calls append the selected `client_id`.
 
@@ -95,6 +100,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 - **Google Maps API:** configured and working locally
 - **SendGrid:** wired behind `USE_SENDGRID`, not fully feature-parity with SMTP
 - **SendGrid signed webhooks:** optional verification via `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- **Mailivery:** optional warmup integration via `MAILIVERY_ENABLED`, `MAILIVERY_API_KEY`, and `MAILIVERY_WEBHOOK_SECRET`
 - **IMAP:** used by the background scheduler, live monitoring path present
 - **Calendly / booking link:** `CALENDAR_LINK` in `.env`
 

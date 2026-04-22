@@ -13,14 +13,15 @@ This file gives the current working context for this repository. It should match
 - client-facing dashboard at `/client` with magic-link login
 - client settings at `/client/settings` with sender email verification flow
 - client prospects flow at `/client/prospects` with detail pages, CSV export, and bulk actions
-- **client prospect status updates** — mark prospects booked or rejected from the detail page
-- operator dashboard at `/ops` with workspace filtering — **Basic Auth protected**
+- **client prospect status updates** - mark prospects booked or rejected from the detail page
+- operator dashboard at `/ops` with workspace filtering - **Basic Auth protected**
 - ops quick-action buttons: pause/resume campaign, toggle review mode, resend welcome email per workspace
 - SMTP-first deliverability hardening
 - SendGrid routing plus signed webhook verification support
+- Mailivery warmup integration with authenticated webhook handling
 - Google Maps -> research -> email -> PDF -> send workflow
 - inbox monitoring, reply classification, and **warm client notifications** on interested/booked replies
-- **outreach approval queue** — per-client `outreach_review_mode` toggle; holds sequence emails for review before sending
+- **outreach approval queue** - per-client `outreach_review_mode` toggle; holds sequence emails for review before sending
 - weekly client reports with **HTML email template** (stat blocks, funnel bars, score bands, top prospects)
 - one-click unsubscribe with HMAC tokens and RFC List-Unsubscribe headers
 - campaign pause/resume per client
@@ -46,7 +47,7 @@ If a meaningful repo-level change is made, update all three files.
   - `update_client(client_id, ..., campaign_paused, outreach_review_mode)`
   - `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`
   - `get_prospect_by_id(prospect_id)`
-  - `get_pending_outreach_for_review(client_id)` — returns outreach with status `pending_review`
+  - `get_pending_outreach_for_review(client_id)` - returns outreach with status `pending_review`
   - `set_sender_verify_token`, `get_client_by_sender_verify_token`, `confirm_sender_email_verified`
 
 ### Delivery
@@ -59,8 +60,8 @@ If a meaningful repo-level change is made, update all three files.
 - **`web_app.py`** - Flask dashboard and API surface. Important endpoints:
   - `GET /`
   - `GET /checkout`
-  - `GET/POST /onboard` — rate limited 5/IP/hour
-  - `GET /ops` — **Basic Auth required** (SETTINGS_USER / SETTINGS_PASSWORD)
+  - `GET/POST /onboard` - rate limited 5/IP/hour
+  - `GET /ops` - **Basic Auth required** (SETTINGS_USER / SETTINGS_PASSWORD)
   - `GET /client/login`
   - `GET /client/verify`
   - `GET /client`
@@ -80,15 +81,20 @@ If a meaningful repo-level change is made, update all three files.
   - `POST /client/campaign/review-mode/enable`
   - `POST /client/campaign/review-mode/disable`
   - `POST /client/logout`
-  - `POST /api/ops/client/<id>/pause` — **Basic Auth required**
-  - `POST /api/ops/client/<id>/resume` — **Basic Auth required**
-  - `POST /api/ops/client/<id>/toggle-review-mode` — **Basic Auth required**
-  - `POST /api/ops/client/<id>/resend-welcome` — **Basic Auth required**
+  - `POST /api/ops/client/<id>/pause` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/resume` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/toggle-review-mode` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/resend-welcome` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/mailivery/connect` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/mailivery/start` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/mailivery/pause` - **Basic Auth required**
+  - `POST /api/ops/client/<id>/mailivery/resume` - **Basic Auth required**
+  - `GET /api/ops/client/<id>/mailivery/status` - **Basic Auth required**
   - `POST /api/find-and-fire`
   - `GET /api/find-and-fire/<job_id>`
-- `POST /webhook/sendgrid`
-- `POST /webhook/stripe`
-- `POST /webhook/mailivery`
+  - `POST /webhook/sendgrid`
+  - `POST /webhook/stripe`
+  - `POST /webhook/mailivery`
   - `GET /unsubscribe`
   - `GET /health`
 
@@ -107,8 +113,8 @@ If a meaningful repo-level change is made, update all three files.
 - Mailivery webhook verification is required via `MAILIVERY_WEBHOOK_SECRET`
 - Per-client sender identity is stored and used during outbound sends; only used when `sender_email_verified=1`
 - `outreach_review_mode=1` on a client makes the sequencer hold emails as `pending_review` instead of sending
-- `_route_send_email` and all DB-writing routes must pass `db_path=_db` explicitly — default arg values are frozen at import time
-- `DB_PATH` env var controls database location — set to a persistent volume path in production
+- `_route_send_email` and all DB-writing routes must pass `db_path=_db` explicitly - default arg values are frozen at import time
+- `DB_PATH` env var controls database location - set to a persistent volume path in production
 
 ## Running
 
@@ -142,6 +148,8 @@ DB_PATH=/var/data/prospects.db    # persistent volume path
 MAILIVERY_WEBHOOK_SECRET=<strong shared secret if Mailivery webhooks are enabled>
 ```
 
+If Mailivery is enabled, also set `MAILIVERY_ENABLED=true`, `MAILIVERY_API_KEY`, and configure Mailivery to send `X-Mailivery-Webhook-Secret` with the same shared secret to `https://yourdomain.com/webhook/mailivery`.
+
 Procfile defines two processes (both needed):
 ```
 web:       gunicorn web_app:app --workers 2 --bind 0.0.0.0:$PORT
@@ -162,6 +170,8 @@ scheduler: python scheduler.py
 | Ops Basic Auth | Done |
 | Deliverability hardening | Done |
 | SendGrid webhook handling | Done |
+| Mailivery warmup integration | Done |
+| Mailivery webhook authentication | Done |
 | Per-client sender identity | Done |
 | Sender email verification flow | Done |
 | One-click unsubscribe | Done |
@@ -184,17 +194,18 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 |---|---|
 | `mailivery_client.py` | Thin REST client. `MailiveryClient` class + `get_client()` factory. Returns `{"ok": False}` on failure, never raises. |
 | DB columns | `clients.mailivery_campaign_id TEXT`, `clients.mailivery_health_score INTEGER` (nullable, added via migration). |
-| Settings | `get_mailivery_api_key()`, `get_mailivery_enabled()` — gated by `MAILIVERY_ENABLED` env var. |
+| Settings | `get_mailivery_api_key()`, `get_mailivery_enabled()` - gated by `MAILIVERY_ENABLED` env var. |
 | `warmup_engine.get_combined_warmup_status()` | Merges built-in warmup dict with live Mailivery fields (connected, status, health_score, emails_today). |
-| Onboarding hook | `_mailivery_auto_connect()` — called after client creation; connects SMTP mailbox and starts campaign. |
-| Ops endpoints | `POST /api/ops/client/<id>/mailivery/connect|start|pause|resume`, `GET /api/ops/client/<id>/mailivery/status` — all Basic Auth protected. |
-| Webhook | `POST /webhook/mailivery` — requires `MAILIVERY_WEBHOOK_SECRET`; handles `campaign.disconnected`, `campaign.error`, `health_score.updated`. Disconnects clear cached campaign state. |
+| Onboarding hook | `_mailivery_auto_connect()` - called after client creation; connects SMTP mailbox and starts campaign. |
+| Ops endpoints | `POST /api/ops/client/<id>/mailivery/connect|start|pause|resume`, `GET /api/ops/client/<id>/mailivery/status` - all Basic Auth protected. |
+| Webhook | `POST /webhook/mailivery` - requires `MAILIVERY_WEBHOOK_SECRET`; handles `campaign.disconnected`, `campaign.error`, `health_score.updated`. Disconnects clear cached campaign state. |
 | Scheduler | `_refresh_mailivery_health_scores()` runs every 4 hours; warns to stdout if score < 50. |
 | Client dashboard | Warmup health card shown when `warmup_status.mailivery_connected` is true. |
-| Tests | `test_mailivery_client.py` — all HTTP calls mocked, 21 tests. |
+| Tests | `test_mailivery_client.py` - all HTTP calls mocked, 21 tests. |
 | Env vars | `MAILIVERY_ENABLED=false`, `MAILIVERY_API_KEY=`, `MAILIVERY_WEBHOOK_SECRET=`, `MAILIVERY_OWNER_EMAIL=` |
 
 ## Planned Next Tasks
 
-1. Stripe payments — uncomment keys and test `checkout.session.completed` webhook end-to-end
-2. First real client deploy to Render
+1. Set production host env vars and persistent disk, then deploy `master`.
+2. Configure the Mailivery dashboard webhook secret/header for the live domain.
+3. Stripe payments - uncomment keys and test `checkout.session.completed` webhook end-to-end when live billing is needed.

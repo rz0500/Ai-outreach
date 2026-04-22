@@ -18,6 +18,7 @@ Behaviour contract:
 from __future__ import annotations
 
 import time
+import uuid
 import logging
 
 import requests
@@ -54,9 +55,10 @@ class MailiveryClient:
         retry: bool = True,
     ) -> dict:
         url = f"{_BASE_URL}{path}"
+        headers = {"X-Request-ID": str(uuid.uuid4())}
         try:
             resp = self._session.request(
-                method, url, json=json, data=data, files=files, timeout=_TIMEOUT
+                method, url, json=json, data=data, files=files, headers=headers, timeout=_TIMEOUT
             )
             if resp.status_code == 429 and retry:
                 logger.warning("[Mailivery] rate-limited, retrying in 1 s")
@@ -212,20 +214,46 @@ class MailiveryClient:
     # ------------------------------------------------------------------
 
     def get_metrics(self, campaign_id: str) -> dict:
-        """Fetch warmup activity metrics for a campaign."""
-        return self._request("PATCH", f"/campaigns/{campaign_id}/metrics")
+        """Fetch warmup metrics — derived from the campaign GET endpoint."""
+        r = self._request("GET", f"/campaigns/{campaign_id}")
+        if not r.get("ok"):
+            return r
+        d = r.get("data", {})
+        return {
+            "ok": True,
+            "emails_sent_today": d.get("emails_sent_today", 0),
+            "outreach_today": d.get("outreach_today", 0),
+            "response_today": d.get("response_today", 0),
+            "remaining_for_today": d.get("remaining_for_today", 0),
+            "sent_in_last_45_days": d.get("sent_in_last_45_days", 0),
+            "spam_in_last_14_days": d.get("spam_in_last_14_days", 0),
+            "spam_rate_in_last_14_days": d.get("spam_rate_in_last_14_days", -1),
+        }
 
     def get_health_score(self, campaign_id: str) -> dict:
         """
-        Fetch health score for a campaign.
-        Returns dict with keys: health_score (int 0-100), infrastructure,
-        reputation, engagement.
+        Derive a health score from campaign data.
+        Returns dict with keys: health_score (int 0-100), status_code, spam_rate.
         """
-        return self._request("PATCH", f"/campaigns/{campaign_id}/health-score")
+        r = self._request("GET", f"/campaigns/{campaign_id}")
+        if not r.get("ok"):
+            return r
+        d = r.get("data", {})
+        status = d.get("status_code", "unknown")
+        spam_rate = d.get("spam_rate_in_last_14_days", -1)
+        if status == "active" and (spam_rate < 0 or spam_rate == 0):
+            score = 85
+        elif status == "active" and spam_rate <= 2:
+            score = 70
+        elif status == "active":
+            score = max(20, 70 - int(spam_rate * 5))
+        else:
+            score = 30
+        return {"ok": True, "health_score": score, "status_code": status, "spam_rate": spam_rate}
 
     def get_activity_log(self, campaign_id: str) -> dict:
-        """Fetch activity log for a campaign."""
-        return self._request("PATCH", f"/campaigns/{campaign_id}/activity-log")
+        """Fetch recent activity — derived from the campaign GET endpoint."""
+        return self.get_metrics(campaign_id)
 
 
 # ---------------------------------------------------------------------------

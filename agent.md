@@ -9,6 +9,9 @@ Read this at the start of every session. Update after meaningful changes.
 ### Foundation through current SaaS state
 Full pipeline is now in place across the repo: multi-tenant DB, background scheduler, operator dashboard, email validation, analytics, CSV import, SendGrid routing, reply classification, deliverability hardening, Find-and-Fire polling/UI, client prospects flow, SendGrid webhook security, Mailivery warmup integration, and per-client sender identity.
 
+### Rebranding & UI Overhaul
+The application has been successfully rebranded to **OutreachEmpower**. The UI has been heavily refined with a deeper dark mode, glassmorphism, dynamic gradients, micro-animations, and updated typography (Inter font) across all templates.
+
 ### Current shipped client/product layer
 
 **Public/product flow:**
@@ -39,7 +42,7 @@ Full pipeline is now in place across the repo: multi-tenant DB, background sched
 - SendGrid bounce/drop/unsubscribe webhook handling is live at `/webhook/sendgrid`
 - SendGrid signed event verification is supported via `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - Mailivery warmup webhooks are live at `/webhook/mailivery` and require `MAILIVERY_WEBHOOK_SECRET`
-- per-client sender identity is persisted and used during outbound sends
+- per-client sender identity is persisted, verified through the sender-email flow, and used during outbound sends only after verification
 
 ---
 
@@ -57,13 +60,14 @@ Full pipeline is now in place across the repo: multi-tenant DB, background sched
 - `get_prospect_by_id()` must be used to reload a prospect after research
 - SendGrid now supports attachments and thread headers
 - SendGrid signed webhook verification is optional and only enforced when `SENDGRID_WEBHOOK_PUBLIC_KEY` is set
-- Client sender identity is stored per workspace and used during outbound sends, but mailbox/domain verification UX is still missing
+- Client sender identity is stored per workspace and used during outbound sends only when `sender_email_verified=1`
+- Mailivery webhook verification is mandatory when `/webhook/mailivery` is used
 
 ---
 
 ## Next Session - Planned Tasks
 
-1. Pre-first-client hardening later: sender verification visibility, onboarding sanity pass, deployment cleanup, docs/runbook cleanup
-2. Mailbox/domain verification workflow per client
-3. More `/ops` polish and deeper workspace drilldowns
-4. Production deploy hardening and env cleanup
+1. Finish external live-deploy setup: host env vars, persistent disk, web process, and scheduler process
+2. Configure Mailivery dashboard webhook URL/header for the live domain
+3. Stripe payments - test `checkout.session.completed` webhook end-to-end when billing goes live
+4. More `/ops` polish and deeper workspace drilldowns

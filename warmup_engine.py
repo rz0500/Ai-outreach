@@ -238,8 +238,9 @@ def get_combined_warmup_status(
     if mc and campaign_id:
         mailbox = mc.get_mailbox(campaign_id)
         if mailbox.get("ok"):
-            status["mailivery_status"]       = mailbox.get("status")
-            status["mailivery_emails_today"] = mailbox.get("emails_sent_today")
+            d = mailbox.get("data", mailbox)
+            status["mailivery_status"]       = d.get("status_code") or d.get("status")
+            status["mailivery_emails_today"] = d.get("emails_sent_today")
 
     return status
 
