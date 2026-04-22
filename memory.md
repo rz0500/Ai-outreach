@@ -37,9 +37,20 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Operator dashboard now supports per-client workspace filtering on `/ops` and client-scoped analytics refreshes
 - Entire platform rebranded to **OutreachEmpower** with a premium dark-mode aesthetic, dynamic gradients, glassmorphism UI, and Inter typography across all views.
 
+**Session additions (2026-04-22):**
+- `research_agent.py` now uses `cloudscraper` for Cloudflare bypass; scrapes /about /services pages when homepage is thin; capped at 8000 chars
+- Find-and-fire pipeline now includes Step 4 Send: `_run_pipeline_for_db_prospect` calls `_route_send_email`, marks prospect `contacted`, stores full body as JSON `metadata` in `communication_events`
+- Duplicate send guard: `already_sent` check in pipeline; `GROUP BY prospect_id` in emails query
+- `_valid()` email address validator rejects addresses with nav/path text appended
+- `GET /client/emails` — sent email log with expandable body, filter buttons, PDF download; backfills metadata from `outreach` table
+- `templates/client_emails.html` — new template for sent emails tab
+- Mailivery API fixed: `X-Request-ID` UUID header on every request; `get_health_score` / `get_metrics` use `GET /campaigns/{id}` not non-existent sub-endpoints; nested `{"data": {...}}` response parsed correctly
+- Code pushed to GitHub at `rz0500/Ai-outreach` — ready to deploy to Render
+- `.gitignore` updated to exclude pip packages accidentally installed to repo root
+
 **Deferred / next later:**
-1. External deploy setup: production env vars, persistent disk path, web process, scheduler process
-2. Mailivery dashboard setup: live webhook URL plus `X-Mailivery-Webhook-Secret`
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, and all env vars; scheduler then runs 24/7 (daily Maps scrape, sequence sends, inbox polling)
+2. Mailivery dashboard setup: configure webhook URL to `https://your-app.onrender.com/webhook/mailivery` after deploy
 3. Stripe billing go-live: test `checkout.session.completed` webhook end-to-end
 4. More `/ops` polish and deeper workspace drilldowns
 

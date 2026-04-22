@@ -28,7 +28,8 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - `GET /client/prospects/<id>` - client prospect detail page
 - `POST /client/prospects/bulk-action` - bulk enrol and bulk status updates for client-owned prospects
 - `POST /client/reply-drafts/<id>/action` - client-gated approve/dismiss
-- prospect detail page now supports in-place reply draft approve/dismiss for pending drafts
+- `GET /client/emails` - sent email log with expand/body/PDF download
+- prospect detail page supports in-place reply draft approve/dismiss for pending drafts
 
 **Operator/internal features:**
 - `/ops` accepts `client_id` and scopes dashboard data to a selected workspace
@@ -44,6 +45,28 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Mailivery warmup webhooks are live at `/webhook/mailivery` and require `MAILIVERY_WEBHOOK_SECRET`
 - per-client sender identity is persisted, verified through the sender-email flow, and used during outbound sends only after verification
 
+**Research quality improvements:**
+- `research_agent.py` now uses `cloudscraper` (Cloudflare bypass) instead of raw `requests`
+- Homepage text < 200 chars triggers fallback scraping of /about, /about-us, /services, /what-we-do, /team
+- Capped at 8000 chars total to keep AI prompt within limits
+- Pipeline falls back to niche/location context when research fails (no crash on scrape errors)
+
+**Find-and-Fire pipeline (full end-to-end):**
+- Stage 1: Google Maps scraping
+- Stage 2: Website research (cloudscraper)
+- Stage 3: AI email generation
+- Stage 4: PDF proposal generation
+- **Stage 5: Send** — email is actually sent via `_route_send_email()`; prospect marked `contacted`; full body stored as JSON in `metadata` field of `communication_events`
+- Duplicate send prevention: `already_sent` check skips prospects with `status='contacted'`
+- Email address validation: `_valid()` rejects addresses with nav/path text appended
+
+**Emails tab:**
+- `GET /client/emails` shows all sent emails per workspace grouped by prospect (GROUP BY prospect_id)
+- Expandable rows show subject + full body (from `metadata` JSON)
+- PDF download link when `pdf_url` is present
+- Filter buttons: All / Sent / Opened / Clicked / Bounced
+- Backfills metadata from `outreach` table for emails sent before metadata was stored
+
 ---
 
 ## Active Constraints
@@ -56,7 +79,10 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - `/` is public marketing and `/ops` is internal operator UI
 - `/client` requires `session["client_id"]`
 - House account is always `client_id=1`
-- Find-and-Fire uses job-id polling, not SSE
+- Find-and-Fire uses job-id polling, not SSE; pipeline now sends immediately (research→email→PDF→send)
+- Find-and-Fire skips prospects with `status='contacted'` to prevent duplicate sends
+- `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
+- `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
 - `get_prospect_by_id()` must be used to reload a prospect after research
 - SendGrid now supports attachments and thread headers
 - SendGrid signed webhook verification is optional and only enforced when `SENDGRID_WEBHOOK_PUBLIC_KEY` is set
@@ -67,7 +93,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. Finish external live-deploy setup: host env vars, persistent disk, web process, and scheduler process
-2. Configure Mailivery dashboard webhook URL/header for the live domain
-3. Stripe payments - test `checkout.session.completed` webhook end-to-end when billing goes live
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk at `/var/data`; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `SECRET_KEY`, and all keys from local `.env`; see deployment plan `snoopy-pondering-hickey.md`
+2. Configure Mailivery webhook URL/header in Mailivery dashboard to `https://your-app.onrender.com/webhook/mailivery`
+3. Stripe payments — test `checkout.session.completed` webhook end-to-end when billing goes live
 4. More `/ops` polish and deeper workspace drilldowns

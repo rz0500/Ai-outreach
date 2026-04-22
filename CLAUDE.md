@@ -220,11 +220,11 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 - House account (client_id=1) has `sender_email=info@outreachempower.com`, `sender_email_verified=1`
 - DB at `c:\Users\ritis\Projects\leadgen\data\prospects.db` locally; needs persistent volume for production
 - .env had UTF-8 BOM removed — was silently breaking dotenv parsing of first key
+- Code is on GitHub at `rz0500/Ai-outreach` (master) — ready to deploy to Render
+- `cloudscraper` replaces raw `requests` in `research_agent.py` — bypasses Cloudflare JS challenges, tries /about /services pages when homepage text is thin
 
 ## Planned Next Tasks
 
-1. Deploy to production (Render/Railway) with persistent disk, set `DB_PATH` and `APP_BASE_URL`
-2. Configure Mailivery webhook to `https://outreachempower.com/webhook/mailivery`
-3. Improve email quality — research fails for Cloudflare-protected sites; consider Hunter.io/Apollo for contact data
-4. Follow-up sequences — start `python scheduler.py` to send sequence steps 2/3/4 to contacted prospects
-5. Stripe payments — uncomment keys when ready to charge clients
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, and all keys from `.env`; see deployment plan for env var table
+2. Configure Mailivery webhook to `https://your-app.onrender.com/webhook/mailivery` once deployed
+3. Stripe payments — uncomment keys when ready to charge clients
