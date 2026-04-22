@@ -775,9 +775,23 @@
           style="width:100%;background:#0a0f1a;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#e2e8f0;font-size:0.82rem;padding:0.5rem 0.75rem;font-family:inherit;outline:none;">
       </div>
     </div>
-    <div style="padding:0 1.5rem 1.25rem;display:flex;align-items:center;gap:1rem;">
+    <div style="padding:0 1.5rem 1.25rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
       <button onclick="saveProspecting()" style="background:linear-gradient(135deg,#7c3aed,#6366f1);border:none;border-radius:6px;color:#fff;font-size:0.75rem;font-weight:600;padding:0.4rem 1.1rem;cursor:pointer;font-family:inherit;">Save &amp; activate</button>
+      <button id="run-scraper-btn" onclick="runScraper()" style="background:linear-gradient(135deg,#059669,#10b981);border:none;border-radius:6px;color:#fff;font-size:0.75rem;font-weight:600;padding:0.4rem 1.1rem;cursor:pointer;font-family:inherit;">▶ Run scraper now</button>
       <span id="prospect-save-msg" style="font-size:0.75rem;color:#34d399;display:none;">Saved — scraper will use this next run</span>
+    </div>
+    <!-- scraper progress -->
+    <div id="scraper-progress" style="display:none;padding:0 1.5rem 1.25rem;">
+      <div style="background:#0a0f1a;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:1rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+          <span id="scraper-status-text" style="font-size:0.78rem;color:#94a3b8;">Starting…</span>
+          <span id="scraper-count" style="font-size:0.72rem;color:#475569;"></span>
+        </div>
+        <div style="background:#1e293b;border-radius:4px;height:6px;overflow:hidden;">
+          <div id="scraper-bar" style="background:linear-gradient(90deg,#059669,#10b981);height:100%;width:0%;transition:width 0.4s;"></div>
+        </div>
+        <div id="scraper-results" style="margin-top:0.75rem;font-size:0.75rem;color:#64748b;"></div>
+      </div>
     </div>
   </div>
 
@@ -796,6 +810,54 @@
         const msg = document.getElementById('prospect-save-msg');
         msg.style.display = 'inline';
         setTimeout(() => { msg.style.display = 'none'; }, 3000);
+      }
+    });
+  }
+
+  function runScraper() {
+    const niche    = document.getElementById('prospect-niche').value.trim();
+    const location = document.getElementById('prospect-location').value.trim();
+    if (!niche || !location) { alert('Set niche and location first.'); return; }
+    const btn = document.getElementById('run-scraper-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Running…';
+    document.getElementById('scraper-progress').style.display = 'block';
+    document.getElementById('scraper-results').textContent = '';
+    document.getElementById('scraper-bar').style.width = '0%';
+    document.getElementById('scraper-status-text').textContent = 'Finding businesses on Google Maps…';
+    fetch('/api/find-and-fire', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: niche, location: location, limit: 5})
+    }).then(r => r.json()).then(d => {
+      if (d.error) { alert(d.error); btn.disabled = false; btn.textContent = '▶ Run scraper now'; return; }
+      pollScraperJob(d.job_id, btn);
+    });
+  }
+
+  function pollScraperJob(jobId, btn) {
+    fetch('/api/find-and-fire/' + jobId).then(r => r.json()).then(d => {
+      const pct = d.total > 0 ? Math.round((d.progress / d.total) * 100) : (d.status === 'done' ? 100 : 5);
+      document.getElementById('scraper-bar').style.width = pct + '%';
+      document.getElementById('scraper-count').textContent = d.total > 0 ? d.progress + ' / ' + d.total : '';
+      if (d.status === 'running') {
+        document.getElementById('scraper-status-text').textContent = 'Researching & sending emails…';
+        setTimeout(() => pollScraperJob(jobId, btn), 2000);
+      } else if (d.status === 'done') {
+        document.getElementById('scraper-status-text').textContent = '✓ Done';
+        document.getElementById('scraper-bar').style.width = '100%';
+        const results = d.results || [];
+        document.getElementById('scraper-results').innerHTML = results.map(r =>
+          '<div style="padding:0.2rem 0;color:' + (r.status==='sent'?'#34d399':r.status==='exists'?'#94a3b8':'#f87171') + ';">' +
+          (r.status==='sent'?'✓':r.status==='exists'?'–':'✗') + ' ' + (r.name||r.business_name||'') +
+          ' <span style="color:#475569;">(' + r.status + ')</span></div>'
+        ).join('');
+        btn.disabled = false;
+        btn.textContent = '▶ Run scraper now';
+      } else if (d.status === 'error') {
+        document.getElementById('scraper-status-text').textContent = '✗ Error: ' + (d.error || 'unknown');
+        btn.disabled = false;
+        btn.textContent = '▶ Run scraper now';
       }
     });
   }
