@@ -1712,12 +1712,16 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             {"company": company, "error": result["stage_errors"].get("pdf", "")},
         )
 
-    # Step 4 — Send
-    to_email = enriched.get("email", "")
-    subject  = result["email"].get("subject", "")
-    body     = result["email"].get("body", "")
+    # Step 4 — Send (skip if already contacted)
+    to_email  = enriched.get("email", "")
+    subject   = result["email"].get("subject", "")
+    body      = result["email"].get("body", "")
     client_id = enriched.get("client_id", 1)
-    if to_email and subject and body:
+    already_sent = enriched.get("status") == "contacted"
+    if already_sent:
+        result["stage_statuses"]["send"] = "skipped"
+        result["sent"] = False
+    elif to_email and subject and body:
         if stage_hook:
             stage_hook("send", "active", {"company": company})
         sent_ok, send_err = _route_send_email(
@@ -2928,13 +2932,17 @@ def client_emails_page():
             SELECT ce.id, ce.prospect_id, ce.event_type, ce.status,
                    ce.content_excerpt, ce.metadata, ce.created_at,
                    p.company as business_name, p.name as contact_name, p.email as prospect_email,
-                   o.subject as o_subject, o.body as o_body
+                   (SELECT o.subject FROM outreach o
+                    WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_subject,
+                   (SELECT o.body FROM outreach o
+                    WHERE o.prospect_id = ce.prospect_id ORDER BY o.id DESC LIMIT 1) as o_body
             FROM communication_events ce
             LEFT JOIN prospects p ON p.id = ce.prospect_id
-            LEFT JOIN outreach o ON o.prospect_id = ce.prospect_id
             WHERE ce.direction = 'outbound'
               AND ce.channel = 'email'
+              AND ce.event_type = 'sent'
               AND (p.client_id = ? OR ce.prospect_id IS NULL)
+            GROUP BY ce.prospect_id
             ORDER BY ce.created_at DESC, ce.id DESC
             LIMIT 200
         """, (client_id,)).fetchall()
