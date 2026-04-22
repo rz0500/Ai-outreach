@@ -75,7 +75,7 @@ def research_prospect(prospect_id: int, db_path: str = DB_PATH) -> dict:
     to their notes. Returns the raw analysis dict from Claude, or a dict
     containing an 'error' key on failure.
     """
-    all_p = get_all_prospects(db_path)
+    all_p = get_all_prospects(db_path=db_path)
     prospect = next((p for p in all_p if p["id"] == prospect_id), None)
     if not prospect:
         raise ValueError(f"No prospect found with id={prospect_id}")
@@ -138,7 +138,7 @@ def run_research_batch(db_path: str = DB_PATH) -> int:
         Number of prospects successfully researched.
     """
     prospects = [
-        p for p in get_all_prospects(db_path)
+        p for p in get_all_prospects(db_path=db_path)
         if p["status"] == "qualified"
         and not get_latest_research(p["id"], db_path)
         and "[Research Hook]" not in (p.get("notes") or "")
