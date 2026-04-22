@@ -2841,6 +2841,32 @@ def client_dashboard():
     )
 
 
+@app.route("/client/emails")
+def client_emails_page():
+    """Client-facing sent email log."""
+    client_id = _client_login_required()
+    if not client_id:
+        return redirect(url_for("client_login"))
+    _db = database.DB_PATH
+    client = database.get_client(client_id, db_path=_db)
+    # fetch outbound email events with prospect info
+    with database._get_connection(_db) as conn:
+        rows = conn.execute("""
+            SELECT ce.id, ce.prospect_id, ce.event_type, ce.status,
+                   ce.content_excerpt, ce.created_at,
+                   p.business_name, p.contact_name, p.email as prospect_email
+            FROM communication_events ce
+            LEFT JOIN prospects p ON p.id = ce.prospect_id
+            WHERE ce.direction = 'outbound'
+              AND ce.channel = 'email'
+              AND (p.client_id = ? OR ce.prospect_id IS NULL)
+            ORDER BY ce.created_at DESC, ce.id DESC
+            LIMIT 200
+        """, (client_id,)).fetchall()
+    events = [dict(r) for r in rows]
+    return render_template("client_emails.html", client=client, events=events)
+
+
 @app.route("/client/prospects")
 def client_prospects_page():
     """Client-facing prospect list scoped to the logged-in workspace."""

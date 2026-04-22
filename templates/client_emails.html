@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ client.name }} — Sent Emails</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: #080c14; color: #e2e8f0; min-height: 100vh; }
+    header { background: #0d1117; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 0 2rem; height: 58px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+    .logo { font-size: 1rem; font-weight: 700; color: #a78bfa; letter-spacing: 0.06em; text-transform: uppercase; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .client-badge { font-size: 0.8rem; color: #64748b; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 20px; padding: 0.25rem 0.75rem; }
+    .nav-link { font-size: 0.78rem; color: #64748b; text-decoration: none; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 0.3rem 0.75rem; transition: color 0.15s, border-color 0.15s; }
+    .nav-link:hover, .nav-link.active { color: #a78bfa; border-color: rgba(124,58,237,0.4); }
+    .logout-btn { background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #64748b; font-size: 0.75rem; padding: 0.3rem 0.75rem; cursor: pointer; font-family: inherit; transition: color 0.15s; }
+    .logout-btn:hover { color: #f87171; border-color: rgba(248,113,113,0.3); }
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .page-title { font-size: 1.1rem; font-weight: 600; color: #f8fafc; margin-bottom: 1.5rem; }
+    .email-table { width: 100%; border-collapse: collapse; }
+    .email-table th { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #475569; padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .email-table td { padding: 0.85rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; vertical-align: top; }
+    .email-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .badge { display: inline-block; font-size: 0.65rem; font-weight: 600; border-radius: 4px; padding: 0.15rem 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-sent { background: rgba(52,211,153,0.12); color: #34d399; }
+    .badge-delivered { background: rgba(52,211,153,0.12); color: #34d399; }
+    .badge-opened { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .badge-clicked { background: rgba(124,58,237,0.15); color: #a78bfa; }
+    .badge-bounced { background: rgba(248,113,113,0.12); color: #f87171; }
+    .badge-dropped { background: rgba(248,113,113,0.12); color: #f87171; }
+    .badge-spam { background: rgba(251,146,60,0.12); color: #fb923c; }
+    .badge-default { background: rgba(100,116,139,0.15); color: #64748b; }
+    .excerpt { color: #64748b; font-size: 0.77rem; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .empty { text-align: center; padding: 4rem 2rem; color: #475569; font-size: 0.9rem; }
+    .filter-bar { display: flex; gap: 0.75rem; margin-bottom: 1.25rem; flex-wrap: wrap; align-items: center; }
+    .filter-btn { font-size: 0.72rem; font-weight: 600; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; background: none; color: #64748b; padding: 0.3rem 0.8rem; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+    .filter-btn.active, .filter-btn:hover { border-color: rgba(124,58,237,0.4); color: #a78bfa; }
+    .count-pill { font-size: 0.7rem; color: #475569; margin-left: auto; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">OutreachEmpower</div>
+  <div class="header-right">
+    <span class="client-badge">{{ client.name }}</span>
+    <a class="nav-link" href="/client">Dashboard</a>
+    <a class="nav-link" href="/client/prospects">Prospects</a>
+    <a class="nav-link active" href="/client/emails">Emails</a>
+    <a class="nav-link" href="/client/settings" style="font-size:0.78rem;color:#64748b;text-decoration:none;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.3rem 0.75rem;">Settings</a>
+    <form method="POST" action="/client/logout" style="margin:0">
+      <button type="submit" class="logout-btn">Log out</button>
+    </form>
+  </div>
+</header>
+
+<main>
+  <div class="page-title">Sent Emails</div>
+
+  {% if events %}
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterTable('all', this)">All</button>
+    <button class="filter-btn" onclick="filterTable('sent', this)">Sent</button>
+    <button class="filter-btn" onclick="filterTable('opened', this)">Opened</button>
+    <button class="filter-btn" onclick="filterTable('clicked', this)">Clicked</button>
+    <button class="filter-btn" onclick="filterTable('bounced', this)">Bounced</button>
+    <span class="count-pill" id="count-label">{{ events|length }} emails</span>
+  </div>
+
+  <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.06);border-radius:0.875rem;overflow:hidden;">
+    <table class="email-table" id="email-table">
+      <thead>
+        <tr>
+          <th>Business</th>
+          <th>Contact</th>
+          <th>Subject / Excerpt</th>
+          <th>Status</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+        <tr data-status="{{ e.event_type | lower }}">
+          <td>
+            {% if e.prospect_id %}
+              <a href="/client/prospects/{{ e.prospect_id }}" style="color:#e2e8f0;text-decoration:none;font-weight:500;" onmouseover="this.style.color='#a78bfa'" onmouseout="this.style.color='#e2e8f0'">
+                {{ e.business_name or '—' }}
+              </a>
+            {% else %}
+              {{ e.business_name or '—' }}
+            {% endif %}
+          </td>
+          <td style="color:#94a3b8;">{{ e.contact_name or e.prospect_email or '—' }}</td>
+          <td>
+            <div class="excerpt">{{ e.content_excerpt or '—' }}</div>
+          </td>
+          <td>
+            {% set s = (e.event_type or e.status or '') | lower %}
+            {% if 'bounce' in s %}
+              <span class="badge badge-bounced">bounced</span>
+            {% elif 'drop' in s %}
+              <span class="badge badge-dropped">dropped</span>
+            {% elif 'spam' in s %}
+              <span class="badge badge-spam">spam</span>
+            {% elif 'click' in s %}
+              <span class="badge badge-clicked">clicked</span>
+            {% elif 'open' in s %}
+              <span class="badge badge-opened">opened</span>
+            {% elif 'deliver' in s %}
+              <span class="badge badge-delivered">delivered</span>
+            {% else %}
+              <span class="badge badge-sent">sent</span>
+            {% endif %}
+          </td>
+          <td style="color:#64748b;white-space:nowrap;">{{ (e.created_at or '')[:16] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="empty">No emails sent yet. Run the scraper to start outreach.</div>
+  {% endif %}
+</main>
+
+<script>
+function filterTable(type, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const rows = document.querySelectorAll('#email-table tbody tr');
+  let shown = 0;
+  rows.forEach(row => {
+    const status = row.dataset.status || '';
+    const show = type === 'all' || status.includes(type);
+    row.style.display = show ? '' : 'none';
+    if (show) shown++;
+  });
+  document.getElementById('count-label').textContent = shown + ' emails';
+}
+</script>
+</body>
+</html>
