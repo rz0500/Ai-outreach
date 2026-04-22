@@ -2925,7 +2925,7 @@ def client_emails_page():
         rows = conn.execute("""
             SELECT ce.id, ce.prospect_id, ce.event_type, ce.status,
                    ce.content_excerpt, ce.metadata, ce.created_at,
-                   p.business_name, p.contact_name, p.email as prospect_email
+                   p.company as business_name, p.name as contact_name, p.email as prospect_email
             FROM communication_events ce
             LEFT JOIN prospects p ON p.id = ce.prospect_id
             WHERE ce.direction = 'outbound'
