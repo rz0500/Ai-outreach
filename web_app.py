@@ -1572,7 +1572,7 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
         result["research"] = {"note": "No website — research skipped"}
     else:
         try:
-            analysis = research_prospect(prospect_id)
+            analysis = research_prospect(prospect_id, db_path=database.DB_PATH)
             if "error" in analysis:
                 result["stage_statuses"]["research"] = "error"
                 result["stage_errors"]["research"] = analysis["error"]
