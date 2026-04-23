@@ -242,6 +242,22 @@ def get_combined_warmup_status(
             status["mailivery_status"]       = d.get("status_code") or d.get("status")
             status["mailivery_emails_today"] = d.get("emails_sent_today")
 
+            # Derive live health score from the same API response so the
+            # dashboard never shows "Score loading…" waiting for the 4-hour batch job
+            campaign_status = status["mailivery_status"] or ""
+            spam_rate = d.get("spam_rate_in_last_14_days", -1)
+            if campaign_status == "active" and (spam_rate < 0 or spam_rate == 0):
+                live_score = 85
+            elif campaign_status == "active" and spam_rate <= 2:
+                live_score = 70
+            elif campaign_status == "active":
+                live_score = max(20, 70 - int(spam_rate * 5))
+            else:
+                live_score = cached_score  # keep cached if not active
+
+            if live_score is not None:
+                status["mailivery_health_score"] = live_score
+
     return status
 
 
