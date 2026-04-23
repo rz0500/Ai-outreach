@@ -37,58 +37,70 @@ app.secret_key = get_secret_key()
 # ── Production safety checks ──────────────────────────────────────────────────
 def _check_production_safety() -> None:
     """
-    Warn loudly on stdout when the app starts with insecure or missing
-    production configuration.  These are non-fatal so local dev still works,
-    but each warning is a hard blocker before going live.
-    """
-    warnings: list[str] = []
+    Enforce and warn on startup about insecure or missing production config.
 
-    if get_secret_key() in (
+    Hard failures (RuntimeError) crash the process immediately — silent
+    misconfiguration is worse than a failed boot.
+    Non-fatal warnings are printed for issues that are acceptable in local dev.
+    """
+    # ── Hard failures ────────────────────────────────────────────────────────
+    secret_key = get_secret_key()
+    if secret_key in (
         "dev-secret-change-in-production",
         "dev-secret-change-before-deploying",
         "change-this-to-a-random-secret",
         "",
     ):
+        raise RuntimeError(
+            "SECRET_KEY must be set to a secure random value in production. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+
+    settings_pw = os.getenv("SETTINGS_PASSWORD", "").strip()
+    if settings_pw in ("change-me", ""):
+        raise RuntimeError(
+            "SETTINGS_PASSWORD must be changed from the default before deploying."
+        )
+
+    # ── Non-fatal warnings ───────────────────────────────────────────────────
+    warnings: list[str] = []
+
+    if settings_pw in ("admin", "password"):
         warnings.append(
-            "SECRET_KEY is the dev default — sessions can be forged. "
-            "Run: python -c \"import secrets; print(secrets.token_hex(32))\" "
-            "and set SECRET_KEY in your environment."
+            "SETTINGS_PASSWORD is weak (value: '{}'). "
+            "The /settings and /ops pages are easily accessible. "
+            "Set SETTINGS_PASSWORD to a strong password.".format(settings_pw)
         )
 
     app_base = os.getenv("APP_BASE_URL", "").strip()
     if not app_base or "localhost" in app_base or "127.0.0.1" in app_base:
         warnings.append(
-            "APP_BASE_URL is not set or points to localhost. "
-            "Magic links and unsubscribe URLs will be broken in production. "
-            "Set APP_BASE_URL=https://yourdomain.com"
-        )
-
-    settings_pw = os.getenv("SETTINGS_PASSWORD", "admin").strip()
-    if settings_pw in ("admin", "change-me", "password", ""):
-        warnings.append(
-            "SETTINGS_PASSWORD is insecure (value: '{}'). "
-            "The /settings and /ops pages will be trivially accessible. "
-            "Set SETTINGS_PASSWORD to a strong password.".format(settings_pw or "(empty)")
+            "WARNING: APP_BASE_URL is not set — magic links and unsubscribe URLs "
+            "in emails will be broken. Set APP_BASE_URL=https://yourdomain.com"
         )
 
     db_path = os.getenv("DB_PATH", "").strip()
     if not db_path:
         warnings.append(
-            "DB_PATH is not set — SQLite will write to 'prospects.db' in the project "
-            "root. On platforms with ephemeral filesystems (Render, Railway, Fly) this "
-            "file is wiped on every redeploy. Set DB_PATH to a path on a persistent "
-            "volume, e.g. DB_PATH=/var/data/prospects.db"
+            "WARNING: DB_PATH not set, using local file. Data will be lost on redeploy. "
+            "Mount a persistent disk and set DB_PATH=/var/data/prospects.db"
+        )
+
+    if not (os.getenv("SENDGRID_WEBHOOK_PUBLIC_KEY") or "").strip():
+        warnings.append(
+            "WARNING: SENDGRID_WEBHOOK_PUBLIC_KEY not set — webhook events are not "
+            "being verified. Set it to the key from your SendGrid Event Webhook settings."
         )
 
     if warnings:
         bar = "=" * 68
         print(f"\n{bar}")
-        print("  OUTREACHEMPOWER — PRODUCTION SAFETY WARNINGS")
+        print("  OUTREACHEMPOWER — STARTUP WARNINGS")
         print(bar)
         for i, w in enumerate(warnings, 1):
             print(f"  [{i}] {w}")
         print(bar)
-        print("  These are non-fatal in development. Fix before deploying.\n")
+        print("  Fix before deploying to production.\n")
 
 _check_production_safety()
 
@@ -3906,7 +3918,7 @@ def sendgrid_webhook():
     raw_payload = request.get_data(cache=True)
     is_valid, verification_error = _verify_sendgrid_webhook_signature(raw_payload)
     if not is_valid:
-        return jsonify({"error": verification_error}), 400
+        return jsonify({"error": verification_error}), 403
 
     events = request.get_json(silent=True)
     if not isinstance(events, list):

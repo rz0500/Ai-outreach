@@ -5,6 +5,7 @@ Routes due touchpoints from sequence_engine to the appropriate
 delivery channel and logs the result.
 """
 
+import os
 from datetime import date
 
 from database import DB_PATH, log_communication_event, update_sequence_enrollment_status, get_client
@@ -117,10 +118,15 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
             result["error"] = "No LinkedIn URL on file."
         else:
             li_dry = get_linkedin_dry_run()
-            ok = send_linkedin_connection(profile_url, message["body"], dry_run=li_dry)
-            result["sent"] = ok
-            result["dry_run"] = li_dry
-            result["error"] = "" if ok else "LinkedIn automation failed."
+            if li_dry:
+                result["sent"] = False
+                result["dry_run"] = True
+                result["error"] = "LinkedIn dry-run mode — set LINKEDIN_DRY_RUN=false to enable real sends."
+            else:
+                ok = send_linkedin_connection(profile_url, message["body"], dry_run=False)
+                result["sent"] = ok
+                result["dry_run"] = False
+                result["error"] = "" if ok else "LinkedIn automation failed."
 
     elif channel == "instagram":
         profile_url = item.get("instagram_url") or item.get("instagram_profile") or ""
@@ -128,14 +134,22 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
             result["error"] = "No Instagram profile URL on file."
         else:
             li_dry = get_linkedin_dry_run()
-            ok = send_instagram_dm(profile_url, message["body"], dry_run=li_dry)
-            result["sent"] = ok
-            result["error"] = "" if ok else "Instagram automation failed."
+            if li_dry:
+                result["sent"] = False
+                result["dry_run"] = True
+                result["error"] = "Instagram dry-run mode — set LINKEDIN_DRY_RUN=false to enable real sends."
+            else:
+                ok = send_instagram_dm(profile_url, message["body"], dry_run=False)
+                result["sent"] = ok
+                result["error"] = "" if ok else "Instagram automation failed."
 
     elif channel == "sms":
         phone = item.get("phone") or ""
         if not phone:
             result["error"] = "No phone number on file."
+        elif not os.getenv("TWILIO_ACCOUNT_SID"):
+            result["sent"] = False
+            result["error"] = "SMS skipped — TWILIO_ACCOUNT_SID not configured."
         else:
             ok = send_sms(phone, message["body"], dry_run=False)
             result["sent"] = ok
