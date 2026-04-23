@@ -56,9 +56,17 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Stage 2: Website research (cloudscraper)
 - Stage 3: AI email generation
 - Stage 4: PDF proposal generation
-- **Stage 5: Send** — email is actually sent via `_route_send_email()`; prospect marked `contacted`; full body stored as JSON in `metadata` field of `communication_events`
+- **Stage 5: Schedule send** — email is scheduled at 08:00 prospect local time via `_infer_timezone()` + `_next_8am_utc()`; `send_after` stored on outreach record
+- `_send_scheduled_outreach()` runs every scheduler cycle; dispatches due sends, marks prospect `contacted`, logs to `communication_events`
 - Duplicate send prevention: `already_sent` check skips prospects with `status='contacted'`
 - Email address validation: `_valid()` rejects addresses with nav/path text appended
+
+**Timezone-aware sending:**
+- `_infer_timezone(location)` → Google Maps Geocoding API + `timezonefinder` → IANA tz name (e.g. `Europe/London`)
+- `_next_8am_utc(tz_name)` → next 08:00 local as UTC datetime
+- Timezone stored on `prospects.prospect_timezone` after first lookup (reused for follow-ups)
+- Falls back to UTC if lookup fails or `GOOGLE_MAPS_API_KEY` missing
+- Same scheduling applied in `sequence_dispatcher.py` for follow-up emails
 
 **Emails tab:**
 - `GET /client/emails` shows all sent emails per workspace grouped by prospect (GROUP BY prospect_id)
@@ -68,6 +76,17 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Backfills metadata from `outreach` table for emails sent before metadata was stored
 
 ---
+
+**Lead capture + provisioning flow:**
+- `/onboard` POST saves to `leads` table, emails `OPERATOR_EMAIL`, redirects to confirm — NO client creation
+- `/ops` shows "Pending Leads" section; Provision button calls `POST /api/ops/leads/<id>/provision`
+- Provision endpoint: creates client, calls `_mailivery_auto_connect()`, sends `_send_onboard_welcome()`
+- `database.leads` table: `id, name, email, niche, location, booking_link, provisioned, provisioned_at, created_at`
+
+**Daily reports (replaced weekly):**
+- Fire at 17:00 UTC every day (not Monday-only)
+- Sent to each active client AND `OPERATOR_EMAIL`
+- Content: today's contacts, today's replies by classification, warm/booked highlights, weekly totals, Mailivery health score
 
 ## Active Constraints
 
@@ -79,8 +98,11 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - `/` is public marketing and `/ops` is internal operator UI
 - `/client` requires `session["client_id"]`
 - House account is always `client_id=1`
-- Find-and-Fire uses job-id polling, not SSE; pipeline now sends immediately (research→email→PDF→send)
+- Find-and-Fire uses job-id polling, not SSE; pipeline schedules send at 08:00 local time (NOT immediate)
 - Find-and-Fire skips prospects with `status='contacted'` to prevent duplicate sends
+- `/onboard` POST never creates a client workspace — operator provisions manually via `/ops`
+- `OPERATOR_EMAIL` must be set for lead alerts and daily reports
+- Stripe is fully removed — no `/checkout`, no `/webhook/stripe`, no `stripe` package
 - `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
 - `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
 - `get_prospect_by_id()` must be used to reload a prospect after research
@@ -93,7 +115,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk at `/var/data`; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `SECRET_KEY`, and all keys from local `.env`; see deployment plan `snoopy-pondering-hickey.md`
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all keys; see deployment plan `snoopy-pondering-hickey.md`
 2. Configure Mailivery webhook URL/header in Mailivery dashboard to `https://your-app.onrender.com/webhook/mailivery`
-3. Stripe payments — test `checkout.session.completed` webhook end-to-end when billing goes live
+3. Set `OPERATOR_EMAIL` in production env vars
 4. More `/ops` polish and deeper workspace drilldowns

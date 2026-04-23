@@ -8,8 +8,8 @@ This file gives the current working context for this repository. It should match
 
 - **multi-tenant** prospect storage with `client_id` on every data table; house account = 1
 - public landing page at `/`
-- pricing / pilot checkout page at `/checkout`
-- self-serve onboarding at `/onboard` with rate limiting (5/IP/hour)
+- **lead capture** at `/onboard` (rate-limited 5/IP/hour) — saves to `leads` table, notifies operator via `OPERATOR_EMAIL`, no auto-provisioning
+- **manual provisioning** in `/ops` — pending leads section with Provision button; creates workspace + starts Mailivery + sends magic link
 - client-facing dashboard at `/client` with magic-link login
 - client settings at `/client/settings` with sender email verification flow
 - client prospects flow at `/client/prospects` with detail pages, CSV export, and bulk actions
@@ -19,11 +19,12 @@ This file gives the current working context for this repository. It should match
 - SMTP-first deliverability hardening
 - SendGrid routing plus signed webhook verification support
 - Mailivery warmup integration with authenticated webhook handling
-- **find-and-fire scraper** - Google Maps → research → AI email → PDF → send in one button click from the dashboard
+- **find-and-fire scraper** - Google Maps → research → AI email → PDF → scheduled send in one button click
+- **timezone-aware sending** - emails scheduled at 08:00 prospect local time via Google Maps Geocoding + timezonefinder; `_send_scheduled_outreach()` dispatches every scheduler cycle
 - **sent emails tab** at `/client/emails` - expandable rows showing full email body + PDF download link
 - inbox monitoring, reply classification, and **warm client notifications** on interested/booked replies
 - **outreach approval queue** - per-client `outreach_review_mode` toggle; holds sequence emails for review before sending
-- weekly client reports with **HTML email template** (stat blocks, funnel bars, score bands, top prospects)
+- **daily reports at 17:00 UTC** sent to both client and `OPERATOR_EMAIL` — today's contacts, replies, warm/booked highlights, weekly totals, Mailivery health score
 - one-click unsubscribe with HMAC tokens and RFC List-Unsubscribe headers
 - campaign pause/resume per client
 - standalone scheduler support via `python scheduler.py`
@@ -50,6 +51,8 @@ If a meaningful repo-level change is made, update all three files.
   - `get_prospect_by_id(prospect_id)`
   - `get_pending_outreach_for_review(client_id)` - returns outreach with status `pending_review`
   - `set_sender_verify_token`, `get_client_by_sender_verify_token`, `confirm_sender_email_verified`
+  - `add_lead`, `get_all_leads`, `get_lead`, `get_lead_by_email`, `mark_lead_provisioned`
+  - `get_pending_sends()` - outreach rows with `send_after <= now` and `sent_at IS NULL`
 
 ### Delivery
 - **`mailer.py`** - SMTP delivery with sender override and optional `html_body` parameter
@@ -60,8 +63,7 @@ If a meaningful repo-level change is made, update all three files.
 ### Web
 - **`web_app.py`** - Flask dashboard and API surface. Important endpoints:
   - `GET /`
-  - `GET /checkout`
-  - `GET/POST /onboard` - rate limited 5/IP/hour
+  - `GET/POST /onboard` - rate limited 5/IP/hour; POST saves lead, notifies OPERATOR_EMAIL
   - `GET /ops` - **Basic Auth required** (SETTINGS_USER / SETTINGS_PASSWORD)
   - `GET /client/login`
   - `GET /client/verify`
@@ -97,8 +99,8 @@ If a meaningful repo-level change is made, update all three files.
   - `POST /client/prospecting/settings` - save niche/location/ICP for scraper
   - `GET /api/warmup-status` - live Mailivery + ramp status
   - `GET /api/warmup-advice` - Claude Haiku AI deliverability recommendation
+  - `POST /api/ops/leads/<id>/provision` - **Basic Auth required** — creates client, starts Mailivery, sends welcome email
   - `POST /webhook/sendgrid`
-  - `POST /webhook/stripe`
   - `POST /webhook/mailivery`
   - `GET /unsubscribe`
   - `GET /health`
@@ -112,8 +114,13 @@ If a meaningful repo-level change is made, update all three files.
 - `/` is public marketing and `/ops` is internal operator UI
 - `/client` requires `session["client_id"]`
 - House account is always `client_id=1`
-- Find-and-Fire uses job-id polling, not SSE; pipeline sends immediately (research→email→PDF→send in one pass)
+- Find-and-Fire uses job-id polling, not SSE; pipeline schedules send at 08:00 prospect local time (not immediate)
 - Find-and-Fire skips prospects with `status='contacted'` to prevent duplicate sends
+- `/onboard` POST saves to `leads` table only — NO client workspace created; operator provisions manually via `/ops`
+- `_send_scheduled_outreach()` runs every scheduler cycle and dispatches outreach rows where `send_after <= now`
+- Timezone inference uses Google Maps Geocoding API + `timezonefinder`; falls back to UTC
+- `OPERATOR_EMAIL` env var required for lead notifications and daily reports
+- Daily reports fire at 17:00 UTC (not weekly); sent to both client and operator
 - `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
 - `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
 - Email extraction from websites uses `_valid()` check — rejects addresses with nav/path text appended
@@ -139,7 +146,6 @@ Primary local routes:
 
 ```bash
 http://127.0.0.1:5000/
-http://127.0.0.1:5000/checkout
 http://127.0.0.1:5000/onboard
 http://127.0.0.1:5000/client
 http://127.0.0.1:5000/ops       # Basic Auth: admin / admin (dev default)
@@ -155,6 +161,7 @@ APP_BASE_URL=https://yourdomain.com
 SETTINGS_PASSWORD=<strong password>
 DB_PATH=/var/data/prospects.db    # persistent volume path
 MAILIVERY_WEBHOOK_SECRET=<strong shared secret if Mailivery webhooks are enabled>
+OPERATOR_EMAIL=you@yourdomain.com  # receives lead alerts + daily reports
 ```
 
 If Mailivery is enabled, also set `MAILIVERY_ENABLED=true`, `MAILIVERY_API_KEY`, and configure Mailivery to send `X-Mailivery-Webhook-Secret` with the same shared secret to `https://yourdomain.com/webhook/mailivery`.
@@ -188,8 +195,12 @@ scheduler: python scheduler.py
 | Warm reply notifications | Done |
 | Client prospect status updates | Done |
 | Outreach approval queue | Done |
-| HTML weekly report | Done |
-| Onboarding welcome email + magic link | Done |
+| Lead capture at /onboard (no auto-provision) | Done |
+| Manual provisioning via /ops Provision button | Done |
+| Daily reports at 17:00 UTC to client + operator | Done |
+| Timezone-aware sending (08:00 local time) | Done |
+| Stripe removed | Done |
+| Onboarding welcome email + magic link (on provision) | Done |
 | Onboarding rate limiting | Done |
 | Startup safety warnings | Done |
 | Persistent DB via DB_PATH env var | Done |
@@ -205,7 +216,7 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 | DB columns | `clients.mailivery_campaign_id TEXT`, `clients.mailivery_health_score INTEGER` (nullable, added via migration). |
 | Settings | `get_mailivery_api_key()`, `get_mailivery_enabled()` - gated by `MAILIVERY_ENABLED` env var. |
 | `warmup_engine.get_combined_warmup_status()` | Merges built-in warmup dict with live Mailivery fields (connected, status, health_score, emails_today). |
-| Onboarding hook | `_mailivery_auto_connect()` - called after client creation; connects SMTP mailbox and starts campaign. |
+| Onboarding hook | `_mailivery_auto_connect()` - called during operator-triggered provisioning (`POST /api/ops/leads/<id>/provision`), NOT on /onboard submission. |
 | Ops endpoints | `POST /api/ops/client/<id>/mailivery/connect|start|pause|resume`, `GET /api/ops/client/<id>/mailivery/status` - all Basic Auth protected. |
 | Webhook | `POST /webhook/mailivery` - requires `MAILIVERY_WEBHOOK_SECRET`; handles `campaign.disconnected`, `campaign.error`, `health_score.updated`. Disconnects clear cached campaign state. |
 | Scheduler | `_refresh_mailivery_health_scores()` runs every 4 hours; warns to stdout if score < 50. |
@@ -222,9 +233,13 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 - .env had UTF-8 BOM removed — was silently breaking dotenv parsing of first key
 - Code is on GitHub at `rz0500/Ai-outreach` (master) — ready to deploy to Render
 - `cloudscraper` replaces raw `requests` in `research_agent.py` — bypasses Cloudflare JS challenges, tries /about /services pages when homepage text is thin
+- Stripe fully removed (no routes, no dependency)
+- `/onboard` is now lead capture only; `/ops` has manual Provision button
+- Emails scheduled at 08:00 prospect local time via `timezonefinder` + Google Maps Geocoding
+- Daily reports at 17:00 UTC replace Monday weekly reports; go to client + `OPERATOR_EMAIL`
 
 ## Planned Next Tasks
 
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, and all keys from `.env`; see deployment plan for env var table
+1. **Deploy to Render** — set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all keys from `.env`
 2. Configure Mailivery webhook to `https://your-app.onrender.com/webhook/mailivery` once deployed
-3. Stripe payments — uncomment keys when ready to charge clients
+3. Set `OPERATOR_EMAIL` in production so lead alerts and daily reports arrive

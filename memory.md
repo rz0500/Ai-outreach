@@ -37,6 +37,19 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Operator dashboard now supports per-client workspace filtering on `/ops` and client-scoped analytics refreshes
 - Entire platform rebranded to **OutreachEmpower** with a premium dark-mode aesthetic, dynamic gradients, glassmorphism UI, and Inter typography across all views.
 
+**Session additions (2026-04-23):**
+- Stripe fully removed: no `/checkout`, no `/webhook/stripe`, no `stripe` package
+- `/onboard` is now lead capture only — saves to `leads` table, emails `OPERATOR_EMAIL`, no auto-provisioning
+- `/ops` Pending Leads section + `POST /api/ops/leads/<id>/provision` for manual client creation
+- `database.leads` table added; `add_lead`, `get_all_leads`, `get_lead_by_email`, `mark_lead_provisioned`, `get_pending_sends` added
+- `settings.get_operator_email()` added; `OPERATOR_EMAIL` added to `.env.example`
+- Weekly report replaced with daily report at 17:00 UTC; sent to both client and `OPERATOR_EMAIL`; includes today's stats + weekly totals + Mailivery health
+- Timezone-aware sending: `_infer_timezone(location)` via Google Maps + `timezonefinder`; `_next_8am_utc(tz_name)` calculates UTC send time; `outreach.send_after` column stores scheduled UTC time; `_send_scheduled_outreach()` dispatches every scheduler cycle
+- `sequence_dispatcher.py` updated: follow-up emails use same timezone scheduling
+- `timezonefinder>=6.5.0` and `pytz>=2024.1` added to `requirements.txt`
+- `prospects.prospect_timezone` column added for tz reuse on follow-ups
+- 102 tests passing
+
 **Session additions (2026-04-22):**
 - `research_agent.py` now uses `cloudscraper` for Cloudflare bypass; scrapes /about /services pages when homepage is thin; capped at 8000 chars
 - Find-and-fire pipeline now includes Step 4 Send: `_run_pipeline_for_db_prospect` calls `_route_send_email`, marks prospect `contacted`, stores full body as JSON `metadata` in `communication_events`
@@ -49,10 +62,9 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `.gitignore` updated to exclude pip packages accidentally installed to repo root
 
 **Deferred / next later:**
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, and all env vars; scheduler then runs 24/7 (daily Maps scrape, sequence sends, inbox polling)
-2. Mailivery dashboard setup: configure webhook URL to `https://your-app.onrender.com/webhook/mailivery` after deploy
-3. Stripe billing go-live: test `checkout.session.completed` webhook end-to-end
-4. More `/ops` polish and deeper workspace drilldowns
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all env vars
+2. Mailivery dashboard setup: configure webhook URL to `https://your-app.onrender.com/webhook/mailivery`
+3. More `/ops` polish and deeper workspace drilldowns
 
 ---
 
