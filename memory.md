@@ -50,6 +50,18 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `prospects.prospect_timezone` column added for tz reuse on follow-ups
 - 102 tests passing
 
+**Session additions (2026-04-23 — pre-launch hardening):**
+- `SECRET_KEY` placeholder/empty now raises `RuntimeError` at boot (hard crash instead of warning)
+- `SETTINGS_PASSWORD` = `change-me` or empty now raises `RuntimeError` at boot
+- Non-fatal startup warnings added for: weak `SETTINGS_PASSWORD`, missing `APP_BASE_URL`, unset `DB_PATH`, unset `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- SendGrid webhook returns 403 on invalid signature (was 400)
+- LinkedIn/Instagram in `sequence_dispatcher.py`: skips entirely when `LINKEDIN_DRY_RUN=true` (no browser launch)
+- SMS in `sequence_dispatcher.py`: skips when `TWILIO_ACCOUNT_SID` not configured
+- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response; dashboard no longer shows "Score loading…" when campaign is active
+- `.env.example` updated: `DB_PATH` uncommented, critical vars annotated with crash consequence
+- `Procfile` updated with memory/multi-process deployment note
+- 81 tests passing (saas_routes suite)
+
 **Session additions (2026-04-22):**
 - `research_agent.py` now uses `cloudscraper` for Cloudflare bypass; scrapes /about /services pages when homepage is thin; capped at 8000 chars
 - Find-and-fire pipeline now includes Step 4 Send: `_run_pipeline_for_db_prospect` calls `_route_send_email`, marks prospect `contacted`, stores full body as JSON `metadata` in `communication_events`

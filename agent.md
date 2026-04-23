@@ -88,6 +88,17 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Sent to each active client AND `OPERATOR_EMAIL`
 - Content: today's contacts, today's replies by classification, warm/booked highlights, weekly totals, Mailivery health score
 
+**Session additions (2026-04-23 — pre-launch hardening):**
+- `SECRET_KEY` placeholder/empty → `RuntimeError` at boot (hard crash, not warning)
+- `SETTINGS_PASSWORD` = `change-me` or empty → `RuntimeError` at boot
+- Startup non-fatal warnings: weak `SETTINGS_PASSWORD`, missing `APP_BASE_URL`, unset `DB_PATH`, unset `SENDGRID_WEBHOOK_PUBLIC_KEY`
+- SendGrid webhook handler returns 403 (was 400) on failed signature verification
+- `sequence_dispatcher.py` LinkedIn/Instagram: skips entirely when `LINKEDIN_DRY_RUN=true` (no browser launch)
+- `sequence_dispatcher.py` SMS: skips when `TWILIO_ACCOUNT_SID` not set; `os` import added
+- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response — no longer waits for 4-hour batch job
+- `.env.example`: `DB_PATH` uncommented with Render note, `SECRET_KEY`/`SETTINGS_PASSWORD` annotated with crash consequence
+- `Procfile`: memory/multi-process note added
+
 ## Active Constraints
 
 - `LINKEDIN_DRY_RUN=true` by default
@@ -103,6 +114,10 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - `/onboard` POST never creates a client workspace — operator provisions manually via `/ops`
 - `OPERATOR_EMAIL` must be set for lead alerts and daily reports
 - Stripe is fully removed — no `/checkout`, no `/webhook/stripe`, no `stripe` package
+- `SECRET_KEY` placeholder or empty crashes app at boot with RuntimeError
+- `SETTINGS_PASSWORD` = `change-me` or empty crashes app at boot with RuntimeError
+- LinkedIn/Instagram sequence steps are no-ops when `LINKEDIN_DRY_RUN=true` (skips browser entirely)
+- SMS sequence steps are no-ops when `TWILIO_ACCOUNT_SID` is unset
 - `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
 - `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
 - `get_prospect_by_id()` must be used to reload a prospect after research
@@ -115,7 +130,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all keys; see deployment plan `snoopy-pondering-hickey.md`
+1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY` (strong random), `SETTINGS_PASSWORD` (strong), and all keys; see deployment plan `snoopy-pondering-hickey.md`
 2. Configure Mailivery webhook URL/header in Mailivery dashboard to `https://your-app.onrender.com/webhook/mailivery`
 3. Set `OPERATOR_EMAIL` in production env vars
 4. More `/ops` polish and deeper workspace drilldowns

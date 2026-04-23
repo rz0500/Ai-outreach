@@ -28,7 +28,7 @@ This file gives the current working context for this repository. It should match
 - one-click unsubscribe with HMAC tokens and RFC List-Unsubscribe headers
 - campaign pause/resume per client
 - standalone scheduler support via `python scheduler.py`
-- **startup safety warnings** for insecure `SECRET_KEY`, missing `APP_BASE_URL`, weak `SETTINGS_PASSWORD`, unset `DB_PATH`
+- **startup crash guards** — `SECRET_KEY` placeholder/empty and `SETTINGS_PASSWORD` `change-me`/empty raise `RuntimeError` at boot; non-fatal warnings for `APP_BASE_URL`, `DB_PATH`, and missing `SENDGRID_WEBHOOK_PUBLIC_KEY`
 
 The system is production-ready for first clients.
 
@@ -204,7 +204,10 @@ scheduler: python scheduler.py
 | Onboarding rate limiting | Done |
 | Startup safety warnings | Done |
 | Persistent DB via DB_PATH env var | Done |
-| 215 passing tests | Done |
+| 81 passing tests (saas_routes suite) | Done |
+| Pre-launch crash guards (SECRET_KEY, SETTINGS_PASSWORD) | Done |
+| SMS/LinkedIn/Instagram channel gating | Done |
+| Live Mailivery health score (no batch delay) | Done |
 
 ## Mailivery Integration
 
@@ -238,8 +241,17 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 - Emails scheduled at 08:00 prospect local time via `timezonefinder` + Google Maps Geocoding
 - Daily reports at 17:00 UTC replace Monday weekly reports; go to client + `OPERATOR_EMAIL`
 
+## Important Rules (additions)
+
+- `SECRET_KEY` placeholder or empty → `RuntimeError` at boot (crashes app)
+- `SETTINGS_PASSWORD` = `change-me` or empty → `RuntimeError` at boot (crashes app)
+- LinkedIn/Instagram in `sequence_dispatcher.py`: skipped entirely (no browser) when `LINKEDIN_DRY_RUN=true`
+- SMS in `sequence_dispatcher.py`: skipped unless `TWILIO_ACCOUNT_SID` is set
+- SendGrid webhook returns 403 (not 400) on invalid/missing signature
+- `warmup_engine.get_combined_warmup_status()` derives live health score from mailbox API call — never shows "Score loading…" when campaign is active
+
 ## Planned Next Tasks
 
-1. **Deploy to Render** — set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all keys from `.env`
+1. **Deploy to Render** — set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY`, `SETTINGS_PASSWORD` (strong), and all keys from `.env`
 2. Configure Mailivery webhook to `https://your-app.onrender.com/webhook/mailivery` once deployed
 3. Set `OPERATOR_EMAIL` in production so lead alerts and daily reports arrive
