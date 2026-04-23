@@ -189,3 +189,8 @@ def get_mailivery_api_key() -> str:
 def get_mailivery_enabled() -> bool:
     """Return True if Mailivery warmup integration is enabled."""
     return os.getenv("MAILIVERY_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+
+
+def get_operator_email() -> str:
+    """Return the operator notification email address (receives lead alerts and daily reports)."""
+    return (os.getenv("OPERATOR_EMAIL") or "").strip()

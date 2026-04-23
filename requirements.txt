@@ -39,7 +39,10 @@ twilio>=8.0.0
 
 # Module 16 - SendGrid Infrastructure
 sendgrid>=6.11.0
-stripe
+
+# Timezone inference for local-time sending
+timezonefinder>=6.5.0
+pytz>=2024.1
 
 # Production WSGI server
 gunicorn>=21.0.0

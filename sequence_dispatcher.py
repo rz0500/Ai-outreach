@@ -69,20 +69,47 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
                 db_path=db_path,
             )
         else:
-            delivery = deliver_prospect_email(
-                to_address=email,
-                subject=message["subject"],
-                body=message["body"],
-                prospect_id=prospect_id,
-                event_type="sequence_step",
-                client_id=item.get("client_id", 1),
-                db_path=db_path,
-                content_excerpt=message.get("subject", message.get("body", ""))[:120],
-                metadata=_safe_metadata(sequence_name, step, channel),
-            )
-            result["sent"] = delivery["sent"]
-            result["error"] = delivery["error"]
-            result["event_status"] = delivery["event_status"]
+            # Schedule at 08:00 prospect local time
+            try:
+                from web_app import _infer_timezone, _next_8am_utc
+                import database as _db_mod
+                tz_name = item.get("prospect_timezone") or _infer_timezone(
+                    item.get("location") or ""
+                )
+                send_after = _next_8am_utc(tz_name).strftime("%Y-%m-%d %H:%M:%S")
+                outreach_id = _db_mod.save_outreach(
+                    prospect_id=prospect_id,
+                    subject=message["subject"],
+                    body=message["body"],
+                    client_id=item.get("client_id", 1),
+                    db_path=db_path,
+                )
+                with _db_mod._get_connection(db_path) as conn:
+                    conn.execute(
+                        "UPDATE outreach SET send_after=? WHERE id=?",
+                        (send_after, outreach_id),
+                    )
+                    conn.commit()
+                result["sent"] = False
+                result["error"] = ""
+                result["event_status"] = "scheduled"
+                result["send_after"] = send_after
+            except Exception as exc:
+                # Fall back to immediate send if scheduling fails
+                delivery = deliver_prospect_email(
+                    to_address=email,
+                    subject=message["subject"],
+                    body=message["body"],
+                    prospect_id=prospect_id,
+                    event_type="sequence_step",
+                    client_id=item.get("client_id", 1),
+                    db_path=db_path,
+                    content_excerpt=message.get("subject", message.get("body", ""))[:120],
+                    metadata=_safe_metadata(sequence_name, step, channel),
+                )
+                result["sent"] = delivery["sent"]
+                result["error"] = delivery["error"]
+                result["event_status"] = delivery["event_status"]
 
     elif channel == "linkedin":
         profile_url = item.get("linkedin_url") or ""

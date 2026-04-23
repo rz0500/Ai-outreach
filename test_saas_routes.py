@@ -91,10 +91,9 @@ class TestOnboardRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"OutreachEmpower", resp.data)
 
-    def test_get_checkout_returns_200(self):
+    def test_checkout_route_removed(self):
         resp = self.client.get("/checkout")
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"outreachempower", resp.data.lower())
+        self.assertEqual(resp.status_code, 404)
 
     def test_get_operator_dashboard_route_returns_200(self):
         resp = self.client.get("/ops", headers=_OPS_AUTH)
@@ -162,24 +161,33 @@ class TestOnboardRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertIn("/onboard/confirm", resp.headers["Location"])
 
-        # Client record was created
+        # Lead record was created (not a client workspace)
+        lead = database.get_lead_by_email("owner@testbusiness.com", db_path=self.db)
+        self.assertIsNotNone(lead)
+        self.assertEqual(lead["name"], "Test Business")
+        self.assertEqual(lead["provisioned"], 0)
+
+        # No client workspace should exist yet
         client = database.get_client_by_email("owner@testbusiness.com", db_path=self.db)
-        self.assertIsNotNone(client)
-        self.assertEqual(client["name"], "Test Business")
+        self.assertIsNone(client)
 
     def test_post_onboard_duplicate_email_redirects_without_duplicate(self):
-        # Create a client first
-        database.add_client("Existing Co", "existing@test.com", db_path=self.db)
+        # Submit the lead once
+        self.client.post("/onboard", data={
+            "name": "Existing Co",
+            "email": "existing@test.com",
+        }, follow_redirects=False)
 
+        # Submit again with the same email — should still redirect, no duplicate lead
         resp = self.client.post("/onboard", data={
             "name": "Duplicate Co",
             "email": "existing@test.com",
         }, follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
 
-        # Still only one client with that email
-        all_clients = database.get_all_clients(db_path=self.db)
-        matching = [c for c in all_clients if c["email"] == "existing@test.com"]
+        # Still only one lead with that email
+        all_leads = database.get_all_leads(db_path=self.db)
+        matching = [l for l in all_leads if l["email"] == "existing@test.com"]
         self.assertEqual(len(matching), 1)
 
     def test_get_onboard_confirm_returns_200(self):

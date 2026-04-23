@@ -127,7 +127,7 @@ _scheduler_state: dict = {
     "last_sequence_error":        None,   # str | None
     "last_self_prospect_count":   None,   # int | None
     "last_self_prospect_error":   None,   # str | None
-    "last_weekly_report_error":   None,   # str | None
+    "last_daily_report_error":    None,   # str | None
     "running":                    False,
     "paused":                     False,  # True after MAX_CONSECUTIVE_ERRORS inbox failures
     "consecutive_errors":         0,
@@ -147,7 +147,7 @@ def _background_scheduler() -> None:
     _scheduler_state["running"] = True
     last_sequence_date: datetime.date | None = None
     last_self_prospect_date: datetime.date | None = None
-    last_weekly_report_date: datetime.date | None = None
+    last_daily_report_date: datetime.date | None = None
     last_warmup_cycle_hour: int | None = None  # tracks which 4-hour slot last ran
 
     while True:
@@ -259,15 +259,20 @@ def _background_scheduler() -> None:
                     print(f"[Scheduler] onboard drain error for client {cid}: {exc}")
                     _pending_client_research.discard(cid)
 
-        # ── Weekly client reports (Monday 08:00 UTC) ──────────────────────
-        this_monday = today - datetime.timedelta(days=today.weekday())
-        if today.weekday() == 0 and now_utc.hour >= 8 and last_weekly_report_date != this_monday:
+        # ── Daily client + operator reports (17:00 UTC) ───────────────────
+        if now_utc.hour >= 17 and last_daily_report_date != today:
             try:
-                _send_weekly_client_reports()
-                _scheduler_state["last_weekly_report_error"] = None
+                _send_daily_client_reports()
+                _scheduler_state["last_daily_report_error"] = None
             except Exception as exc:
-                _scheduler_state["last_weekly_report_error"] = str(exc)
-            last_weekly_report_date = this_monday
+                _scheduler_state["last_daily_report_error"] = str(exc)
+            last_daily_report_date = today
+
+        # ── Send scheduled outreach (timezone-aware) ──────────────────────
+        try:
+            _send_scheduled_outreach()
+        except Exception as exc:
+            print(f"[Scheduler] scheduled send error: {exc}")
 
         # ── Warmup email cycle (every 4 hours) ────────────────────────────
         warmup_slot = now_utc.hour // 4  # 0-5, changes 6× per day
@@ -584,6 +589,12 @@ def _render_operator_dashboard():
     # Generate sample emails to showcase on dashboard
     sample_emails = _generate_sample_emails()
 
+    # Pending leads awaiting manual provisioning
+    try:
+        pending_leads = database.get_all_leads(provisioned=False, db_path=_db)
+    except Exception:
+        pending_leads = []
+
     return render_template(
         "index.html",
         summary=summary,
@@ -599,10 +610,46 @@ def _render_operator_dashboard():
         selected_client_id=selected_client_id,
         selected_client_analytics=selected_client_analytics,
         pending_outreach_count=pending_outreach_count,
+        pending_leads=pending_leads,
     )
 
 
 # ── Ops quick-action API endpoints ────────────────────────────────────────────
+
+@app.route("/api/ops/leads/<int:lead_id>/provision", methods=["POST"])
+def ops_provision_lead(lead_id: int):
+    """
+    Ops: convert a pending lead into a full client workspace.
+    Creates the client, starts Mailivery warmup, sends welcome email + magic link.
+    """
+    denied = _ops_auth_required()
+    if denied:
+        return denied
+    _db = database.DB_PATH
+    lead = database.get_lead(lead_id, db_path=_db)
+    if not lead:
+        return jsonify({"error": "lead not found"}), 404
+    if lead.get("provisioned"):
+        return jsonify({"error": "already provisioned"}), 409
+
+    try:
+        client_id = database.add_client(
+            name=lead["name"],
+            email=lead["email"],
+            niche=lead.get("niche"),
+            location=lead.get("location"),
+            calendar_link=lead.get("booking_link"),
+            db_path=_db,
+        )
+        database.mark_lead_provisioned(lead_id, db_path=_db)
+        _mailivery_auto_connect(client_id, _db)
+        new_client = database.get_client(client_id, db_path=_db)
+        if new_client:
+            _send_onboard_welcome(new_client, _db)
+        return jsonify({"ok": True, "client_id": client_id})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
 
 @app.route("/api/ops/client/<int:client_id>/pause", methods=["POST"])
 def ops_pause_client(client_id: int):
@@ -772,38 +819,6 @@ def landing_page():
         "landing.html",
         default_calendar_link=get_calendar_link(),
     )
-
-
-@app.route("/checkout")
-def checkout_page():
-    """Pricing page — Stripe Checkout when configured, otherwise pilot flow."""
-    return render_template("checkout_dummy.html")
-
-
-@app.route("/api/create-checkout-session", methods=["POST"])
-def create_checkout_session():
-    """
-    Create a Stripe Checkout session and return the hosted URL.
-    Falls back to {"fallback": "/onboard"} when STRIPE_SECRET_KEY is not set.
-    """
-    secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
-    price_id   = os.getenv("STRIPE_PRICE_ID", "").strip()
-
-    if not secret_key or not price_id:
-        return jsonify({"fallback": "/onboard"})
-
-    try:
-        import stripe as _stripe
-        _stripe.api_key = secret_key
-        session = _stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=[{"price": price_id, "quantity": 1}],
-            success_url=request.host_url.rstrip("/") + "/onboard?plan=paid",
-            cancel_url=request.host_url.rstrip("/") + "/checkout",
-        )
-        return jsonify({"url": session.url})
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
 
 
 def _ops_auth_required():
@@ -1553,6 +1568,57 @@ def _extract_email_from_website(url: str) -> str:
     return _pick(found)
 
 
+def _infer_timezone(location: str) -> str:
+    """
+    Infer an IANA timezone name from a location string using Google Maps Geocoding
+    and timezonefinder. Returns 'UTC' if the lookup fails or libraries are unavailable.
+    """
+    if not location:
+        return "UTC"
+    try:
+        import timezonefinder as _tzf
+        api_key = os.getenv("GOOGLE_MAPS_API_KEY", "").strip()
+        if not api_key:
+            return "UTC"
+        import urllib.request as _req, json as _json, urllib.parse as _up
+        url = (
+            "https://maps.googleapis.com/maps/api/geocode/json"
+            f"?address={_up.quote(location)}&key={api_key}"
+        )
+        with _req.urlopen(url, timeout=6) as resp:
+            data = _json.loads(resp.read())
+        results = data.get("results", [])
+        if not results:
+            return "UTC"
+        loc = results[0]["geometry"]["location"]
+        tf = _tzf.TimezoneFinder()
+        tz_name = tf.timezone_at(lat=loc["lat"], lng=loc["lng"])
+        return tz_name or "UTC"
+    except Exception:
+        return "UTC"
+
+
+def _next_8am_utc(tz_name: str) -> datetime.datetime:
+    """
+    Return the next occurrence of 08:00 in the given IANA timezone as a UTC datetime.
+    Falls back to today 08:00 UTC if pytz is unavailable.
+    """
+    try:
+        import pytz
+        tz = pytz.timezone(tz_name)
+        now_local = datetime.datetime.now(tz)
+        target = now_local.replace(hour=8, minute=0, second=0, microsecond=0)
+        if now_local >= target:
+            target += datetime.timedelta(days=1)
+        return target.astimezone(pytz.utc).replace(tzinfo=None)
+    except Exception:
+        now_utc = datetime.datetime.utcnow()
+        target = now_utc.replace(hour=8, minute=0, second=0, microsecond=0)
+        if now_utc >= target:
+            target += datetime.timedelta(days=1)
+        return target
+
+
 def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     """
     Run research + email + PDF for a prospect that is already in the DB.
@@ -1728,7 +1794,7 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
             {"company": company, "error": result["stage_errors"].get("pdf", "")},
         )
 
-    # Step 4 — Send (skip if already contacted)
+    # Step 4 — Schedule send at 08:00 prospect local time (skip if already contacted)
     to_email  = enriched.get("email", "")
     subject   = result["email"].get("subject", "")
     body      = result["email"].get("body", "")
@@ -1740,37 +1806,41 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     elif to_email and subject and body:
         if stage_hook:
             stage_hook("send", "active", {"company": company})
-        sent_ok, send_err = _route_send_email(
-            to_address=to_email,
-            subject=subject,
-            body=body,
-            attachment_path=pdf_filepath,
-            client_id=client_id,
-            db_path=database.DB_PATH,
+        # Infer timezone from prospect location and schedule for 08:00 local time
+        location = enriched.get("location") or (
+            (database.get_client(client_id, db_path=database.DB_PATH) or {}).get("location") or ""
         )
-        if sent_ok:
-            result["stage_statuses"]["send"] = "done"
-            result["sent"] = True
-            database.update_status(prospect_id, "contacted", db_path=database.DB_PATH)
-            import json as _json
-            database.log_communication_event(
-                prospect_id=prospect_id,
-                channel="email",
-                direction="outbound",
-                event_type="sent",
-                status="sent",
-                content_excerpt=subject[:80],
-                metadata=_json.dumps({"subject": subject, "body": body}),
-                db_path=database.DB_PATH,
-            )
-            if stage_hook:
-                stage_hook("send", "done", {"company": company})
-        else:
-            result["stage_statuses"]["send"] = "error"
-            result["stage_errors"]["send"] = send_err
-            result["sent"] = False
-            if stage_hook:
-                stage_hook("send", "error", {"company": company, "error": send_err})
+        tz_name = enriched.get("prospect_timezone") or _infer_timezone(location)
+        send_after = _next_8am_utc(tz_name)
+        send_after_str = send_after.strftime("%Y-%m-%d %H:%M:%S")
+        # Persist timezone on prospect record for follow-up reuse
+        if tz_name != "UTC" and not enriched.get("prospect_timezone"):
+            try:
+                with database._get_connection(database.DB_PATH) as conn:
+                    conn.execute(
+                        "UPDATE prospects SET prospect_timezone=? WHERE id=?",
+                        (tz_name, prospect_id),
+                    )
+                    conn.commit()
+            except Exception:
+                pass
+        # Write send_after onto the outreach record
+        if result["outreach_id"]:
+            try:
+                with database._get_connection(database.DB_PATH) as conn:
+                    conn.execute(
+                        "UPDATE outreach SET send_after=? WHERE id=?",
+                        (send_after_str, result["outreach_id"]),
+                    )
+                    conn.commit()
+            except Exception as exc:
+                print(f"[Pipeline] send_after update failed for '{company}': {exc}")
+        result["stage_statuses"]["send"] = "scheduled"
+        result["send_after"] = send_after_str
+        result["send_tz"] = tz_name
+        result["sent"] = False
+        if stage_hook:
+            stage_hook("send", "scheduled", {"company": company, "send_after": send_after_str})
     else:
         result["stage_statuses"]["send"] = "skipped"
         result["sent"] = False
@@ -2556,52 +2626,185 @@ def api_monitor_reset():
 # Weekly client report helper
 # ---------------------------------------------------------------------------
 
-def _send_weekly_client_reports() -> None:
+def _send_daily_client_reports() -> None:
     """
-    Send a plain-text pipeline summary to every active client.
-    Called by the background scheduler every Monday at 08:00 UTC.
+    Send a daily pipeline summary at 17:00 UTC to every active client AND the operator.
+    Covers today's contacts, replies, warm/booked highlights, weekly totals, and Mailivery health.
     """
-    monday = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday()))
-    subject = f"Your OutreachEmpower pipeline — week of {monday.strftime('%d %b %Y')}"
+    import json as _json
+    today      = datetime.date.today()
+    today_str  = today.isoformat()
+    week_start = (today - datetime.timedelta(days=today.weekday())).isoformat()
+    subject    = f"OutreachEmpower daily report — {today.strftime('%d %b %Y')}"
+    operator_email = settings.get_operator_email()
+    _db = database.DB_PATH
 
-    clients = database.get_active_clients()
+    clients = database.get_active_clients(db_path=_db)
     for client in clients:
         if not client.get("email"):
             continue
+        cid = client["id"]
         try:
-            summary  = reporter.generate_summary(client_id=client["id"])
+            summary  = reporter.generate_summary(client_id=cid, db_path=_db)
             funnel   = summary["funnel"]["counts"]
-            outreach = summary["outreach"]
-            prospects_total = summary["prospects"]["total"]
-            # Plain-text fallback
+
+            # Today's activity
+            with database._get_connection(_db) as conn:
+                contacted_today = conn.execute(
+                    "SELECT COUNT(*) FROM prospects WHERE client_id=? AND last_contacted_date=?",
+                    (cid, today_str),
+                ).fetchone()[0]
+                replies_today_rows = conn.execute(
+                    """SELECT classification, COUNT(*) as cnt FROM reply_drafts
+                       WHERE client_id=? AND date(created_at)=?
+                       GROUP BY classification""",
+                    (cid, today_str),
+                ).fetchall()
+                warm_today = conn.execute(
+                    """SELECT p.name, p.company FROM reply_drafts rd
+                       JOIN prospects p ON p.id = rd.prospect_id
+                       WHERE rd.client_id=? AND rd.classification IN ('interested','booked')
+                         AND date(rd.created_at)=?""",
+                    (cid, today_str),
+                ).fetchall()
+                # Weekly totals
+                sent_week = conn.execute(
+                    """SELECT COUNT(*) FROM communication_events
+                       WHERE client_id=? AND event_type='sent' AND date(created_at)>=?""",
+                    (cid, week_start),
+                ).fetchone()[0]
+                replies_week = conn.execute(
+                    """SELECT COUNT(*) FROM reply_drafts
+                       WHERE client_id=? AND date(created_at)>=?""",
+                    (cid, week_start),
+                ).fetchone()[0]
+
+            replies_today = {dict(r)["classification"]: dict(r)["cnt"] for r in replies_today_rows}
+            warm_list     = [f"{r['name']} ({r['company']})" for r in warm_today]
+
+            # Mailivery health
+            try:
+                from warmup_engine import get_combined_warmup_status
+                warmup = get_combined_warmup_status(client_id=cid, db_path=_db)
+                health_score = warmup.get("mailivery_health_score") or "—"
+            except Exception:
+                health_score = "—"
+
             plain_body = (
                 f"Hi {client['name']},\n\n"
-                f"Here's your OutreachEmpower pipeline update for the week of {monday}:\n\n"
-                f"  Prospects found : {prospects_total}\n"
-                f"  Emails sent     : {outreach.get('sent', 0)}\n"
-                f"  Replies         : {funnel.get('replied', 0)}\n"
-                f"  Booked calls    : {funnel.get('booked', 0)}\n\n"
-                f"Your pipeline is active. We'll be in touch as results come in.\n\n"
+                f"Your OutreachEmpower daily report for {today.strftime('%d %b %Y')}:\n\n"
+                f"── Today ──────────────────────────────\n"
+                f"  Emails sent today   : {contacted_today}\n"
+                f"  Replies today       : {sum(replies_today.values())}\n"
+            )
+            if warm_list:
+                plain_body += f"  🔥 Warm/booked leads: {', '.join(warm_list)}\n"
+            for cls, cnt in replies_today.items():
+                plain_body += f"  • {cls}: {cnt}\n"
+            plain_body += (
+                f"\n── This week ──────────────────────────\n"
+                f"  Emails sent (week)  : {sent_week}\n"
+                f"  Replies (week)      : {replies_week}\n"
+                f"  Total prospects     : {summary['prospects']['total']}\n"
+                f"  Booked calls        : {funnel.get('booked', 0)}\n"
+                f"\n── Deliverability ─────────────────────\n"
+                f"  Mailivery health    : {health_score}\n\n"
                 f"— The OutreachEmpower Team\n"
             )
+
             base_url = settings.get_app_base_url().rstrip("/")
             html_body = reporter.generate_weekly_report_html(
                 summary,
                 client_name=client.get("name", ""),
-                week_label=monday.strftime("%d %b %Y"),
+                week_label=today.strftime("%d %b %Y"),
                 dashboard_url=f"{base_url}/client" if base_url else "",
             )
+
             _route_send_email(
                 to_address=client["email"],
                 subject=subject,
                 body=plain_body,
                 html_body=html_body,
                 respect_suppression=False,
-                client_id=client["id"],
+                client_id=cid,
                 skip_warmup_throttle=True,
+                db_path=_db,
             )
+
+            # Also send to operator
+            if operator_email:
+                op_body = f"[Client: {client['name']} <{client['email']}>]\n\n" + plain_body
+                _route_send_email(
+                    to_address=operator_email,
+                    subject=f"[{client['name']}] {subject}",
+                    body=op_body,
+                    respect_suppression=False,
+                    skip_warmup_throttle=True,
+                    db_path=_db,
+                )
         except Exception as exc:
-            print(f"[Weekly report] Failed for client {client['id']}: {exc}")
+            print(f"[Daily report] Failed for client {cid}: {exc}")
+
+
+def _send_scheduled_outreach() -> None:
+    """
+    Send all outreach records whose send_after time has passed.
+    Called every scheduler cycle so emails go out at 08:00 local time.
+    """
+    import json as _json
+    _db = database.DB_PATH
+    due = database.get_pending_sends(db_path=_db)
+    for row in due:
+        prospect_id   = row["prospect_id"]
+        outreach_id   = row["id"]
+        to_email      = row.get("prospect_email", "")
+        subject       = row.get("subject", "")
+        body          = row.get("body", "")
+        pdf_path      = row.get("pdf_path", "")
+        client_id     = row.get("client_id", 1)
+        prospect_status = row.get("prospect_status", "")
+
+        if not to_email or not subject or not body:
+            continue
+        if prospect_status == "contacted":
+            # Mark the outreach row so we don't retry
+            with database._get_connection(_db) as conn:
+                conn.execute(
+                    "UPDATE outreach SET status='skipped', sent_at=datetime('now') WHERE id=?",
+                    (outreach_id,),
+                )
+                conn.commit()
+            continue
+
+        sent_ok, send_err = _route_send_email(
+            to_address=to_email,
+            subject=subject,
+            body=body,
+            attachment_path=pdf_path or "",
+            client_id=client_id,
+            db_path=_db,
+        )
+        if sent_ok:
+            with database._get_connection(_db) as conn:
+                conn.execute(
+                    "UPDATE outreach SET status='sent', sent_at=datetime('now') WHERE id=?",
+                    (outreach_id,),
+                )
+                conn.commit()
+            database.update_status(prospect_id, "contacted", db_path=_db)
+            database.log_communication_event(
+                prospect_id=prospect_id,
+                channel="email",
+                direction="outbound",
+                event_type="sent",
+                status="sent",
+                content_excerpt=subject[:80],
+                metadata=_json.dumps({"subject": subject, "body": body}),
+                db_path=_db,
+            )
+            print(f"[Scheduled send] Sent to {to_email} (outreach_id={outreach_id})")
+        else:
+            print(f"[Scheduled send] Failed for outreach_id={outreach_id}: {send_err}")
 
 
 # ---------------------------------------------------------------------------
@@ -2617,25 +2820,21 @@ def onboard_page():
 @app.route("/onboard", methods=["POST"])
 def onboard_submit():
     """
-    Create a new client workspace from the onboarding form.
-    Queues the client for their first research and outreach cycle.
-    Sends a welcome email with a magic login link.
+    Capture a new inbound lead from the onboarding form.
+    Saves the lead for manual operator review — does NOT create a client workspace.
+    Notifies the operator via email and redirects to a confirmation page.
     """
     data = request.form
     name          = (data.get("name") or "").strip()
     niche         = (data.get("niche") or "").strip()
-    icp           = (data.get("icp") or "").strip()
-    website       = (data.get("website") or "").strip()
-    calendar_link = (data.get("calendar_link") or "").strip()
     location      = (data.get("location") or "").strip()
+    calendar_link = (data.get("calendar_link") or "").strip()
     email         = (data.get("email") or "").strip().lower()
-    sender_name   = (data.get("sender_name") or "").strip()
-    sender_email  = (data.get("sender_email") or "").strip().lower()
 
     if not name or not email:
-        return render_template("onboard.html", error="Business name and email are required.")
+        return render_template("onboard.html", error="Name and email are required.")
 
-    # Rate limit: max 5 signups per IP per hour
+    # Rate limit: max 5 submissions per IP per hour
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
     if not _onboard_rate_check(ip):
         return render_template(
@@ -2645,44 +2844,41 @@ def onboard_submit():
 
     _db = database.DB_PATH
 
-    # Prevent duplicate signups for the same email — re-send the welcome link
-    existing = database.get_client_by_email(email, db_path=_db)
-    if existing:
-        _send_onboard_welcome(existing, _db)
+    # Idempotent — ignore duplicate submissions for the same email
+    if database.get_lead_by_email(email, db_path=_db):
         return redirect(url_for("onboard_confirm"))
 
-    client_id = database.add_client(
+    database.add_lead(
         name=name,
         email=email,
         niche=niche or None,
-        icp=icp or None,
-        calendar_link=calendar_link or None,
         location=location or None,
-        sender_name=sender_name or None,
-        sender_email=sender_email or None,
+        booking_link=calendar_link or None,
         db_path=_db,
     )
 
-    # Add a stub prospect for website research if a website was provided
-    if website:
-        database.add_prospect(
-            name="Owner",
-            company=name,
-            website=website,
-            client_id=client_id,
-            status="new",
-            db_path=_db,
-        )
-
-    _pending_client_research.add(client_id)
-
-    # Auto-connect Mailivery warmup if enabled and sender SMTP credentials exist
-    _mailivery_auto_connect(client_id, _db)
-
-    # Send welcome email with magic login link
-    new_client = database.get_client(client_id, db_path=_db)
-    if new_client:
-        _send_onboard_welcome(new_client, _db)
+    # Notify operator of the new lead
+    operator_email = settings.get_operator_email()
+    if operator_email:
+        try:
+            _route_send_email(
+                to_address=operator_email,
+                subject=f"New lead: {name} — OutreachEmpower",
+                body=(
+                    f"A new lead submitted the onboarding form.\n\n"
+                    f"Name:     {name}\n"
+                    f"Email:    {email}\n"
+                    f"Niche:    {niche or '—'}\n"
+                    f"Location: {location or '—'}\n"
+                    f"Booking:  {calendar_link or '—'}\n\n"
+                    f"Visit /ops to provision their workspace."
+                ),
+                respect_suppression=False,
+                skip_warmup_throttle=True,
+                db_path=_db,
+            )
+        except Exception as exc:
+            print(f"[Onboard] operator notification failed: {exc}")
 
     return redirect(url_for("onboard_confirm"))
 
@@ -3599,77 +3795,6 @@ def client_verify_sender_confirm():
     return redirect(url_for("client_login_page") + "?verified=1")
 
 
-# ---------------------------------------------------------------------------
-# Stripe webhook — subscription lifecycle
-# ---------------------------------------------------------------------------
-
-@app.route("/webhook/stripe", methods=["POST"])
-def stripe_webhook():
-    """
-    Handle Stripe webhook events.
-    Activate clients on checkout.session.completed.
-    Mark cancelled on customer.subscription.deleted.
-
-    Set STRIPE_WEBHOOK_SECRET in .env to enable signature verification.
-    """
-    import stripe as _stripe
-
-    secret_key      = os.getenv("STRIPE_SECRET_KEY", "").strip()
-    webhook_secret  = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
-
-    if not secret_key:
-        return jsonify({"error": "Stripe not configured"}), 400
-
-    _stripe.api_key = secret_key
-    payload = request.get_data()
-
-    if webhook_secret:
-        sig = request.headers.get("Stripe-Signature", "")
-        try:
-            event = _stripe.Webhook.construct_event(payload, sig, webhook_secret)
-        except (_stripe.error.SignatureVerificationError, ValueError) as exc:
-            print(f"[Stripe webhook] signature error: {exc}")
-            return jsonify({"error": "Invalid signature"}), 400
-    else:
-        try:
-            event = _stripe.Event.construct_from(
-                __import__("json").loads(payload), _stripe.api_key
-            )
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 400
-
-    _db = database.DB_PATH
-    etype = event["type"]
-
-    if etype == "checkout.session.completed":
-        sess        = event["data"]["object"]
-        cust_email  = (sess.get("customer_details") or {}).get("email") or sess.get("customer_email") or ""
-        cust_email  = cust_email.strip().lower()
-        if cust_email:
-            client = database.get_client_by_email(cust_email, db_path=_db)
-            if client:
-                database.update_client(client["id"], status="active", db_path=_db)
-                _pending_client_research.add(client["id"])
-                print(f"[Stripe] activated client {client['id']} ({cust_email})")
-            else:
-                print(f"[Stripe] checkout.session.completed — no client found for {cust_email}")
-
-    elif etype == "customer.subscription.deleted":
-        sub        = event["data"]["object"]
-        cust_id    = sub.get("customer", "")
-        if cust_id and secret_key:
-            try:
-                cust       = _stripe.Customer.retrieve(cust_id)
-                cust_email = (cust.get("email") or "").strip().lower()
-                if cust_email:
-                    client = database.get_client_by_email(cust_email, db_path=_db)
-                    if client:
-                        database.update_client(client["id"], status="cancelled", db_path=_db)
-                        print(f"[Stripe] cancelled client {client['id']} ({cust_email})")
-            except Exception as exc:
-                print(f"[Stripe] could not process subscription.deleted: {exc}")
-
-    return jsonify({"received": True})
 
 
 def _apply_sendgrid_suppression(email: str, reason: str, event_type: str) -> int:

@@ -12,6 +12,7 @@ Usage:
     prospect_id = add_prospect(name="Jane Doe", company="Acme Corp", ...)
 """
 
+import datetime
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -286,8 +287,127 @@ def initialize_database(db_path: str = DB_PATH) -> None:
             )
         """)
 
+        # Inbound leads from /onboard — provisioned manually by operator
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS leads (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                name           TEXT    NOT NULL,
+                email          TEXT    NOT NULL UNIQUE,
+                niche          TEXT,
+                location       TEXT,
+                booking_link   TEXT,
+                notes          TEXT,
+                provisioned    INTEGER NOT NULL DEFAULT 0,
+                provisioned_at TEXT,
+                created_at     TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+
+        conn.commit()
+
+        # Migrate outreach table: add send_after for timezone-aware scheduling
+        try:
+            conn.execute("ALTER TABLE outreach ADD COLUMN send_after TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        # Migrate prospects table: add timezone for local-time inference
+        try:
+            conn.execute("ALTER TABLE prospects ADD COLUMN prospect_timezone TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         conn.commit()
     print(f"[DB] Database ready: {db_path}")
+
+
+# ---------------------------------------------------------------------------
+# Lead management (pre-client inbound leads from /onboard)
+# ---------------------------------------------------------------------------
+
+def add_lead(
+    name: str,
+    email: str,
+    niche: Optional[str] = None,
+    location: Optional[str] = None,
+    booking_link: Optional[str] = None,
+    notes: Optional[str] = None,
+    db_path: str = DB_PATH,
+) -> int:
+    """Save a new inbound lead from the onboard form. Returns the lead ID."""
+    with _get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO leads (name, email, niche, location, booking_link, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (name, email, niche, location, booking_link, notes),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+
+
+def get_all_leads(provisioned: Optional[bool] = None, db_path: str = DB_PATH) -> list:
+    """Return all leads, optionally filtered by provisioned status."""
+    with _get_connection(db_path) as conn:
+        if provisioned is None:
+            rows = conn.execute("SELECT * FROM leads ORDER BY created_at DESC").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM leads WHERE provisioned = ? ORDER BY created_at DESC",
+                (1 if provisioned else 0,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_lead(lead_id: int, db_path: str = DB_PATH) -> Optional[dict]:
+    """Return a single lead by ID."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def get_lead_by_email(email: str, db_path: str = DB_PATH) -> Optional[dict]:
+    """Return a lead by email address."""
+    with _get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM leads WHERE email = ?", (email.strip().lower(),)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def mark_lead_provisioned(lead_id: int, db_path: str = DB_PATH) -> None:
+    """Mark a lead as provisioned (client workspace created)."""
+    with _get_connection(db_path) as conn:
+        conn.execute(
+            "UPDATE leads SET provisioned = 1, provisioned_at = datetime('now') WHERE id = ?",
+            (lead_id,),
+        )
+        conn.commit()
+
+
+def get_pending_sends(db_path: str = DB_PATH) -> list:
+    """
+    Return outreach records that are scheduled and due to be sent now.
+    Looks for rows where send_after <= utcnow and sent_at is NULL.
+    """
+    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT o.*, p.email AS prospect_email, p.name AS prospect_name,
+                   p.company AS prospect_company, p.client_id, p.status AS prospect_status
+            FROM outreach o
+            JOIN prospects p ON p.id = o.prospect_id
+            WHERE o.send_after IS NOT NULL
+              AND o.send_after <= ?
+              AND o.sent_at IS NULL
+              AND o.status = 'draft'
+            ORDER BY o.send_after ASC
+            """,
+            (now_str,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

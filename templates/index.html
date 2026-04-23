@@ -175,6 +175,49 @@
     </div>
     {% endif %}
 
+    <!-- ── Pending Leads (awaiting manual provisioning) ── -->
+    {% if pending_leads %}
+    <div class="table-container" style="margin-bottom:1.5rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;">
+            <div style="font-size:0.72rem;color:#fb923c;text-transform:uppercase;letter-spacing:0.09em;font-weight:700;">
+                Pending Leads
+            </div>
+            <span style="font-size:0.75rem;color:#334155;">{{ pending_leads|length }} unprovisioned</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Name</th>
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Email</th>
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Niche</th>
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Location</th>
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Submitted</th>
+                    <th style="text-align:left;font-size:0.7rem;color:var(--text-muted);padding:0.5rem 0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lead in pending_leads %}
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <td style="padding:0.65rem 0.75rem;font-size:0.82rem;color:#e2e8f0;font-weight:500;">{{ lead.name }}</td>
+                    <td style="padding:0.65rem 0.75rem;font-size:0.82rem;color:#94a3b8;">{{ lead.email }}</td>
+                    <td style="padding:0.65rem 0.75rem;font-size:0.82rem;color:#94a3b8;">{{ lead.niche or '—' }}</td>
+                    <td style="padding:0.65rem 0.75rem;font-size:0.82rem;color:#94a3b8;">{{ lead.location or '—' }}</td>
+                    <td style="padding:0.65rem 0.75rem;font-size:0.75rem;color:#64748b;">{{ (lead.created_at or '')[:10] }}</td>
+                    <td style="padding:0.65rem 0.75rem;">
+                        <button
+                            data-lead-id="{{ lead.id }}"
+                            onclick="provisionLead(this.dataset.leadId, this)"
+                            style="background:rgba(251,146,60,0.12);border:1px solid rgba(251,146,60,0.35);border-radius:6px;color:#fb923c;font-size:0.73rem;font-weight:600;padding:0.3rem 0.85rem;cursor:pointer;font-family:inherit;">
+                            Provision
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
     <!-- ── All Workspaces overview ── -->
     {% if clients|length > 1 %}
     <div class="table-container" style="margin-bottom:1.5rem;">
@@ -2961,6 +3004,33 @@
                 label.style.color = count > 0 ? '#6ee7b7' : '#94a3b8';
             }
         } catch (_) {}
+    }
+
+    async function provisionLead(leadId, btn) {
+        if (!confirm('Provision this lead? This will create their client workspace, start Mailivery warmup, and send their magic link.')) return;
+        const orig = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Provisioning…';
+        try {
+            const res = await fetch(`/api/ops/leads/${leadId}/provision`, {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+            });
+            const data = await res.json();
+            if (data.ok) {
+                btn.textContent = '✓ Provisioned';
+                btn.style.color = '#34d399';
+                btn.closest('tr').style.opacity = '0.4';
+            } else {
+                btn.textContent = orig;
+                btn.disabled = false;
+                alert('Error: ' + (data.error || 'unknown'));
+            }
+        } catch (e) {
+            btn.textContent = orig;
+            btn.disabled = false;
+            alert('Request failed: ' + e);
+        }
     }
 
     async function resumeMonitor(btn) {
