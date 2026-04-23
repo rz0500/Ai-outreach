@@ -16,8 +16,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 **Public/product flow:**
 - `/` = landing page
-- `/checkout` = pricing / pilot checkout page
-- `/onboard` = self-serve signup
+- `/onboard` = public lead capture form
 - `/client/login` -> `/client/verify` -> `/client` = magic-link client dashboard
 - `/ops` = internal operator dashboard
 
@@ -36,6 +35,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - operator AJAX refreshes keep the selected `client_id`
 - operator actions respect selected workspace across outreach queue, reply queue, send-outreach, enrol, patch, and delete actions
 - Find-and-Fire `/ops` UI now uses enriched polling state and renders incremental result cards with stage badges
+- `/ops` includes pending-lead review and manual provisioning via `POST /api/ops/leads/<id>/provision`
 
 **Deliverability / email features:**
 - `deliverability.py` is the shared outbound decision layer
@@ -56,14 +56,14 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Stage 2: Website research (cloudscraper)
 - Stage 3: AI email generation
 - Stage 4: PDF proposal generation
-- **Stage 5: Schedule send** — email is scheduled at 08:00 prospect local time via `_infer_timezone()` + `_next_8am_utc()`; `send_after` stored on outreach record
+- **Stage 5: Schedule send** - email is scheduled at 08:00 prospect local time via `_infer_timezone()` + `_next_8am_utc()`; `send_after` stored on outreach record
 - `_send_scheduled_outreach()` runs every scheduler cycle; dispatches due sends, marks prospect `contacted`, logs to `communication_events`
 - Duplicate send prevention: `already_sent` check skips prospects with `status='contacted'`
 - Email address validation: `_valid()` rejects addresses with nav/path text appended
 
 **Timezone-aware sending:**
-- `_infer_timezone(location)` → Google Maps Geocoding API + `timezonefinder` → IANA tz name (e.g. `Europe/London`)
-- `_next_8am_utc(tz_name)` → next 08:00 local as UTC datetime
+- `_infer_timezone(location)` -> Google Maps Geocoding API + `timezonefinder` -> IANA tz name (e.g. `Europe/London`)
+- `_next_8am_utc(tz_name)` -> next 08:00 local as UTC datetime
 - Timezone stored on `prospects.prospect_timezone` after first lookup (reused for follow-ups)
 - Falls back to UTC if lookup fails or `GOOGLE_MAPS_API_KEY` missing
 - Same scheduling applied in `sequence_dispatcher.py` for follow-up emails
@@ -78,7 +78,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 ---
 
 **Lead capture + provisioning flow:**
-- `/onboard` POST saves to `leads` table, emails `OPERATOR_EMAIL`, redirects to confirm — NO client creation
+- `/onboard` POST saves to `leads` table, emails `OPERATOR_EMAIL`, redirects to confirm - NO client creation
 - `/ops` shows "Pending Leads" section; Provision button calls `POST /api/ops/leads/<id>/provision`
 - Provision endpoint: creates client, calls `_mailivery_auto_connect()`, sends `_send_onboard_welcome()`
 - `database.leads` table: `id, name, email, niche, location, booking_link, provisioned, provisioned_at, created_at`
@@ -88,14 +88,14 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - Sent to each active client AND `OPERATOR_EMAIL`
 - Content: today's contacts, today's replies by classification, warm/booked highlights, weekly totals, Mailivery health score
 
-**Session additions (2026-04-23 — pre-launch hardening):**
-- `SECRET_KEY` placeholder/empty → `RuntimeError` at boot (hard crash, not warning)
-- `SETTINGS_PASSWORD` = `change-me` or empty → `RuntimeError` at boot
+**Session additions (2026-04-23 - pre-launch hardening):**
+- `SECRET_KEY` placeholder/empty -> `RuntimeError` at boot (hard crash, not warning)
+- `SETTINGS_PASSWORD` = `change-me` or empty -> `RuntimeError` at boot
 - Startup non-fatal warnings: weak `SETTINGS_PASSWORD`, missing `APP_BASE_URL`, unset `DB_PATH`, unset `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - SendGrid webhook handler returns 403 (was 400) on failed signature verification
 - `sequence_dispatcher.py` LinkedIn/Instagram: skips entirely when `LINKEDIN_DRY_RUN=true` (no browser launch)
 - `sequence_dispatcher.py` SMS: skips when `TWILIO_ACCOUNT_SID` not set; `os` import added
-- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response — no longer waits for 4-hour batch job
+- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response - no longer waits for 4-hour batch job
 - `.env.example`: `DB_PATH` uncommented with Render note, `SECRET_KEY`/`SETTINGS_PASSWORD` annotated with crash consequence
 - `Procfile`: memory/multi-process note added
 
@@ -111,14 +111,14 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 - House account is always `client_id=1`
 - Find-and-Fire uses job-id polling, not SSE; pipeline schedules send at 08:00 local time (NOT immediate)
 - Find-and-Fire skips prospects with `status='contacted'` to prevent duplicate sends
-- `/onboard` POST never creates a client workspace — operator provisions manually via `/ops`
+- `/onboard` POST never creates a client workspace - operator provisions manually via `/ops`
 - `OPERATOR_EMAIL` must be set for lead alerts and daily reports
-- Stripe is fully removed — no `/checkout`, no `/webhook/stripe`, no `stripe` package
+- Stripe is fully removed - no `/checkout`, no `/webhook/stripe`, no `stripe` package
 - `SECRET_KEY` placeholder or empty crashes app at boot with RuntimeError
 - `SETTINGS_PASSWORD` = `change-me` or empty crashes app at boot with RuntimeError
 - LinkedIn/Instagram sequence steps are no-ops when `LINKEDIN_DRY_RUN=true` (skips browser entirely)
 - SMS sequence steps are no-ops when `TWILIO_ACCOUNT_SID` is unset
-- `get_all_prospects(db_path=db_path)` must use keyword arg — positional passes as `client_id`
+- `get_all_prospects(db_path=db_path)` must use keyword arg - positional passes as `client_id`
 - `research_prospect(id, db_path=database.DB_PATH)` must pass `db_path` as keyword arg
 - `get_prospect_by_id()` must be used to reload a prospect after research
 - SendGrid now supports attachments and thread headers
@@ -130,7 +130,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY` (strong random), `SETTINGS_PASSWORD` (strong), and all keys; see deployment plan `snoopy-pondering-hickey.md`
+1. **Deploy to Render** - Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY` (strong random), `SETTINGS_PASSWORD` (strong), and all keys; see deployment plan `snoopy-pondering-hickey.md`
 2. Configure Mailivery webhook URL/header in Mailivery dashboard to `https://your-app.onrender.com/webhook/mailivery`
 3. Set `OPERATOR_EMAIL` in production env vars
 4. More `/ops` polish and deeper workspace drilldowns

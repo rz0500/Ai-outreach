@@ -10,16 +10,15 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Current product shape:**
 - **Multi-tenant SaaS** - `clients` table + `client_id` on every data table; house account = id 1
 - Public OutreachEmpower landing page at `/` for the client-facing entry point
-- Pilot checkout/pricing page at `/checkout`; real Stripe hooks still exist in code but billing is not the current focus
-- Self-booking onboarding at `/onboard` - prospect fills form, client workspace is auto-created
+- Public lead capture at `/onboard` - saves to `leads` table and notifies `OPERATOR_EMAIL`
 - Autonomous self-prospecting - scheduler finds new leads via Google Maps daily (house account)
 - Client-facing dashboard at `/client` - magic-link login, workspace-isolated view
 - Client-facing prospects experience is live: `/client/prospects`, `/client/prospects/<id>`, filtered CSV export, bulk actions, and in-page reply handling from prospect detail
 - Client settings now store sender identity (`sender_name`, `sender_email`) in addition to niche, ICP, location, and booking link
 - Client sender verification flow is live: requested sender emails get a tokenized verification email and only verified sender addresses are used for outbound identity
-- Weekly pipeline reports emailed to each active client every Monday 8am UTC
+- Daily reports emailed at 17:00 UTC to each active client and `OPERATOR_EMAIL`
 - Full automated pipeline: Google Maps -> research -> email -> PDF -> send
-- Background scheduler for inbox polling, daily sequence dispatch, self-prospecting, weekly reports
+- Background scheduler for inbox polling, daily sequence dispatch, self-prospecting, scheduled-send dispatch, and daily reports
 - Operator dashboard moved off `/` and now lives at `/ops` with `/dashboard` as an alias
 - Reply classification includes `booked`
 - Settings UI at `/settings` (Basic Auth protected)
@@ -39,7 +38,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Session additions (2026-04-23):**
 - Stripe fully removed: no `/checkout`, no `/webhook/stripe`, no `stripe` package
-- `/onboard` is now lead capture only — saves to `leads` table, emails `OPERATOR_EMAIL`, no auto-provisioning
+- `/onboard` is now lead capture only - saves to `leads` table, emails `OPERATOR_EMAIL`, no auto-provisioning
 - `/ops` Pending Leads section + `POST /api/ops/leads/<id>/provision` for manual client creation
 - `database.leads` table added; `add_lead`, `get_all_leads`, `get_lead_by_email`, `mark_lead_provisioned`, `get_pending_sends` added
 - `settings.get_operator_email()` added; `OPERATOR_EMAIL` added to `.env.example`
@@ -50,14 +49,14 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `prospects.prospect_timezone` column added for tz reuse on follow-ups
 - 102 tests passing
 
-**Session additions (2026-04-23 — pre-launch hardening):**
+**Session additions (2026-04-23 - pre-launch hardening):**
 - `SECRET_KEY` placeholder/empty now raises `RuntimeError` at boot (hard crash instead of warning)
 - `SETTINGS_PASSWORD` = `change-me` or empty now raises `RuntimeError` at boot
 - Non-fatal startup warnings added for: weak `SETTINGS_PASSWORD`, missing `APP_BASE_URL`, unset `DB_PATH`, unset `SENDGRID_WEBHOOK_PUBLIC_KEY`
 - SendGrid webhook returns 403 on invalid signature (was 400)
 - LinkedIn/Instagram in `sequence_dispatcher.py`: skips entirely when `LINKEDIN_DRY_RUN=true` (no browser launch)
 - SMS in `sequence_dispatcher.py`: skips when `TWILIO_ACCOUNT_SID` not configured
-- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response; dashboard no longer shows "Score loading…" when campaign is active
+- `warmup_engine.get_combined_warmup_status()` derives live Mailivery health score from mailbox API response; dashboard no longer shows "Score loading..." when campaign is active
 - `.env.example` updated: `DB_PATH` uncommented, critical vars annotated with crash consequence
 - `Procfile` updated with memory/multi-process deployment note
 - 81 tests passing (saas_routes suite)
@@ -67,17 +66,16 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Find-and-fire pipeline now includes Step 4 Send: `_run_pipeline_for_db_prospect` calls `_route_send_email`, marks prospect `contacted`, stores full body as JSON `metadata` in `communication_events`
 - Duplicate send guard: `already_sent` check in pipeline; `GROUP BY prospect_id` in emails query
 - `_valid()` email address validator rejects addresses with nav/path text appended
-- `GET /client/emails` — sent email log with expandable body, filter buttons, PDF download; backfills metadata from `outreach` table
-- `templates/client_emails.html` — new template for sent emails tab
+- `GET /client/emails` - sent email log with expandable body, filter buttons, PDF download; backfills metadata from `outreach` table
+- `templates/client_emails.html` - new template for sent emails tab
 - Mailivery API fixed: `X-Request-ID` UUID header on every request; `get_health_score` / `get_metrics` use `GET /campaigns/{id}` not non-existent sub-endpoints; nested `{"data": {...}}` response parsed correctly
-- Code pushed to GitHub at `rz0500/Ai-outreach` — ready to deploy to Render
+- Code pushed to GitHub at `rz0500/Ai-outreach` - ready to deploy to Render
 - `.gitignore` updated to exclude pip packages accidentally installed to repo root
 
 **Deferred / next later:**
-1. **Deploy to Render** — Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all env vars
+1. **Deploy to Render** - Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all env vars
 2. Mailivery dashboard setup: configure webhook URL to `https://your-app.onrender.com/webhook/mailivery`
 3. More `/ops` polish and deeper workspace drilldowns
-
 ---
 
 ## Architectural Decisions
@@ -86,17 +84,15 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Multi-tenancy isolation:** Enforced at the query layer. No prospect, outreach, event, draft, or enrollment is readable across `client_id` boundaries. The operator dashboard uses `client_id=1` implicitly. Client dashboard enforces `session["client_id"]`.
 
-**Launch routing:** `/` is the public OutreachEmpower landing page, `/checkout` is a launch-path pricing/pilot step, `/onboard` handles real signup, and `/ops` is the internal operator dashboard. This keeps the public product path separate from the internal workspace.
+**Launch routing:** `/` is the public OutreachEmpower landing page, `/onboard` captures leads for manual operator provisioning, and `/ops` is the internal operator dashboard. This keeps the public product path separate from the internal workspace.
 
-**Client session auth:** Magic-link only. `client_sessions` table stores UUID token with 24h TTL. `POST /client/login` generates token and emails link. `GET /client/verify` validates, marks used, sets Flask session. No passwords.
+**Client session auth:** Magic-link only. `client_sessions` stores UUID login tokens with expiry and single-use semantics. `POST /client/login` creates the token and emails the link. `GET /client/verify` validates it, marks it used, and sets the Flask session.
 
 **Status pipeline:** `new -> qualified -> contacted -> in_sequence -> replied -> booked / rejected`.
 
 **Reply classification:** valid categories include `interested`, `booked`, `not_interested`, `opt_out`, `out_of_office`, and `auto_reply`.
 
-**Background scheduler:** daemon thread in `web_app.py`. Per cycle: polls inbox (`INBOX_POLL_INTERVAL`), runs sequence dispatch once daily at `SEQUENCE_RUN_HOUR`, runs self-prospecting once daily at `SELF_PROSPECT_RUN_HOUR` (house account only), drains `_pending_client_research` set (from `/onboard`), sends weekly client reports every Monday 08:00 UTC. `GET /api/monitor-status` exposes state. `POST /api/monitor-reset` clears paused state.
-
-**Inbox polling hardening:** `inbox_monitor.py` now uses `UNSEEN` for IMAP search, normalizes odd MIME charsets like `unknown-8bit`, and limits each run to `IMAP_MAX_MESSAGES_PER_POLL` messages by default.
+**Background scheduler:** daemon thread in `web_app.py`. Per cycle: polls inbox (`INBOX_POLL_INTERVAL`), runs sequence dispatch once daily at `SEQUENCE_RUN_HOUR`, runs self-prospecting once daily at `SELF_PROSPECT_RUN_HOUR` (house account only), dispatches due scheduled outreach, and sends daily client/operator reports at 17:00 UTC. `GET /api/monitor-status` exposes state. `POST /api/monitor-reset` clears paused state.
 
 **Outbound email routing:** `_route_send_email()` in `web_app.py` is the single send router. SMTP supports attachments and thread headers. SendGrid currently does not.
 
@@ -112,9 +108,9 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Mailivery webhook security:** `/webhook/mailivery` requires a shared secret (`MAILIVERY_WEBHOOK_SECRET`) sent as `X-Mailivery-Webhook-Secret` or `Authorization: Bearer ...`. Disconnect events clear `clients.mailivery_campaign_id` and cached health score.
 
-**Mailivery warmup integration:** `mailivery_client.py` wraps the external API. Onboarding can auto-connect SMTP/IMAP mailboxes when `MAILIVERY_ENABLED=true` and credentials are present. The scheduler refreshes health scores every 4 hours, and the client dashboard shows Mailivery health once connected.
+**Mailivery warmup integration:** `mailivery_client.py` wraps the external API. Operator provisioning can auto-connect SMTP/IMAP mailboxes when `MAILIVERY_ENABLED=true` and credentials are present. The scheduler refreshes health scores every 4 hours, and the client dashboard shows Mailivery health once connected.
 
-**Operator workspace filtering:** `/ops` now accepts `client_id` and renders stats, pipeline rows, deliverability summary, reply drafts, outreach tracker, and analytics refreshes for the selected client workspace instead of always forcing house account data. Operator-side AJAX calls append the selected `client_id`.
+**Operator workspace filtering:** `/ops` accepts `client_id` and keeps the selected workspace across analytics refreshes, outreach actions, reply queue actions, and Find-and-Fire polling so operators can work inside one client workspace at a time.
 
 **Compliance copy:** `outreach.py` again exposes `OPT_OUT_LINE` so both the modern generator and the legacy sequencer/compliance paths share the same opt-out language.
 
@@ -154,3 +150,4 @@ This file is the long-term memory for the repo. Update it when significant archi
 | `prospect_research` | Structured AI research results (partitioned by `client_id`) |
 | `reply_drafts` | Classified inbound replies and review queue (partitioned by `client_id`) |
 | `client_sessions` | Magic-link auth tokens for client dashboard login |
+| `leads` | Inbound onboarding leads awaiting manual operator provisioning |
