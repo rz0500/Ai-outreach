@@ -15,6 +15,7 @@ errors (auto-reject), and soft warnings (flag for review).
 """
 
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 
 # ---------------------------------------------------------------------------
@@ -166,6 +167,29 @@ class InternalQualityScore:
 # Public API
 # ---------------------------------------------------------------------------
 
+_TRAILING_QUALIFIERS = {
+    "hq", "ltd", "llc", "inc", "incorporated", "limited", "group", "plc", "co",
+}
+
+
+def _company_core_name(company: str) -> str:
+    """
+    Strip parenthetical abbreviations, trailing location suffixes, and generic
+    corporate qualifiers that scraped source listings often append (e.g. Google
+    Maps business names like "London Data Consulting (LDC)" or "FintechOS HQ -
+    London, UK"), leaving the brand name a human would actually write in a
+    sentence.
+    """
+    core = re.sub(r"\([^)]*\)", "", company)  # drop "(LDC)"-style abbreviations
+    core = re.split(r"\s+[-–—]\s+", core)[0]  # drop " - London, UK"-style suffixes
+    core = core.strip()
+
+    words = core.split()
+    while len(words) > 1 and words[-1].lower().rstrip(".,") in _TRAILING_QUALIFIERS:
+        words.pop()
+    return " ".join(words) if words else core
+
+
 def validate_email(subject: str, body: str, prospect: dict) -> ValidationResult:
     """
     Run quality checks on a generated email draft.
@@ -187,8 +211,12 @@ def validate_email(subject: str, body: str, prospect: dict) -> ValidationResult:
             result.errors.append(f"Banned phrase: '{phrase}'")
             result.quality_score -= 20
 
-    # 2. Company name must appear in the body
-    if company and company not in body_lower:
+    # 2. Company name must appear in the body — matched against the core brand
+    # name (stripped of parenthetical abbreviations / location suffixes that
+    # scraped listings often append) since a human-sounding email won't repeat
+    # those verbatim.
+    company_core = _company_core_name(company)
+    if company_core and company_core not in body_lower:
         result.errors.append(
             f"Company name '{prospect.get('company')}' missing from body. Email is too generic."
         )
