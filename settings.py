@@ -23,8 +23,39 @@ def get_calendar_link() -> str:
 
 
 def get_sender_name() -> str:
-    """Return the sender's first name used in email sign-offs."""
-    return (os.getenv("SENDER_NAME") or "Alex").strip()
+    """Return the candidate's / sender's name used in email sign-offs."""
+    return (os.getenv("SENDER_NAME") or "Ritish").strip()
+
+
+def get_candidate_degree() -> str:
+    """Return candidate's degree title."""
+    return (os.getenv("CANDIDATE_DEGREE") or "BSc FinTech & Data Analytics").strip()
+
+
+def get_candidate_university() -> str:
+    """Return candidate's university."""
+    return (os.getenv("CANDIDATE_UNIVERSITY") or "University of Westminster").strip()
+
+
+def get_candidate_target_roles() -> str:
+    """Return target graduate roles."""
+    return (
+        os.getenv("CANDIDATE_TARGET_ROLES")
+        or "Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst"
+    ).strip()
+
+
+def get_candidate_skills() -> str:
+    """Return candidate's core technical and commercial skills."""
+    return (
+        os.getenv("CANDIDATE_SKILLS")
+        or "Python, SQL, Power BI, data analysis, n8n, APIs, Twilio, Stripe, NoCode, conversion funnels, CPL, ROAS, A/B testing"
+    ).strip()
+
+
+def get_candidate_portfolio() -> str:
+    """Return candidate's portfolio/website link."""
+    return (os.getenv("CANDIDATE_PORTFOLIO") or "https://harmonybooths.com").strip()
 
 
 def get_inbox_poll_interval() -> int:

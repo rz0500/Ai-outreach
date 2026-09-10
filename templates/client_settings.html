@@ -289,51 +289,74 @@
     <div class="divider"></div>
 
     <form method="POST" action="/client/settings">
-      <div class="section-label">Targeting</div>
+      <div class="section-label">Candidate Profile</div>
 
       <div class="field">
-        <label for="niche">What you do</label>
-        <div class="field-hint">Describe your service/product. Used to craft personalised emails.</div>
-        <input type="text" id="niche" name="niche"
-               value="{{ client.niche or '' }}"
-               placeholder="e.g. B2B SaaS for construction project managers" />
+        <label for="degree_title">Degree & Field</label>
+        <div class="field-hint">Your degree and academic specialization.</div>
+        <input type="text" id="degree_title" name="degree_title"
+               value="{{ client.degree_title or 'BSc FinTech & Data Analytics' }}"
+               placeholder="BSc FinTech & Data Analytics" />
       </div>
 
       <div class="field">
-        <label for="icp">Ideal customer</label>
-        <div class="field-hint">Who you want to reach. The more specific, the better the targeting.</div>
-        <textarea id="icp" name="icp"
-                  placeholder="e.g. Mid-sized UK construction firms running 5+ concurrent projects">{{ client.icp or '' }}</textarea>
+        <label for="university">University</label>
+        <div class="field-hint">University or Institution name.</div>
+        <input type="text" id="university" name="university"
+               value="{{ client.university or 'University of Westminster' }}"
+               placeholder="University of Westminster" />
       </div>
 
       <div class="field">
-        <label for="location">Target location</label>
-        <div class="field-hint">City or region to prospect in. Used for Google Maps discovery.</div>
-        <input type="text" id="location" name="location"
-               value="{{ client.location or '' }}"
-               placeholder="e.g. London, UK" />
+        <label for="target_roles">Target Graduate Roles</label>
+        <div class="field-hint">Specific job roles you are targeting.</div>
+        <textarea id="target_roles" name="target_roles"
+                  placeholder="Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst">{{ client.target_roles or 'Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst' }}</textarea>
+      </div>
+
+      <div class="field">
+        <label for="skills">Technical & Commercial Skills</label>
+        <div class="field-hint">Core technical tools, data stack, and commercial experience.</div>
+        <textarea id="skills" name="skills"
+                  placeholder="Python, SQL, Power BI, n8n, APIs, Twilio, Stripe, Conversion Funnels">{{ client.skills or 'Python, SQL, Power BI, data analysis, n8n, APIs, Twilio, Stripe, NoCode, conversion funnels, CPL, ROAS, A/B testing' }}</textarea>
+      </div>
+
+      <div class="field">
+        <label for="portfolio_url">Portfolio / Business Website</label>
+        <div class="field-hint">Link to your online portfolio or project website.</div>
+        <input type="url" id="portfolio_url" name="portfolio_url"
+               value="{{ client.portfolio_url or 'https://harmonybooths.com' }}"
+               placeholder="https://harmonybooths.com" />
+      </div>
+
+      <div class="field">
+        <label for="work_eligibility">Work Eligibility / Passports</label>
+        <div class="field-hint">Your right to work status across target geographies.</div>
+        <input type="text" id="work_eligibility" name="work_eligibility"
+               value="{{ client.work_eligibility or 'UK & EU (Italian Passport)' }}"
+               placeholder="UK & EU (Italian Passport)" />
       </div>
 
       <div class="divider"></div>
-      <div class="section-label">Booking</div>
+      <div class="section-label">Target Geographies</div>
 
       <div class="field">
-        <label for="calendar_link">Booking link</label>
-        <div class="field-hint">Included in outreach emails as the call-to-action.</div>
-        <input type="url" id="calendar_link" name="calendar_link"
-               value="{{ client.calendar_link or '' }}"
-               placeholder="https://calendly.com/you/30min" />
+        <label for="location">Target Locations</label>
+        <div class="field-hint">Cities or countries to prospect target employers in.</div>
+        <input type="text" id="location" name="location"
+               value="{{ client.location or 'London, UK' }}"
+               placeholder="London, UK & EU" />
       </div>
 
       <div class="divider"></div>
       <div class="section-label">Sending identity</div>
 
       <div class="field">
-        <label for="sender_name">Sender name</label>
-        <div class="field-hint">Shown in the From line when your workspace sends emails.</div>
+        <label for="sender_name">Your Name</label>
+        <div class="field-hint">Shown in the From line when sending cold outreach emails.</div>
         <input type="text" id="sender_name" name="sender_name"
-               value="{{ client.sender_name or '' }}"
-               placeholder="e.g. Alex" />
+               value="{{ client.sender_name or 'Ritish' }}"
+               placeholder="Ritish" />
       </div>
 
       <div class="field">

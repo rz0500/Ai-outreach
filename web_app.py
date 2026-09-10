@@ -3506,23 +3506,28 @@ def client_settings_page():
 
 @app.route("/client/settings", methods=["POST"])
 def client_settings_submit():
-    """Save updated client settings."""
+    """Save updated client / candidate settings."""
     client_id = _client_login_required()
     if not client_id:
         return redirect(url_for("client_login_page"))
 
-    data          = request.form
-    niche         = (data.get("niche") or "").strip() or None
-    icp           = (data.get("icp") or "").strip() or None
-    location      = (data.get("location") or "").strip() or None
-    calendar_link = (data.get("calendar_link") or "").strip() or None
-    sender_name   = (data.get("sender_name") or "").strip() or None
-    sender_email  = (data.get("sender_email") or "").strip().lower() or None
+    data             = request.form
+    niche            = (data.get("niche") or "").strip() or None
+    icp              = (data.get("icp") or "").strip() or None
+    location         = (data.get("location") or "").strip() or None
+    calendar_link    = (data.get("calendar_link") or "").strip() or None
+    sender_name      = (data.get("sender_name") or "").strip() or None
+    sender_email     = (data.get("sender_email") or "").strip().lower() or None
+    degree_title     = (data.get("degree_title") or "").strip() or None
+    university       = (data.get("university") or "").strip() or None
+    target_roles     = (data.get("target_roles") or "").strip() or None
+    skills           = (data.get("skills") or "").strip() or None
+    portfolio_url    = (data.get("portfolio_url") or "").strip() or None
+    cv_url           = (data.get("cv_url") or "").strip() or None
+    work_eligibility = (data.get("work_eligibility") or "").strip() or None
 
     _db = database.DB_PATH
 
-    # If the sender_email is changing, reset verification so the new address
-    # must be re-verified before it's used for outbound sends.
     current_client = database.get_client(client_id, db_path=_db)
     old_sender_email = ((current_client or {}).get("sender_email") or "").strip().lower()
     if sender_email != old_sender_email:
@@ -3536,6 +3541,13 @@ def client_settings_submit():
         calendar_link=calendar_link,
         sender_name=sender_name,
         sender_email=sender_email,
+        degree_title=degree_title,
+        university=university,
+        target_roles=target_roles,
+        skills=skills,
+        portfolio_url=portfolio_url,
+        cv_url=cv_url,
+        work_eligibility=work_eligibility,
         db_path=_db,
     )
     return redirect(url_for("client_settings_page") + "?saved=1")

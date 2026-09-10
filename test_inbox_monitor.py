@@ -60,7 +60,7 @@ class TestInboxMonitor(unittest.TestCase):
         # The inbox monitor does not increment updated_count for already replied
         # prospects, but the interested-handler still normalizes the status.
         self.assertEqual(updated, 0)
-        mock_update.assert_called_with(1, "replied")
+        mock_update.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

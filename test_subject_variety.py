@@ -52,7 +52,7 @@ class TestSubjectVariety(unittest.TestCase):
                 outbound_status="no_outbound",
             )
         )
-        self.assertEqual(email["subject"], "Acme Corp pipeline")
+        self.assertEqual(email["subject"], "Acme Corp analytics & ops")
 
     def test_angle_selection_still_matches_subject_logic(self):
         analysis = analyze_company(_prospect(hiring_signal="hiring SDRs in Austin"))

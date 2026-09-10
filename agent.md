@@ -6,6 +6,18 @@ Read this at the start of every session. Update after meaningful changes.
 
 ## Recently Completed
 
+### GradReach pivot (2026-09-08)
+The platform was repurposed from a B2B cold-outbound SaaS ("OutreachEmpower") into a personal graduate-job-hunting outreach tool ("GradReach") for Ritish (BSc FinTech & Data Analytics, University of Westminster). Scope of the change:
+- `ai_engine.py` prompts (email writer, scorer, website researcher, reply classifier) rewritten around Ritish's candidate profile and target roles (Graduate Data/Business/RevOps/Commercial/FinTech Analyst) instead of B2B sales copy
+- `database.py` `clients` table gained candidate columns: `degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility` (additive `ALTER TABLE`, guarded); house account reseeded as Ritish's profile
+- `outreach.py` fallback/data-driven email builders hardcode Ritish's bio, skills, and Harmony Booths pitch; dropped the old market-truth/tension/mechanism structure and calendar-link CTA
+- `pdf_generator.py` `generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; the old 5-page pitch-deck content generators, banned-phrase/tension validation gate, and unused layout helpers (`_metrics_row`, `_comp_cards`, `_numbered_step`, `_step_colors`, `_cta_button`) were removed as dead code (the function had an early `return` that made ~130 lines unreachable)
+- `settings.py` gained `get_candidate_degree/university/target_roles/skills/portfolio()` getters
+- `web_app.py` `/client/settings` POST reads/saves the new candidate fields
+- Templates rebranded: "OutreachEmpower" -> "GradReach", "Prospects" -> "Employers", "Booked calls" -> "Interviews/Chats", landing page pitch rewritten for job search
+- Tests updated to match (calendar-link assertions dropped, SendGrid webhook 403 expectation, LinkedIn dry-run patch); full suite passing (215 tests)
+- The underlying multi-tenant DB, scheduler, deliverability stack, SendGrid/Mailivery integrations, and ops dashboard are all unchanged — this was a content/prompt/schema-field pivot, not an architecture change
+
 ### Foundation through current SaaS state
 Full pipeline is now in place across the repo: multi-tenant DB, background scheduler, operator dashboard, email validation, analytics, CSV import, SendGrid routing, reply classification, deliverability hardening, Find-and-Fire polling/UI, client prospects flow, SendGrid webhook security, Mailivery warmup integration, and per-client sender identity.
 

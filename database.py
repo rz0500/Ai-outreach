@@ -72,22 +72,49 @@ def initialize_database(db_path: str = DB_PATH) -> None:
         # Clients table — one row per workspace (house account = id 1)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS clients (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                name          TEXT    NOT NULL,
-                email         TEXT    NOT NULL DEFAULT '',
-                status        TEXT    NOT NULL DEFAULT 'active',
-                niche         TEXT,
-                icp           TEXT,
-                calendar_link TEXT,
-                sender_name   TEXT,
-                sender_email  TEXT,
-                created_at    TEXT    DEFAULT (datetime('now'))
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                name             TEXT    NOT NULL,
+                email            TEXT    NOT NULL DEFAULT '',
+                status           TEXT    NOT NULL DEFAULT 'active',
+                niche            TEXT,
+                icp              TEXT,
+                calendar_link    TEXT,
+                sender_name      TEXT,
+                sender_email     TEXT,
+                degree_title     TEXT,
+                university       TEXT,
+                target_roles     TEXT,
+                skills           TEXT,
+                portfolio_url    TEXT,
+                cv_url           TEXT,
+                work_eligibility TEXT,
+                created_at       TEXT    DEFAULT (datetime('now'))
             )
         """)
-        # Seed the house account so client_id=1 always exists
+        # Ensure new columns exist on existing DBs prior to seeding
+        for col in ("location", "sender_name", "sender_email", "degree_title", "university", "target_roles", "skills", "portfolio_url", "cv_url", "work_eligibility"):
+            try:
+                conn.execute(f"ALTER TABLE clients ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # already exists
+
+        # Seed the house account so client_id=1 always exists (configured with Ritish's graduate details)
         conn.execute("""
-            INSERT OR IGNORE INTO clients (id, name, email, status)
-            VALUES (1, 'House Account', '', 'active')
+            INSERT OR IGNORE INTO clients (
+                id, name, email, status, niche, icp, sender_name, sender_email,
+                degree_title, university, target_roles, skills, portfolio_url, work_eligibility
+            )
+            VALUES (
+                1, 'Ritish', 'info@outreachempower.com', 'active',
+                'Graduate Analyst & Operations Outreach',
+                'FinTech, SaaS & Tech hiring managers, Lead Analysts, RevOps Leads, Operations Directors',
+                'Ritish', 'info@outreachempower.com',
+                'BSc FinTech & Data Analytics', 'University of Westminster',
+                'Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst, Junior Strategy/Operations Analyst',
+                'Python, SQL, Power BI, data analysis, n8n, APIs, Twilio, Stripe, NoCode, conversion funnels, CPL, ROAS, A/B testing',
+                'https://harmonybooths.com',
+                'UK & EU (Italian Passport)'
+            )
         """)
 
         conn.execute("""
@@ -213,7 +240,7 @@ def initialize_database(db_path: str = DB_PATH) -> None:
         except sqlite3.OperationalError:
             pass  # already exists
 
-        for col in ("sender_name", "sender_email"):
+        for col in ("sender_name", "sender_email", "degree_title", "university", "target_roles", "skills", "portfolio_url", "cv_url", "work_eligibility"):
             try:
                 conn.execute(f"ALTER TABLE clients ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
@@ -423,6 +450,13 @@ def add_client(
     location: Optional[str] = None,
     sender_name: Optional[str] = None,
     sender_email: Optional[str] = None,
+    degree_title: Optional[str] = None,
+    university: Optional[str] = None,
+    target_roles: Optional[str] = None,
+    skills: Optional[str] = None,
+    portfolio_url: Optional[str] = None,
+    cv_url: Optional[str] = None,
+    work_eligibility: Optional[str] = None,
     db_path: str = DB_PATH,
 ) -> int:
     """
@@ -434,8 +468,11 @@ def add_client(
     with _get_connection(db_path) as conn:
         cursor = conn.execute(
             """
-            INSERT INTO clients (name, email, niche, icp, calendar_link, location, sender_name, sender_email, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
+            INSERT INTO clients (
+                name, email, niche, icp, calendar_link, location, sender_name, sender_email,
+                degree_title, university, target_roles, skills, portfolio_url, cv_url, work_eligibility, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
             """,
             (
                 name.strip(),
@@ -446,6 +483,13 @@ def add_client(
                 location,
                 sender_name,
                 sender_email.strip().lower() if sender_email else None,
+                degree_title,
+                university,
+                target_roles,
+                skills,
+                portfolio_url,
+                cv_url,
+                work_eligibility,
             ),
         )
         conn.commit()
@@ -500,6 +544,13 @@ def update_client(
     location: Optional[str] = None,
     sender_name: Optional[str] = None,
     sender_email: Optional[str] = None,
+    degree_title: Optional[str] = None,
+    university: Optional[str] = None,
+    target_roles: Optional[str] = None,
+    skills: Optional[str] = None,
+    portfolio_url: Optional[str] = None,
+    cv_url: Optional[str] = None,
+    work_eligibility: Optional[str] = None,
     campaign_paused: Optional[int] = None,
     outreach_review_mode: Optional[int] = None,
     mailivery_campaign_id: Optional[str] = None,
@@ -518,6 +569,13 @@ def update_client(
     if location                is not None: fields.append(("location", location))
     if sender_name             is not None: fields.append(("sender_name", sender_name))
     if sender_email            is not None: fields.append(("sender_email", sender_email.strip().lower() if sender_email else sender_email))
+    if degree_title            is not None: fields.append(("degree_title", degree_title))
+    if university              is not None: fields.append(("university", university))
+    if target_roles            is not None: fields.append(("target_roles", target_roles))
+    if skills                  is not None: fields.append(("skills", skills))
+    if portfolio_url           is not None: fields.append(("portfolio_url", portfolio_url))
+    if cv_url                  is not None: fields.append(("cv_url", cv_url))
+    if work_eligibility        is not None: fields.append(("work_eligibility", work_eligibility))
     if campaign_paused         is not None: fields.append(("campaign_paused", int(campaign_paused)))
     if outreach_review_mode    is not None: fields.append(("outreach_review_mode", int(outreach_review_mode)))
     if mailivery_campaign_id   is not None: fields.append(("mailivery_campaign_id", mailivery_campaign_id))

@@ -140,8 +140,9 @@ class TestSequenceDispatcher(unittest.TestCase):
 
         self.assertEqual(run_multichannel_sequence(dry_run=False, db_path=TEST_DB), [])
 
+    @patch("sequence_dispatcher.get_linkedin_dry_run", return_value=False)
     @patch("sequence_dispatcher.send_linkedin_connection", return_value=True)
-    def test_linkedin_touchpoint_routes_to_social_agent(self, mock_linkedin):
+    def test_linkedin_touchpoint_routes_to_social_agent(self, mock_linkedin, mock_dry_run):
         pid = add_prospect(
             name="Jane Doe",
             company="Acme Corp",

@@ -483,12 +483,12 @@
 <body>
 
 <header>
-  <div class="logo">OutreachEmpower</div>
+  <div class="logo">GradReach</div>
   <div class="header-right">
     <span class="client-badge">{{ client.name }}</span>
-    <a class="nav-link" href="/client/prospects">Prospects</a>
+    <a class="nav-link" href="/client/prospects">Employers</a>
     <a class="nav-link" href="/client/emails">Emails</a>
-    <a href="/client/settings" style="font-size:0.78rem;color:#64748b;text-decoration:none;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.3rem 0.75rem;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='#a78bfa';this.style.borderColor='rgba(124,58,237,0.4)'" onmouseout="this.style.color='#64748b';this.style.borderColor='rgba(255,255,255,0.08)'">Settings</a>
+    <a href="/client/settings" style="font-size:0.78rem;color:#64748b;text-decoration:none;border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.3rem 0.75rem;transition:color 0.15s,border-color 0.15s;" onmouseover="this.style.color='#a78bfa';this.style.borderColor='rgba(124,58,237,0.4)'" onmouseout="this.style.color='#64748b';this.style.borderColor='rgba(255,255,255,0.08)'">Candidate Profile</a>
     <form method="POST" action="/client/logout" style="margin:0">
       <button type="submit" class="logout-btn">Log out</button>
     </form>
@@ -498,8 +498,8 @@
 <main>
   <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:0.25rem;">
     <div>
-      <div class="page-title">Your pipeline</div>
-      <div class="page-sub">Live view of your outreach campaign.</div>
+      <div class="page-title">Candidate Pipeline</div>
+      <div class="page-sub">Live view of your graduate career outreach campaign.</div>
     </div>
     <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.25rem;flex-wrap:wrap;">
       {% if client.campaign_paused %}
@@ -555,27 +555,27 @@
   <!-- ── Stats ── -->
   <div class="stats-grid">
     <div class="stat">
-      <div class="stat-label">Prospects found</div>
+      <div class="stat-label">Employers Target</div>
       <div class="stat-value">{{ analytics.total_prospects }}</div>
-      <div class="stat-sub">in your workspace</div>
+      <div class="stat-sub">target companies</div>
     </div>
     <div class="stat">
-      <div class="stat-label">In sequence</div>
+      <div class="stat-label">In Sequence</div>
       <div class="stat-value">{{ analytics.in_sequence }}</div>
       <div class="stat-sub">active outreach</div>
     </div>
     <div class="stat">
-      <div class="stat-label">Emails sent</div>
+      <div class="stat-label">Emails Sent</div>
       <div class="stat-value">{{ analytics.emails_sent }}</div>
-      <div class="stat-sub">total sent</div>
+      <div class="stat-sub">outreach emails</div>
     </div>
     <div class="stat accent">
       <div class="stat-label">Replies</div>
       <div class="stat-value">{{ analytics.replies }}</div>
-      <div class="stat-sub">{% if analytics.reply_rate > 0 %}{{ analytics.reply_rate }}% rate{% else %}—{% endif %}</div>
+      <div class="stat-sub">{% if analytics.reply_rate > 0 %}{{ analytics.reply_rate }}% response{% else %}—{% endif %}</div>
     </div>
     <div class="stat green">
-      <div class="stat-label">Booked calls</div>
+      <div class="stat-label">Interviews / Chats</div>
       <div class="stat-value">{{ analytics.booked }}</div>
       <div class="stat-sub">meetings booked</div>
     </div>

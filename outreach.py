@@ -422,29 +422,24 @@ def choose_primary_angle(analysis: dict) -> str:
 
 def _weak_data_email(prospect: dict, analysis: dict) -> dict:
     """
-    Fallback email for thin-data prospects.
-    Uses the new conversational structure without data-specific claims.
+    Fallback email for thin-data prospects tailored for graduate career outreach.
     """
-    first        = _first_name(prospect.get("name", "there"))
-    company      = prospect.get("company", "your company")
-    market_label = _operator_market_label(prospect, analysis)
-    truth        = _market_truth_opener(market_label, "outbound gap", prospect)
-    tension      = _tension_line("outbound gap", prospect)
-    mechanism    = _mechanism_line()
-    reversal     = _operator_risk_reversal(company, market_label)
+    first   = _first_name(prospect.get("name", "there"))
+    company = prospect.get("company", "your company")
 
-    subject = _build_angle_subject(prospect, analysis, choose_primary_angle(analysis))
+    subject = f"{company} analytics & ops"
     body = (
         f"Hi {first},\n\n"
-        f"{truth}\n\n"
-        f"{tension}\n\n"
-        f"We build outbound pipelines specifically for {market_label} like {company}. "
-        f"{mechanism}\n\n"
-        f"{reversal}\n\n"
-        f"{OPT_OUT_LINE}\n\n"
-        f"Worth a 15-minute call?\n\n"
-        f"{_calendar_link()}\n\n"
-        f"\u2014 [Name]"
+        f"Noticed {company}'s growth and wanted to reach out directly to your team.\n\n"
+        f"I recently completed my BSc in FinTech & Data Analytics at the University of Westminster. "
+        f"Alongside Python, SQL, and Power BI, I've spent the past year building workflow automations (n8n, Twilio/Stripe APIs) and managing conversion funnels for Harmony Booths.\n\n"
+        f"I'm exploring graduate Data Analyst, Business Analyst, and RevOps roles. I'd love to bring this practical technical and commercial skill set to {company}.\n\n"
+        f"Open to a brief 10-minute coffee chat or quick portfolio review this week?\n\n"
+        f"Best regards,\n"
+        f"Ritish\n"
+        f"BSc FinTech & Data Analytics | University of Westminster\n"
+        f"https://harmonybooths.com\n\n"
+        f"{OPT_OUT_LINE}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
 
@@ -456,40 +451,26 @@ def _build_data_driven_email(
     rewrite_pass: int = 0,
 ) -> dict:
     """
-    Build a conversational cold email from structured analysis and one primary angle.
-
-    Structure:
-      1. Market truth opener   — describes their growth model empathetically
-      2. Tension line          — short, isolated, punchy
-      3. What we do + mechanism — names the company specifically
-      4. Risk reversal          — pilot framing + personal selection
-      5. CTA as soft question   — "Worth a 15-minute call?"
-      6. Calendar link on its own line
-      7. Sign-off — [Name]
+    Build a conversational cold email for graduate career outreach.
     """
-    first        = _first_name(prospect.get("name", "there"))
-    company      = prospect.get("company", "your company")
-    market_label = _operator_market_label(prospect, analysis)
+    first   = _first_name(prospect.get("name", "there"))
+    company = prospect.get("company", "your company")
 
-    # Subject — short, personal, angle-aware
-    subject = _build_angle_subject(prospect, analysis, angle, rewrite_pass=rewrite_pass)
-
-    truth     = _market_truth_opener(market_label, angle, prospect)
-    tension   = _tension_line(angle, prospect)
-    mechanism = _mechanism_line()
-    reversal  = _operator_risk_reversal(company, market_label)
+    subject = _build_angle_subject(prospect, analysis, angle, rewrite_pass)
+    headline = analysis.get("company_positioning") or f"{company}'s platform"
 
     body = (
         f"Hi {first},\n\n"
-        f"{truth}\n\n"
-        f"{tension}\n\n"
-        f"We build outbound pipelines specifically for {market_label} like {company}. "
-        f"{mechanism}\n\n"
-        f"{reversal}\n\n"
-        f"{OPT_OUT_LINE}\n\n"
-        f"Worth a 15-minute call?\n\n"
-        f"{_calendar_link()}\n\n"
-        f"\u2014 [Name]"
+        f"Noticed how {company} is building in the {analysis.get('company_positioning', 'tech')} space and wanted to reach out directly.\n\n"
+        f"I recently finished my BSc in FinTech & Data Analytics at Westminster. "
+        f"Alongside Python, SQL, and Power BI, I've built commercial automations (n8n, Stripe/Twilio APIs) and managed conversion funnels for Harmony Booths.\n\n"
+        f"I'd love to help {company} streamline reporting dashboards, analyze user data, or optimize RevOps funnels as a Graduate Data/Business Analyst.\n\n"
+        f"Open to a brief 10-minute coffee chat or quick portfolio review this week?\n\n"
+        f"Best regards,\n"
+        f"Ritish\n"
+        f"BSc FinTech & Data Analytics | University of Westminster\n"
+        f"https://harmonybooths.com\n\n"
+        f"{OPT_OUT_LINE}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}
 

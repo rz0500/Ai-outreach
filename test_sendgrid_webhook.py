@@ -139,7 +139,7 @@ class TestSendGridWebhook(unittest.TestCase):
         headers["X-Twilio-Email-Event-Webhook-Signature"] = base64.b64encode(b"bad-signature").decode("ascii")
 
         resp = self.client.post("/webhook/sendgrid", data=payload, headers=headers)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 403)
         self.assertIn("signature", resp.get_json()["error"].lower())
 
 

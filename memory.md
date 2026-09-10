@@ -4,6 +4,17 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 ## Current State
 
+**Session additions (2026-09-08 - GradReach pivot):**
+- Platform repurposed from B2B cold-outbound SaaS ("OutreachEmpower") into personal graduate-job-hunting outreach tool ("GradReach") for Ritish (BSc FinTech & Data Analytics, University of Westminster)
+- `clients` table gained `degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility` columns (additive migration); house account (id=1) reseeded with Ritish's profile
+- `ai_engine.py` system prompts (email/score/website-research/reply-classify) rewritten to pitch Ritish to hiring managers
+- `outreach.py` email builders hardcode Ritish's bio/skills/Harmony Booths pitch, dropped calendar-link CTA and old tension-line structure
+- `pdf_generator.py` `generate_proposal()` rewritten to produce a candidate portfolio/pitch PDF; removed ~250 lines of now-unreachable pitch-deck generation code and its unused helpers/content-validation gate that were left dangling after an early `return`
+- `settings.py` gained candidate getters (`get_candidate_degree/university/target_roles/skills/portfolio`)
+- Templates/landing copy rebranded to GradReach; "Prospects" -> "Employers", "Booked calls" -> "Interviews/Chats"
+- `test_subject_variety.py` updated for the new fallback subject format; full suite green (215 tests)
+- No architecture change: multi-tenancy, scheduler, deliverability, SendGrid/Mailivery integrations, and `/ops` dashboard are untouched
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 
@@ -80,7 +91,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 ## Architectural Decisions
 
-**Database:** SQLite `prospects.db` without ORM. `sqlite3.Row` for dict-like rows. Core tables: `clients`, `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`, `client_sessions`. The `clients` table now also stores `location`, `sender_name`, and `sender_email`. Every data table has `client_id INTEGER NOT NULL DEFAULT 1`. House account (id=1) is seeded in `initialize_database()`. All query functions accept `client_id=1` as default kwarg - no callers needed updating.
+**Database:** SQLite `prospects.db` without ORM. `sqlite3.Row` for dict-like rows. Core tables: `clients`, `prospects`, `outreach`, `suppression_list`, `communication_events`, `sequence_enrollments`, `prospect_research`, `reply_drafts`, `client_sessions`. The `clients` table now also stores `location`, `sender_name`, `sender_email`, and (as of the GradReach pivot) candidate-profile fields `degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`. Every data table has `client_id INTEGER NOT NULL DEFAULT 1`. House account (id=1) is seeded in `initialize_database()`. All query functions accept `client_id=1` as default kwarg - no callers needed updating.
 
 **Multi-tenancy isolation:** Enforced at the query layer. No prospect, outreach, event, draft, or enrollment is readable across `client_id` boundaries. The operator dashboard uses `client_id=1` implicitly. Client dashboard enforces `session["client_id"]`.
 

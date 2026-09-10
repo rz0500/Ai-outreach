@@ -4,7 +4,7 @@ This file gives the current working context for this repository. It should match
 
 ## Project Overview
 
-`leadgen` / **OutreachEmpower** is a Python-based AI lead generation and outreach SaaS. Current working capabilities include:
+`leadgen` / **GradReach** (formerly "OutreachEmpower") is a Python-based AI outreach platform. It was originally built as a multi-tenant B2B cold-outbound SaaS for local businesses, and has been repurposed (as of 2026-09-08) into a personal graduate-job-hunting outreach tool for Ritish (BSc FinTech & Data Analytics, University of Westminster). The underlying multi-tenant architecture, scheduler, deliverability stack, and Mailivery/SendGrid integrations are unchanged — only the AI prompts, email copy, PDF generator, and candidate-facing fields were repointed at pitching Ritish to hiring managers instead of pitching an agency to prospects. The house account (`client_id=1`) is now seeded with Ritish's profile instead of a generic "House Account". Current working capabilities include:
 
 - **multi-tenant** prospect storage with `client_id` on every data table; house account = 1
 - public landing page at `/`
@@ -30,7 +30,7 @@ This file gives the current working context for this repository. It should match
 - standalone scheduler support via `python scheduler.py`
 - **startup crash guards** - `SECRET_KEY` placeholder/empty and `SETTINGS_PASSWORD` `change-me`/empty raise `RuntimeError` at boot; non-fatal warnings for `APP_BASE_URL`, `DB_PATH`, and missing `SENDGRID_WEBHOOK_PUBLIC_KEY`
 
-The system is production-ready for first clients.
+The system is production-ready for first clients, and is currently being run in candidate mode for Ritish's own graduate job search.
 
 ## Priority Context Files
 
@@ -45,8 +45,8 @@ If a meaningful repo-level change is made, update all three files.
 
 ### Core Data
 - **`database.py`** - SQLite persistence. `DB_PATH` reads from `DB_PATH` env var (default: `prospects.db`). Set to a persistent volume path in production.
-  - `add_client(name, email, niche, icp, calendar_link, location, sender_name, sender_email)`
-  - `update_client(client_id, ..., campaign_paused, outreach_review_mode)`
+  - `add_client(name, email, niche, icp, calendar_link, location, sender_name, sender_email, degree_title, university, target_roles, skills, portfolio_url, cv_url, work_eligibility)`
+  - `update_client(client_id, ..., degree_title, university, target_roles, skills, portfolio_url, cv_url, work_eligibility, campaign_paused, outreach_review_mode)`
   - `get_client`, `get_all_clients`, `get_active_clients`, `get_client_by_email`
   - `get_prospect_by_id(prospect_id)`
   - `get_pending_outreach_for_review(client_id)` - returns outreach with status `pending_review`
@@ -131,6 +131,8 @@ If a meaningful repo-level change is made, update all three files.
 - `outreach_review_mode=1` on a client makes the sequencer hold emails as `pending_review` instead of sending
 - `_route_send_email` and all DB-writing routes must pass `db_path=_db` explicitly - default arg values are frozen at import time
 - `DB_PATH` env var controls database location - set to a persistent volume path in production
+- `clients` table carries candidate-profile columns (`degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`) used by AI prompts, `outreach.py` email templates, and `pdf_generator.py`; these are additive migrations via `ALTER TABLE ... ADD COLUMN` guarded by `try/except sqlite3.OperationalError`
+- `pdf_generator.generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; only `company` is a required field (no enrichment-data gate)
 
 ## Running
 
@@ -208,6 +210,7 @@ scheduler: python scheduler.py
 | Pre-launch crash guards (SECRET_KEY, SETTINGS_PASSWORD) | Done |
 | SMS/LinkedIn/Instagram channel gating | Done |
 | Live Mailivery health score (no batch delay) | Done |
+| GradReach candidate-outreach pivot (prompts, PDF, DB fields, UI copy) | Done |
 
 ## Mailivery Integration
 
@@ -227,8 +230,14 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 | Tests | `test_mailivery_client.py` - all HTTP calls mocked, 21 tests. |
 | Env vars | `MAILIVERY_ENABLED=false`, `MAILIVERY_API_KEY=`, `MAILIVERY_WEBHOOK_SECRET=`, `MAILIVERY_OWNER_EMAIL=` |
 
-## Live State (as of 2026-04-22)
+## Live State (as of 2026-09-08)
 
+- **Pivoted to GradReach** - the platform now runs in candidate-outreach mode for Ritish's graduate job search rather than as a client-facing B2B SaaS; underlying multi-tenant/deliverability/scheduler infrastructure is unchanged
+- House account (`client_id=1`) reseeded as `name='Ritish'`, with `degree_title='BSc FinTech & Data Analytics'`, `university='University of Westminster'`, `target_roles`, `skills`, `portfolio_url='https://harmonybooths.com'`, `work_eligibility='UK & EU (Italian Passport)'`
+- `ai_engine.py` email/scoring/research/reply prompts rewritten to pitch Ritish to hiring managers instead of pitching an agency to prospects
+- `outreach.py` email builders (`_weak_data_email`, `_build_data_driven_email`) hardcode Ritish's bio/skills/Harmony Booths pitch and no longer use the old market-truth/tension/mechanism structure or `calendar_link`
+- `pdf_generator.generate_proposal()` now produces a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`); old prospect growth-breakdown deck logic and its now-unused helpers/validation gate were removed as dead code
+- Templates rebranded dashboard/settings/landing copy: "OutreachEmpower" -> "GradReach", "Prospects" -> "Employers", "Booked calls" -> "Interviews/Chats"
 - Mailivery campaign 137474 active for `info@outreachempower.com`, 10 emails/day
 - SendGrid enabled (`USE_SENDGRID=true`), outbound emails routing through it
 - House account (client_id=1) has `sender_email=info@outreachempower.com`, `sender_email_verified=1`

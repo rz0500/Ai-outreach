@@ -91,29 +91,26 @@ class TestEmailReasoning(unittest.TestCase):
         self.assertNotIn("could be", body)
 
     def test_operator_style_uses_fast_multiline_structure(self):
-        with patch("outreach.get_calendar_link", return_value=DEFAULT_CALENDAR_LINK):
-            email = generate_email(_prospect())
+        email = generate_email(_prospect())
         body = email["body"]
         lines = [line.strip() for line in body.splitlines() if line.strip()]
 
         self.assertEqual(lines[0], "Hi Jane,")
-        self.assertTrue(lines[1].startswith("Most SaaS teams"))
+        self.assertTrue(lines[1].startswith("Noticed"))
         self.assertIn("Acme Corp", body)
-        self.assertIn(DEFAULT_CALENDAR_LINK, body)
-        self.assertGreaterEqual(len(lines), 7)
+        self.assertIn("BSc in FinTech & Data Analytics", body)
+        self.assertGreaterEqual(len(lines), 5)
         self.assertLessEqual(len(body.split()), 140)
 
     def test_weak_data_email_still_stays_confident(self):
-        with patch("outreach.get_calendar_link", return_value=DEFAULT_CALENDAR_LINK):
-            debug = debug_email_reasoning({"name": "Leah Morris", "company": "Harbor Studio"})
+        debug = debug_email_reasoning({"name": "Leah Morris", "company": "Harbor Studio"})
         body = debug["email"]["body"].lower()
 
         self.assertIn("harbor studio", body)
-        self.assertIn("most b2b teams grow the same way", body)
-        self.assertIn("it works — until it doesn't", body)
+        self.assertIn("bsc in fintech & data analytics", body)
+        self.assertIn("harmony booths", body)
         self.assertNotIn("i only have a limited read", body)
         self.assertNotIn("if there is", body)
-        self.assertIn(DEFAULT_CALENDAR_LINK.lower(), body)
 
 
 if __name__ == "__main__":
