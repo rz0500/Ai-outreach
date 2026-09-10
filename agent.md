@@ -129,6 +129,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Active Constraints
 
+- **User works from `/ops` (Basic Auth via `SETTINGS_USER`/`SETTINGS_PASSWORD`, already set in `.env`), not `/client`.** The client-facing magic-link login, `/client` dashboard/settings/prospects flow, public landing page, and `/onboard` lead capture were all built for the original multi-tenant B2B SaaS product and are unused now that the platform runs candidate-mode for Ritish alone (house account, `client_id=1`). Per explicit instruction (2026-09-10), this code is being left in place as-is, not removed — just don't assume the client-facing flow is the active workflow when reasoning about how things get used day to day. `/api/find-and-fire`, `/ops` outreach queue, and `/client/settings`'s candidate-profile fields (called directly or via `database.update_client`) are the paths actually exercised.
 - `LINKEDIN_DRY_RUN=true` by default
 - All sends in `web_app.py` must go through `_route_send_email()`
 - Client reply draft actions check `draft.client_id == session.client_id` and return 404 on mismatch
