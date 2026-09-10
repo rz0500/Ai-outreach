@@ -58,6 +58,11 @@ def get_candidate_portfolio() -> str:
     return (os.getenv("CANDIDATE_PORTFOLIO") or "https://harmonybooths.com").strip()
 
 
+def get_candidate_cv_url() -> str:
+    """Return candidate's hosted CV/resume link, used in email sign-offs and the pitch PDF."""
+    return (os.getenv("CANDIDATE_CV_URL") or "https://claude.ai/code/artifact/8f6f7dd6-3254-4298-97c6-07837a94eb37").strip()
+
+
 def get_inbox_poll_interval() -> int:
     """
     Return how often (in seconds) the background scheduler checks the inbox.

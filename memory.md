@@ -15,6 +15,15 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `test_subject_variety.py` updated for the new fallback subject format; full suite green (215 tests)
 - No architecture change: multi-tenancy, scheduler, deliverability, SendGrid/Mailivery integrations, and `/ops` dashboard are untouched
 
+**Session additions (2026-09-10 - CV link + settings gap fix):**
+- Ritish's real CV (previously only a PDF file) published as a hosted Artifact page so the platform has a URL to link: `https://claude.ai/code/artifact/8f6f7dd6-3254-4298-97c6-07837a94eb37`
+- `settings.get_candidate_cv_url()` added (`CANDIDATE_CV_URL` env var, defaults to that link); `outreach.py` email sign-offs and `pdf_generator.py`'s CTA line now point to it instead of `harmonybooths.com` (Harmony Booths stays in the body copy as commercial-experience proof, just isn't the clickable link anymore)
+- `ai_engine._EMAIL_SYSTEM_PROMPT` sign-off updated via a `{{CV_LINK}}` placeholder + `.replace()` (not `.format()` — the prompt's trailing JSON example has literal braces)
+- Fixed a real UI gap: `cv_url` was already read/written by `database.py`/`web_app.py` but had no input field in `templates/client_settings.html` — added one
+- Backfilled the live `data/prospects.db` client_id=1 row by hand — the code-level reseed only fires via `INSERT OR IGNORE` on brand-new databases, so the existing DB still had `name='House Account'` and stale `niche='solar panel'` from before the pivot until updated with `database.update_client(1, ...)`
+- Removed leftover dead code: unused `get_calendar_link` import in `ai_engine.py`, unused `outreach._calendar_link()` helper
+- Fixed awkward AI-fallback phrasing in `outreach._build_data_driven_email` ("building in the {headline} space" -> "positioned around {headline}") since `company_positioning` can be a full sentence, not a short phrase
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 

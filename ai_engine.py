@@ -44,7 +44,7 @@ import json
 
 import anthropic
 from dotenv import load_dotenv
-from settings import get_calendar_link
+from settings import get_candidate_cv_url
 
 load_dotenv()
 
@@ -106,7 +106,7 @@ Sign-off:
 Best regards,
 Ritish
 BSc FinTech & Data Analytics | University of Westminster
-portfolio: https://harmonybooths.com
+{{CV_LINK}}
 
 Rules:
 - Total body: 90-130 words
@@ -121,6 +121,10 @@ Subject line: short (3-6 words), plain, direct, e.g. "[Company] data & analytics
 Respond with ONLY this JSON object:
 {"subject": "<subject line>", "body": "<email body with \\n for newlines>"}
 """
+
+_EMAIL_SYSTEM_PROMPT = _EMAIL_SYSTEM_PROMPT.replace(
+    "{{CV_LINK}}", f"CV: {get_candidate_cv_url()}"
+)
 
 _SCORE_SYSTEM_PROMPT = """\
 You are an expert graduate career analyst. You evaluate target companies and hiring leads \

@@ -52,7 +52,7 @@ from email_validator import (
     score_internal_quality,
     validate_email,
 )
-from settings import get_calendar_link
+from settings import get_candidate_cv_url
 
 # ---------------------------------------------------------------------------
 # Signal keywords
@@ -255,11 +255,6 @@ def _operator_risk_reversal(company: str, market_label: str) -> str:
     )
 
 
-def _calendar_link() -> str:
-    """Fetch the latest configured calendar link."""
-    return get_calendar_link()
-
-
 def _build_angle_subject(
     prospect: dict,
     analysis: dict,
@@ -438,7 +433,7 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
         f"Best regards,\n"
         f"Ritish\n"
         f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"https://harmonybooths.com\n\n"
+        f"CV: {get_candidate_cv_url()}\n\n"
         f"{OPT_OUT_LINE}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
@@ -457,11 +452,11 @@ def _build_data_driven_email(
     company = prospect.get("company", "your company")
 
     subject = _build_angle_subject(prospect, analysis, angle, rewrite_pass)
-    headline = analysis.get("company_positioning") or f"{company}'s platform"
+    headline = _clean(analysis.get("company_positioning")) or f"{company}'s work"
 
     body = (
         f"Hi {first},\n\n"
-        f"Noticed how {company} is building in the {analysis.get('company_positioning', 'tech')} space and wanted to reach out directly.\n\n"
+        f"Noticed how {company} is positioned around {headline} and wanted to reach out directly.\n\n"
         f"I recently finished my BSc in FinTech & Data Analytics at Westminster. "
         f"Alongside Python, SQL, and Power BI, I've built commercial automations (n8n, Stripe/Twilio APIs) and managed conversion funnels for Harmony Booths.\n\n"
         f"I'd love to help {company} streamline reporting dashboards, analyze user data, or optimize RevOps funnels as a Graduate Data/Business Analyst.\n\n"
@@ -469,7 +464,7 @@ def _build_data_driven_email(
         f"Best regards,\n"
         f"Ritish\n"
         f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"https://harmonybooths.com\n\n"
+        f"CV: {get_candidate_cv_url()}\n\n"
         f"{OPT_OUT_LINE}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}

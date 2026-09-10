@@ -330,6 +330,14 @@
       </div>
 
       <div class="field">
+        <label for="cv_url">CV / Resume link</label>
+        <div class="field-hint">Hosted link to your CV. Included in outreach emails and the candidate pitch PDF.</div>
+        <input type="url" id="cv_url" name="cv_url"
+               value="{{ client.cv_url or '' }}"
+               placeholder="https://..." />
+      </div>
+
+      <div class="field">
         <label for="work_eligibility">Work Eligibility / Passports</label>
         <div class="field-hint">Your right to work status across target geographies.</div>
         <input type="text" id="work_eligibility" name="work_eligibility"

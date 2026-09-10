@@ -27,6 +27,7 @@ from reportlab.platypus import (
 )
 
 from database import DB_PATH, get_all_prospects
+from settings import get_candidate_cv_url
 
 OUTPUT_DIR = "proposals"
 
@@ -319,7 +320,7 @@ def generate_proposal(prospect: dict) -> str:
     # CTA Box
     story.append(_takeaway_box(
         "Open to a brief 10-minute coffee chat or portfolio review",
-        f"Contact: info@outreachempower.com · Website: harmonybooths.com · Tailored for {company}",
+        f"Contact: info@outreachempower.com · CV: {get_candidate_cv_url()} · Tailored for {company}",
         S,
     ))
 

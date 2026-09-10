@@ -233,7 +233,9 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 ## Live State (as of 2026-09-08)
 
 - **Pivoted to GradReach** - the platform now runs in candidate-outreach mode for Ritish's graduate job search rather than as a client-facing B2B SaaS; underlying multi-tenant/deliverability/scheduler infrastructure is unchanged
-- House account (`client_id=1`) reseeded as `name='Ritish'`, with `degree_title='BSc FinTech & Data Analytics'`, `university='University of Westminster'`, `target_roles`, `skills`, `portfolio_url='https://harmonybooths.com'`, `work_eligibility='UK & EU (Italian Passport)'`
+- House account (`client_id=1`) reseeded as `name='Ritish'`, with `degree_title='BSc FinTech & Data Analytics'`, `university='University of Westminster'`, `target_roles`, `skills`, `portfolio_url='https://harmonybooths.com'`, `cv_url` (hosted CV artifact link), `work_eligibility='UK & EU (Italian Passport)'`
+- Email sign-offs and the pitch PDF's CTA line now link to `settings.get_candidate_cv_url()` (a hosted CV link) instead of `harmonybooths.com`; Harmony Booths is still referenced in body copy as commercial-experience proof, just no longer the clickable link
+- `templates/client_settings.html` gained a "CV / Resume link" field (`cv_url`) that was previously missing even though `database.py` and `web_app.py` already supported the column
 - `ai_engine.py` email/scoring/research/reply prompts rewritten to pitch Ritish to hiring managers instead of pitching an agency to prospects
 - `outreach.py` email builders (`_weak_data_email`, `_build_data_driven_email`) hardcode Ritish's bio/skills/Harmony Booths pitch and no longer use the old market-truth/tension/mechanism structure or `calendar_link`
 - `pdf_generator.generate_proposal()` now produces a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`); old prospect growth-breakdown deck logic and its now-unused helpers/validation gate were removed as dead code

@@ -18,6 +18,15 @@ The platform was repurposed from a B2B cold-outbound SaaS ("OutreachEmpower") in
 - Tests updated to match (calendar-link assertions dropped, SendGrid webhook 403 expectation, LinkedIn dry-run patch); full suite passing (215 tests)
 - The underlying multi-tenant DB, scheduler, deliverability stack, SendGrid/Mailivery integrations, and ops dashboard are all unchanged — this was a content/prompt/schema-field pivot, not an architecture change
 
+### CV link + settings gap fix (2026-09-10)
+- Published Ritish's actual CV as a hosted HTML page (Artifact) since the platform needs a URL, not a file, for email/PDF links: `https://claude.ai/code/artifact/8f6f7dd6-3254-4298-97c6-07837a94eb37`
+- Added `settings.get_candidate_cv_url()` (env var `CANDIDATE_CV_URL`, defaults to that link) and pointed `outreach.py`'s two hardcoded email sign-offs and `pdf_generator.py`'s CTA contact line at it, replacing the `harmonybooths.com` link that was there before; Harmony Booths itself is still cited in the body as commercial-experience proof
+- Rewrote `ai_engine._EMAIL_SYSTEM_PROMPT`'s sign-off line via a `{{CV_LINK}}` placeholder + `.replace()` post-processing (not `.format()`, since the prompt's trailing JSON example contains literal braces that would need escaping)
+- Removed dead code found along the way: unused `get_calendar_link` import in `ai_engine.py`, and `outreach._calendar_link()` (defined, never called, left over from dropping the calendar-link CTA)
+- Found and fixed a real gap: `database.py`/`web_app.py` already read/wrote a `cv_url` client field, but `templates/client_settings.html` never had an input for it — added a "CV / Resume link" field
+- Backfilled the **live** `data/prospects.db` house-account row (id=1): the code-level reseed only applies to brand-new databases (`INSERT OR IGNORE`), so the existing DB still had `name='House Account'`, `niche='solar panel'`, and all candidate columns `NULL` until manually updated via `database.update_client(1, ...)`
+- Fixed an awkward phrasing bug in `outreach._build_data_driven_email`: `company_positioning` could be a full website headline sentence, producing "building in the {headline} space"; reworded to "positioned around {headline}"
+
 ### Foundation through current SaaS state
 Full pipeline is now in place across the repo: multi-tenant DB, background scheduler, operator dashboard, email validation, analytics, CSV import, SendGrid routing, reply classification, deliverability hardening, Find-and-Fire polling/UI, client prospects flow, SendGrid webhook security, Mailivery warmup integration, and per-client sender identity.
 
