@@ -147,6 +147,15 @@ def deliver_prospect_email(
     """
     Deliver a prospect-facing email with suppression and failure handling.
 
+    This is personal 1:1 outreach, not a bulk marketing list, so no
+    unsubscribe footer or List-Unsubscribe header is added — both are
+    a dead giveaway to mail clients (Gmail/Outlook show a native
+    "Unsubscribe" chip) and to recipients that an email was sent by a
+    mass-mail tool. Suppression is still enforced below, and still
+    triggered independently when a reply is classified "opt_out"
+    (see inbox_monitor.py) — recipients who ask to stop are still
+    protected, it's just not advertised in every email.
+
     Returns a dict with:
       sent, error, outcome, event_status, provider
     """
@@ -154,15 +163,6 @@ def deliver_prospect_email(
     provider_name = "custom" if send_callable else _get_send_callable()[0]
     sender = send_callable or _get_send_callable()[1]
     sender_name, sender_email = _resolve_sender_identity(client_id, db_path)
-
-    # Build unsubscribe URL when we have a real prospect to suppress
-    unsubscribe_url = ""
-    if prospect_id is not None:
-        unsubscribe_url = make_unsubscribe_url(prospect_id, client_id)
-
-    # Append one-click unsubscribe footer to the body
-    if unsubscribe_url:
-        body = body.rstrip() + f"\n\n---\nTo unsubscribe: {unsubscribe_url}"
 
     result = {
         "sent": False,
@@ -186,7 +186,6 @@ def deliver_prospect_email(
             attachment_path=attachment_path,
             in_reply_to=in_reply_to,
             references=references,
-            list_unsubscribe=unsubscribe_url,
         )
         result["sent"] = ok
         result["error"] = err

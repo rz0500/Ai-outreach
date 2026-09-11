@@ -433,8 +433,7 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
         f"Best regards,\n"
         f"Ritish\n"
         f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"CV: {get_candidate_cv_url()}\n\n"
-        f"{OPT_OUT_LINE}"
+        f"CV: {get_candidate_cv_url()}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
 
@@ -464,8 +463,7 @@ def _build_data_driven_email(
         f"Best regards,\n"
         f"Ritish\n"
         f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"CV: {get_candidate_cv_url()}\n\n"
-        f"{OPT_OUT_LINE}"
+        f"CV: {get_candidate_cv_url()}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}
 

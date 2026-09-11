@@ -10,10 +10,7 @@ import re
 
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
 from outreach import generate_email
-from settings import get_sender_name
-
-# Sequence follow-ups use a soft opt-out line (separate from cold outbound rules)
-OPT_OUT_LINE = "If now's not the right time, just reply and I'll leave you alone."
+from settings import get_candidate_cv_url, get_sender_name
 
 DEFAULT_SEQUENCE_NAME = "default_multichannel"
 
@@ -116,43 +113,45 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
 
     if message_type == "email_followup_1":
         return {
-            "subject": f"Re: Quick idea for {company}",
+            "subject": f"Re: {company}",
             "body": (
                 f"Hi {first},\n\n"
-                f"Wanted to follow up with a different angle. We help service businesses "
-                f"turn cold outreach into a steady pipeline without adding manual admin.\n\n"
-                f"Would a quick 15-minute chat this week be worth exploring?\n\n"
-                f"{OPT_OUT_LINE}\n\n"
+                f"Following up in case my last note got buried. I'm a recent FinTech & Data "
+                f"Analytics graduate (Westminster) with hands-on experience in Python, SQL, and "
+                f"Power BI, plus practical automation work building Harmony Booths.\n\n"
+                f"Still keen to hear if {company} has room for a graduate analyst — even a brief "
+                f"chat would help me understand if it's a fit.\n\n"
                 f"Best,\n"
-                f"{get_sender_name()}"
+                f"{get_sender_name()}\n"
+                f"CV: {get_candidate_cv_url()}"
             ),
         }
 
     if message_type == "email_followup_2":
         return {
-            "subject": f"Proof this can work for {company}",
+            "subject": f"{company} — one more from me",
             "body": (
                 f"Hi {first},\n\n"
-                f"Quick note with a little more context: teams we support usually care most "
-                f"about consistent meetings, not more tools. That is where our outbound systems help.\n\n"
-                f"If useful, I can share a short example of what this could look like for {company}.\n\n"
-                f"{OPT_OUT_LINE}\n\n"
+                f"Didn't want to be a pest, but wanted to try once more. I've spent the past year "
+                f"building and running end-to-end automations for a real business (Harmony Booths) "
+                f"alongside my degree — happy to walk through that or my CV if it's useful context "
+                f"for a Graduate Data/Business Analyst role at {company}.\n\n"
                 f"Best,\n"
-                f"{get_sender_name()}"
+                f"{get_sender_name()}\n"
+                f"CV: {get_candidate_cv_url()}"
             ),
         }
 
     if message_type == "email_followup_3":
         return {
-            "subject": f"Worth exploring for {company}?",
+            "subject": f"Last one from me, {first}",
             "body": (
                 f"Hi {first},\n\n"
-                f"One last follow-up before I close the loop. If outbound growth is on your radar "
-                f"this quarter, I think there is a strong fit.\n\n"
-                f"If not, totally fine.\n\n"
-                f"{OPT_OUT_LINE}\n\n"
+                f"Final follow-up — if now isn't the right time, no worries at all. If a graduate "
+                f"analyst opening does come up at {company}, I'd still love to be considered.\n\n"
                 f"Best,\n"
-                f"{get_sender_name()}"
+                f"{get_sender_name()}\n"
+                f"CV: {get_candidate_cv_url()}"
             ),
         }
 
@@ -161,9 +160,8 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
             "subject": f"Closing the loop, {first}",
             "body": (
                 f"Hi {first},\n\n"
-                f"I have not heard back, so I will close the loop here. If outbound growth becomes "
-                f"a priority for {company} later, I am happy to reconnect.\n\n"
-                f"{OPT_OUT_LINE}\n\n"
+                f"Haven't heard back, so I'll leave it here for now. If a graduate analyst role "
+                f"opens up at {company} down the line, I'd welcome the chance to talk then.\n\n"
                 f"Best,\n"
                 f"{get_sender_name()}"
             ),
@@ -172,33 +170,33 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
     if message_type == "linkedin_connect":
         return {
             "body": (
-                f"Hi {first}, we help service businesses build predictable outbound pipelines. "
-                f"Wanted to connect because I think a few ideas could be relevant for {company}."
+                f"Hi {first}, I'm a Data & FinTech Analytics graduate exploring analyst roles and "
+                f"wanted to connect — {company}'s work caught my eye."
             )
         }
 
     if message_type == "linkedin_dm":
         return {
             "body": (
-                f"Hi {first}, thanks for connecting. We found you the same way we help clients find "
-                f"their prospects: automatically, but with research and personalization. "
-                f"Happy to share a quick example if useful."
+                f"Hi {first}, thanks for connecting. I recently finished my BSc in FinTech & Data "
+                f"Analytics and have hands-on experience in Python, SQL, Power BI, and workflow "
+                f"automation. Happy to share my CV if a graduate analyst role at {company} comes up."
             )
         }
 
     if message_type == "instagram_dm":
         return {
             "body": (
-                f"Hi {first}, quick note because {company} looks like the kind of business our outbound "
-                f"systems can help. If helpful, I can send a short idea."
+                f"Hi {first}, following up here in case email got missed — I'm a graduate looking "
+                f"for a Data/Business Analyst role and {company} stood out. Happy to send my CV over."
             )
         }
 
     if message_type == "sms_followup":
         return {
             "body": (
-                f"Hi {first}, this is {get_sender_name()}. We help businesses like {company} automate outbound. "
-                f"Happy to share a quick idea if useful."
+                f"Hi {first}, this is {get_sender_name()} — following up on my email about a "
+                f"graduate analyst role at {company}. Happy to send my CV if useful."
             )
         }
 

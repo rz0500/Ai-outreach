@@ -21,7 +21,7 @@ from database import (
     suppress_contact,
     suppress_prospect,
 )
-from outreach import OPT_OUT_LINE, generate_email
+from outreach import generate_email
 from sequencer import run_sequence
 
 TEST_DB = "test_compliance.db"
@@ -61,9 +61,17 @@ class TestCompliance(unittest.TestCase):
         suppress_prospect(pid, "unsubscribe", db_path=TEST_DB)
         self.assertEqual(get_prospects_in_sequence(TEST_DB), [])
 
-    def test_generate_email_includes_opt_out_line(self):
+    def test_generate_email_has_no_automated_optout_language(self):
+        """
+        This is personal 1:1 candidate outreach, not a bulk marketing list -
+        mass-mailer opt-out boilerplate ("reply no thanks and I'll stop")
+        reads as automated rather than a genuine application email, so it
+        should not appear in generated drafts.
+        """
         draft = generate_email({"name": "Jane Doe", "company": "Acme Corp"})
-        self.assertIn(OPT_OUT_LINE, draft["body"])
+        body_lower = draft["body"].lower()
+        self.assertNotIn("reply no thanks", body_lower)
+        self.assertNotIn("i'll stop", body_lower)
 
     def test_log_communication_event_records_event(self):
         pid = add_prospect(
