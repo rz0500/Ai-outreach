@@ -34,6 +34,12 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Yahoo sending mailbox switch (2026-09-29)
+- Moved outbound off SendGrid and off the `info@outreachempower.com` (Gmail/Workspace) mailbox onto a personal Yahoo mailbox using an app password: `.env` now has `SMTP_HOST=smtp.mail.yahoo.com`, `SMTP_PORT=465`, `IMAP_HOST=imap.mail.yahoo.com`, `IMAP_PORT=993`, `USE_SENDGRID=false` (old lines kept commented out in `.env` for rollback). Free Outlook.com was ruled out (needs OAuth2 for SMTP) and the secondary Gmail was blocked (no App Passwords option on the account).
+- House account `sender_email` set to the Yahoo address and marked verified; SMTP and IMAP logins both verified, and a test email sent through `deliverability.route_outbound_email` (provider=smtp) delivered.
+- **Mailivery is broken**: every API call (including reads on old campaign 137474) returns 401 Unauthenticated, so the key is invalid/expired. A new campaign for the Yahoo mailbox could not be created. Ritish needs to check the Mailivery dashboard (regenerate key or reactivate the plan), or decide to skip warmup and send at very low volume.
+- Not done: SendGrid account itself not yet cancelled (Ritish's call after confirming the test email arrived).
+
 ### De-automate outbound copy (2026-09-11)
 Ritish wants outreach to read as a genuine 1:1 email, not something a hiring manager can tell was sent by a mass-mail tool. Fixed the concrete things that give it away:
 - `deliverability.deliver_prospect_email()` no longer appends a `\n\n---\nTo unsubscribe: <url>` footer or passes `list_unsubscribe` to the sender — that header makes Gmail/Outlook show a native "Unsubscribe" chip next to the sender name, an instant mass-mailer tell. Suppression enforcement is unchanged and still triggers independently when a reply is classified `opt_out` (`inbox_monitor.py`), so recipients who ask to stop are still protected — it's just not advertised in every email.

@@ -38,6 +38,10 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `test_compliance.py` updated: asserts absence of automated opt-out language instead of its presence
 - 215/215 tests passing
 
+**Session additions (2026-09-29 - Yahoo mailbox switch):**
+- `.env` now sends via personal Yahoo SMTP (`smtp.mail.yahoo.com:465`) with `USE_SENDGRID=false`; IMAP reply monitoring uses `imap.mail.yahoo.com:993`; both use a Yahoo app password. House-account `sender_email` updated and verified in the DB. Test send via the real `route_outbound_email` path succeeded.
+- Mailivery API key returns 401 on all calls, so warmup could not be moved to the new mailbox; needs a key/plan fix in the Mailivery dashboard.
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 

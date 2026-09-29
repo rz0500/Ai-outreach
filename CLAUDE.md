@@ -240,9 +240,9 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 - `outreach.py` email builders (`_weak_data_email`, `_build_data_driven_email`) hardcode Ritish's bio/skills/Harmony Booths pitch and no longer use the old market-truth/tension/mechanism structure or `calendar_link`
 - `pdf_generator.generate_proposal()` now produces a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`); old prospect growth-breakdown deck logic and its now-unused helpers/validation gate were removed as dead code
 - Templates rebranded dashboard/settings/landing copy: "OutreachEmpower" -> "GradReach", "Prospects" -> "Employers", "Booked calls" -> "Interviews/Chats"
-- Mailivery campaign 137474 active for `info@outreachempower.com`, 10 emails/day
-- SendGrid enabled (`USE_SENDGRID=true`), outbound emails routing through it
-- House account (client_id=1) has `sender_email=info@outreachempower.com`, `sender_email_verified=1`
+- Mailivery: the API key currently returns 401 Unauthenticated on every call (checked 2026-09-29), so warmup is not confirmed running; old campaign 137474 was for the retired `info@outreachempower.com` mailbox. Needs the key regenerated / subscription checked in the Mailivery dashboard before a new campaign can be connected
+- SendGrid is no longer used: `USE_SENDGRID=false`, outbound goes over plain SMTP from a personal Yahoo mailbox (`smtp.mail.yahoo.com:465`, IMAP `imap.mail.yahoo.com:993`, app-password auth) so mail reads as a personal 1:1 email
+- House account (client_id=1) `sender_email` is the personal Yahoo address, `sender_email_verified=1` (Yahoo rejects a From that differs from the login)
 - DB at `c:\Users\ritis\Projects\leadgen\data\prospects.db` locally; needs persistent volume for production
 - .env had UTF-8 BOM removed - was silently breaking dotenv parsing of first key
 - Code is on GitHub at `rz0500/Ai-outreach` (master) - ready to deploy to Render
