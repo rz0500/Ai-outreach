@@ -63,6 +63,7 @@ If a meaningful repo-level change is made, update all three files.
 ### Lead discovery
 
 - **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
+- **`hunter_client.py`** - optional Hunter.io Domain Search lookup (`HUNTER_API_KEY`): returns the best named recruiter/HR contact (then executive/management) with title and verification status; never raises, returns `{}` without a key. Find-and-Fire tries it first, then falls back to `contact_finder`
 - **`google_maps_finder.py`** - Google Maps discovery (first results page only, max 5 per Find-and-Fire run)
 
 ### Web

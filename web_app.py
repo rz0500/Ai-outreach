@@ -1642,18 +1642,27 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     # Auto-extract email if the prospect has no email on file
     if not enriched.get("email") and website:
         from contact_finder import find_best_contact
+        from hunter_client import find_hiring_contact
 
-        contact = find_best_contact(website)
+        # A named recruiter/HR contact (Hunter, if configured) beats any inbox
+        # published on the company's own site.
+        contact = find_hiring_contact(website) or find_best_contact(website)
         extracted = contact.get("email", "")
         if extracted:
             database.update_prospect_email(prospect_id, extracted, db_path=database.DB_PATH)
             enriched = dict(enriched)   # make mutable
             enriched["email"] = extracted
             result["prospect_email"] = extracted
+            updates = {}
             # Greet a named person by name instead of "Owner/Manager"
             if contact.get("name") and (enriched.get("name") or "").strip() in ("", "Owner/Manager"):
-                database.update_prospect(prospect_id, name=contact["name"], db_path=database.DB_PATH)
-                enriched["name"] = contact["name"]
+                updates["name"] = contact["name"]
+            if contact.get("position"):
+                role_note = f"Contact role: {contact.get('name', '')}, {contact['position']}".replace(" ,", "")
+                updates["notes"] = ((enriched.get("notes") or "") + "\n" + role_note).strip()
+            if updates:
+                database.update_prospect(prospect_id, db_path=database.DB_PATH, **updates)
+                enriched.update(updates)
 
     # Step 2 — Email
     has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())

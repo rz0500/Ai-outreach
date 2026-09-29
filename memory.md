@@ -46,6 +46,9 @@ This file is the long-term memory for the repo. Update it when significant archi
 - `contact_finder.py` crawls contact/about/team/careers pages, decodes obfuscated emails, filters junk, and ranks careers@ > named person > generic > last resort. Replaces the old homepage-only scrape; Find-and-Fire also renames "Owner/Manager" prospects to a person found in the address. Yield on a 48-site London sample: 24 emails (50%) vs 16 (34%) before; realistic Maps-only yield is still ~10-20 relevant leads/day.
 - Sending goal is 50-100/day, which is unrealistic from a fresh free Yahoo account; plan is a gradual ramp and a custom-domain mailbox before passing ~20-30/day. Not yet built: multi-page Maps, more sources, per-company dedupe by domain.
 
+**Session additions (2026-09-29 - Hunter recruiter lookup):**
+- `hunter_client.py` finds a named recruiter/HR/executive contact per company domain via Hunter.io (needs `HUNTER_API_KEY`; free 50 credits/month, Starter $34 = 2,000). Pipeline tries Hunter, then `contact_finder`. Built and unit-tested with mocked HTTP only - not yet run against the live API because no key exists yet.
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 

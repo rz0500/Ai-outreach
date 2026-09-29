@@ -34,6 +34,12 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Hunter.io recruiter lookup (2026-09-29)
+- New `hunter_client.find_hiring_contact(url)` calls Hunter's Domain Search (`department=hr`, then `executive`, then `management`; personal addresses only; confidence >= 70; invalid-verification rejected) and picks the best person, scoring recruiter/talent titles above generic HR and penalising assistant/intern titles. Enabled only when `HUNTER_API_KEY` is set (`settings.get_hunter_api_key`, documented in `.env.example`); returns `{}` on any failure so the pipeline falls back to `contact_finder`.
+- `_run_pipeline_for_db_prospect` order is now Hunter -> website crawl. A named contact renames "Owner/Manager" prospects and adds a `Contact role: <name>, <title>` line to the prospect's notes so the AI email can speak to their role.
+- Hunter pricing (checked 2026-09-29): free = 50 credits/month, max 10 results per call; Starter $34/month = 2,000 credits. About one credit per company, so 50-100 new companies/day needs a paid plan. NOT yet verified against the live API - no key was available; covered by mocked tests only.
+- Ritish considered Apollo.io (bigger free tier, 75 credits/month) but its API access on the free plan is unconfirmed; Hunter was built first.
+
 ### Contact finder (2026-09-29)
 - New `contact_finder.py` replaces the old homepage-only email scrape (`web_app._extract_email_from_website` now delegates to it). It crawls the homepage plus contact/about/team/careers pages (links found on the homepage and fixed paths, max 8 extra pages), decodes Cloudflare-protected and "name [at] domain [dot] com" addresses, drops junk (press@, marketing@, editor@, noreply@, legal/privacy, billing) and third-party/file-name lookalikes, and ranks: careers/jobs/recruitment > named person > generic inbox (hello/info/contact) > sales/support and freemail as last resort. Only addresses that appear on the company's own site are returned; nothing is guessed.
 - Find-and-Fire pipeline (`_run_pipeline_for_db_prospect`) now uses `find_best_contact` and, when the address is a named person (e.g. `first.last@`), renames the prospect from "Owner/Manager" to that name so the greeting is personal.

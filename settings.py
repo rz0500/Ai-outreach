@@ -214,6 +214,15 @@ def get_max_real_sends_override() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Hunter.io recruiter / hiring-contact lookup
+# ---------------------------------------------------------------------------
+
+def get_hunter_api_key() -> str:
+    """Return the Hunter.io API key, or empty string if not configured."""
+    return os.getenv("HUNTER_API_KEY", "").strip()
+
+
+# ---------------------------------------------------------------------------
 # Mailivery external warmup
 # ---------------------------------------------------------------------------
 
