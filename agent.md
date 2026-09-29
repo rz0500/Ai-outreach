@@ -4,6 +4,10 @@ Read this at the start of every session. Update after meaningful changes.
 
 ---
 
+## Current Status (2026-09-29)
+
+Built and tested (256 tests), **not started**. Ritish wants everything sorted before launch: do not run `start_gradreach.bat`, `python web_app.py` with the scheduler, or otherwise start the autopilot unless they ask. Any experiment must use a COPY of the database (set `DB_PATH` to the copy before importing `web_app`) and must never send real mail. Remaining work is the pre-launch checklist under "Next Session - Planned Tasks" below.
+
 ## Recently Completed
 
 ### GradReach pivot (2026-09-08)
@@ -207,7 +211,11 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. **Deploy to Render** - Web Service + Background Worker + Persistent Disk; set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY` (strong random), `SETTINGS_PASSWORD` (strong), and all keys; see deployment plan `snoopy-pondering-hickey.md`
-2. Configure Mailivery webhook URL/header in Mailivery dashboard to `https://your-app.onrender.com/webhook/mailivery`
-3. Set `OPERATOR_EMAIL` in production env vars
-4. More `/ops` polish and deeper workspace drilldowns
+1. **Safe end-to-end rehearsal** on a copy of the DB with every recipient set to Ritish's own inbox: real scheduled send -> step logged -> day-5 follow-up scheduled -> Ritish replies -> `inbox_monitor` classifies it -> alert email arrives. Not yet done; the scheduler send loop has never run for real.
+2. **Ritish approves the email wording** (sample coffee-chat email + follow-ups) and the **target list** (`lead_discovery.QUERIES` x `CITIES`, currently 12 company types x 17 UK/IE/NL cities).
+3. **Decide where it runs**: PC only sends while on and awake (`start_gradreach.bat`); a cloud host (~GBP 7/month) is the only truly hands-off option. Add a Windows "at log on" task if staying on the PC.
+4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.
+5. **Yahoo mailbox warm-up**: check the account's age; if new, use it normally (real mail to and from friends) for about a week before launch.
+6. **Reset `WARMUP_START_DATE` in `.env` to the real launch day** (it currently holds the day it was configured, 2026-09-29) so the 5/10/15/20 per day ramp starts at launch.
+7. Optional: free **Adzuna + Reed** API keys -> build the job-board lead source (companies with live analyst openings); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
+8. Housekeeping: cancel SendGrid once a test send is confirmed; check whether the old `info@outreachempower.com` mailbox is a paid Google Workspace plan; revoke the unused `STRIPE_SECRET_KEY` in `.env`.

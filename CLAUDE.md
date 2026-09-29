@@ -240,27 +240,19 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 | Tests | `test_mailivery_client.py` - all HTTP calls mocked, 21 tests. |
 | Env vars | `MAILIVERY_ENABLED=false`, `MAILIVERY_API_KEY=`, `MAILIVERY_WEBHOOK_SECRET=`, `MAILIVERY_OWNER_EMAIL=` |
 
-## Live State (as of 2026-09-08)
+## Live State (as of 2026-09-29)
 
-- **Pivoted to GradReach** - the platform now runs in candidate-outreach mode for Ritish's graduate job search rather than as a client-facing B2B SaaS; underlying multi-tenant/deliverability/scheduler infrastructure is unchanged
-- House account (`client_id=1`) reseeded as `name='Ritish'`, with `degree_title='BSc FinTech & Data Analytics'`, `university='University of Westminster'`, `target_roles`, `skills`, `portfolio_url='https://harmonybooths.com'`, `cv_url` (hosted CV artifact link), `work_eligibility='UK & EU (Italian Passport)'`
-- Email sign-offs and the pitch PDF's CTA line now link to `settings.get_candidate_cv_url()` (a hosted CV link) instead of `harmonybooths.com`; Harmony Booths is still referenced in body copy as commercial-experience proof, just no longer the clickable link
-- `templates/client_settings.html` gained a "CV / Resume link" field (`cv_url`) that was previously missing even though `database.py` and `web_app.py` already supported the column
-- `ai_engine.py` email/scoring/research/reply prompts rewritten to pitch Ritish to hiring managers instead of pitching an agency to prospects
-- `outreach.py` email builders (`_weak_data_email`, `_build_data_driven_email`) hardcode Ritish's bio/skills/Harmony Booths pitch and no longer use the old market-truth/tension/mechanism structure or `calendar_link`
-- `pdf_generator.generate_proposal()` now produces a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`); old prospect growth-breakdown deck logic and its now-unused helpers/validation gate were removed as dead code
-- Templates rebranded dashboard/settings/landing copy: "OutreachEmpower" -> "GradReach", "Prospects" -> "Employers", "Booked calls" -> "Interviews/Chats"
-- Mailivery: the API key currently returns 401 Unauthenticated on every call (checked 2026-09-29), so warmup is not confirmed running; old campaign 137474 was for the retired `info@outreachempower.com` mailbox. Needs the key regenerated / subscription checked in the Mailivery dashboard before a new campaign can be connected
-- SendGrid is no longer used: `USE_SENDGRID=false`, outbound goes over plain SMTP from a personal Yahoo mailbox (`smtp.mail.yahoo.com:465`, IMAP `imap.mail.yahoo.com:993`, app-password auth) so mail reads as a personal 1:1 email
-- House account (client_id=1) `sender_email` is the personal Yahoo address, `sender_email_verified=1` (Yahoo rejects a From that differs from the login)
-- DB at `c:\Users\ritis\Projects\leadgen\data\prospects.db` locally; needs persistent volume for production
-- .env had UTF-8 BOM removed - was silently breaking dotenv parsing of first key
-- Code is on GitHub at `rz0500/Ai-outreach` (master) - ready to deploy to Render
-- `cloudscraper` replaces raw `requests` in `research_agent.py` - bypasses Cloudflare JS challenges, tries /about /services pages when homepage text is thin
-- Stripe fully removed (no routes, no dependency)
-- `/onboard` is now lead capture only; `/ops` has manual Provision button
-- Emails scheduled at 08:00 prospect local time via `timezonefinder` + Google Maps Geocoding
-- Daily reports at 17:00 UTC replace Monday weekly reports; go to client + `OPERATOR_EMAIL`
+**Status: built and tested, NOT started.** Ritish asked to get everything sorted before launching; nothing has been sent by the autopilot and `start_gradreach.bat` has never been run. The only real emails sent since the pivot were two manual test emails.
+
+- **Product**: GradReach is a single-user tool that emails hiring managers and analytics leads asking for a coffee chat (analyst-type roles), not a job application. Ritish works from `/ops`; the `/client` flow and public landing page are unused but left in place.
+- **Sender**: personal Yahoo mailbox over plain SMTP (`smtp.mail.yahoo.com:465`, IMAP `imap.mail.yahoo.com:993`, app-password auth), `USE_SENDGRID=false`. House account (`client_id=1`) `sender_email` is that address, `sender_email_verified=1` (Yahoo rejects a From that differs from the login). SendGrid is unused (account not yet cancelled). Credentials live only in the gitignored `.env`; the repo is public.
+- **Autopilot loop** (scheduler thread in `web_app.py`): `lead_discovery` (rotating Maps searches, only new companies) -> `_run_pipeline_for_db_prospect(require_email=True, make_pdf=False)` (contact via `hunter_client` if `HUNTER_API_KEY` set, else `contact_finder` website crawl; AI email with quality-gate retries) -> send scheduled 08:00 recipient-local -> `_send_scheduled_outreach` within the daily cap -> `record_email_step_sent` -> `candidate_email` follow-ups at day 5 and 12 -> replies polled over IMAP and alerted to Ritish's real inbox (`clients.email` / `OPERATOR_EMAIL`) plus a 17:00 UTC daily report.
+- **Send ramp**: `warmup_engine._RAMP` 5/day (days 1-7), 10, 15, then 20/day cap, counted from `WARMUP_START_DATE`; house `daily_send_limit` must stay 0 for the ramp to apply.
+- **Copy**: coffee-chat ask with one CV proof point per email (5% -> 20% conversion, 80% less manual work, 2% -> 12% reply rate), never mentions the current employer, no CV link or attachment (the Claude artifact CV page is private), sign-off shows LinkedIn from `CANDIDATE_LINKEDIN` in `.env`. Greeting is "Hi there," for placeholder names. Subjects are plain ("<Co> analytics team", "Coffee chat about <Co>?"). No unsubscribe footer/header or "reply no thanks" line (personal 1:1 tone); suppression still triggers on `opt_out` replies.
+- **Mailivery**: subscription expired, API key returns 401; `MAILIVERY_ENABLED=false`. Free plan (10 warmups/day) or skipping it are the options.
+- **Data**: `data/prospects.db` locally (needs a persistent volume if ever hosted). 48 pre-pivot agency drafts were marked `rejected_draft`; old agency-era prospects remain in the DB (deduped, never re-emailed). One qualified real lead (London Data Consulting) has no contact email.
+- **Tests**: 256 passing. Development lesson: tests must mock `sequence_dispatcher.deliver_prospect_email`; one real email ("Re: Acme Data" to a fictional address) was sent by an early lifecycle test.
+- Infrastructure unchanged from the SaaS era: multi-tenant DB, deliverability layer, ops dashboard, SendGrid/Mailivery integrations (dormant), Stripe fully removed, `cloudscraper` research crawler, daily reports at 17:00 UTC.
 
 ## Important Rules (additions)
 
@@ -271,8 +263,13 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 - SendGrid webhook returns 403 (not 400) on invalid/missing signature
 - `warmup_engine.get_combined_warmup_status()` derives live health score from mailbox API call - never shows "Score loading..." when campaign is active
 
-## Planned Next Tasks
+## Planned Next Tasks (pre-launch checklist)
 
-1. **Deploy to Render** - set `DB_PATH=/var/data/prospects.db`, `APP_BASE_URL`, `OPERATOR_EMAIL`, `SECRET_KEY`, `SETTINGS_PASSWORD` (strong), and all keys from `.env`
-2. Configure Mailivery webhook to `https://your-app.onrender.com/webhook/mailivery` once deployed
-3. Set `OPERATOR_EMAIL` in production so lead alerts and daily reports arrive
+1. **Safe end-to-end rehearsal** on a copy of the DB with every recipient set to Ritish's own inbox: real scheduled send -> step logged -> day-5 follow-up scheduled -> Ritish replies -> `inbox_monitor` classifies it -> alert email arrives. Not yet done; the scheduler send loop has never run for real.
+2. **Ritish approves the email wording** (sample coffee-chat email + follow-ups) and the **target list** (`lead_discovery.QUERIES` x `CITIES`, currently 12 company types x 17 UK/IE/NL cities).
+3. **Decide where it runs**: PC only sends while on and awake (`start_gradreach.bat`); a cloud host (~GBP 7/month) is the only truly hands-off option. Add a Windows "at log on" task if staying on the PC.
+4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.
+5. **Yahoo mailbox warm-up**: check the account's age; if new, use it normally (real mail to and from friends) for about a week before launch.
+6. **Reset `WARMUP_START_DATE` in `.env` to the real launch day** (it currently holds the day it was configured, 2026-09-29) so the 5/10/15/20 per day ramp starts at launch.
+7. Optional: free **Adzuna + Reed** API keys -> build the job-board lead source (companies with live analyst openings); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
+8. Housekeeping: cancel SendGrid once a test send is confirmed; check whether the old `info@outreachempower.com` mailbox is a paid Google Workspace plan; revoke the unused `STRIPE_SECRET_KEY` in `.env`.

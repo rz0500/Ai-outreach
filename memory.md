@@ -59,6 +59,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Test-safety lesson: never let a test reach the dispatcher's immediate-send fallback (one real email went to sam@acmedata.com during development); mock `sequence_dispatcher.deliver_prospect_email`.
 
 **Completed modules:**
+(added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `start_gradreach.bat`)
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 
 **Current product shape:**
@@ -126,10 +127,16 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Code pushed to GitHub at `rz0500/Ai-outreach` - ready to deploy to Render
 - `.gitignore` updated to exclude pip packages accidentally installed to repo root
 
-**Deferred / next later:**
-1. **Deploy to Render** - Web Service + Background Worker + Persistent Disk; set `DB_PATH`, `APP_BASE_URL`, `OPERATOR_EMAIL`, and all env vars
-2. Mailivery dashboard setup: configure webhook URL to `https://your-app.onrender.com/webhook/mailivery`
-3. More `/ops` polish and deeper workspace drilldowns
+**Deferred / next later (pre-launch checklist):**
+1. **Safe end-to-end rehearsal** on a copy of the DB with every recipient set to Ritish's own inbox: real scheduled send -> step logged -> day-5 follow-up scheduled -> Ritish replies -> `inbox_monitor` classifies it -> alert email arrives. Not yet done; the scheduler send loop has never run for real.
+2. **Ritish approves the email wording** (sample coffee-chat email + follow-ups) and the **target list** (`lead_discovery.QUERIES` x `CITIES`, currently 12 company types x 17 UK/IE/NL cities).
+3. **Decide where it runs**: PC only sends while on and awake (`start_gradreach.bat`); a cloud host (~GBP 7/month) is the only truly hands-off option. Add a Windows "at log on" task if staying on the PC.
+4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.
+5. **Yahoo mailbox warm-up**: check the account's age; if new, use it normally (real mail to and from friends) for about a week before launch.
+6. **Reset `WARMUP_START_DATE` in `.env` to the real launch day** (it currently holds the day it was configured, 2026-09-29) so the 5/10/15/20 per day ramp starts at launch.
+7. Optional: free **Adzuna + Reed** API keys -> build the job-board lead source (companies with live analyst openings); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
+8. Housekeeping: cancel SendGrid once a test send is confirmed; check whether the old `info@outreachempower.com` mailbox is a paid Google Workspace plan; revoke the unused `STRIPE_SECRET_KEY` in `.env`.
+
 ---
 
 ## Architectural Decisions
@@ -197,7 +204,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 |---|---|
 | `clients` | One row per workspace; id=1 is the house account |
 | `prospects` | Core lead records (partitioned by `client_id`) |
-| `outreach` | Email drafts and send log (partitioned by `client_id`) |
+| `outreach` | Email drafts and send log (partitioned by `client_id`); `send_after` schedules the send, `sequence_name`/`sequence_step` tag which follow-up step a row is |
 | `suppression_list` | Compliance exclusions (partitioned by `client_id`) |
 | `communication_events` | Audit trail of touchpoints (partitioned by `client_id`) |
 | `sequence_enrollments` | Multi-channel sequence state (partitioned by `client_id`) |
