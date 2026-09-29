@@ -143,6 +143,7 @@ If a meaningful repo-level change is made, update all three files.
 - Outbound copy is a coffee-chat ask for analyst roles (not a job application): no CV link/attachment on first contact, sign-off uses `CANDIDATE_LINKEDIN` from `.env`; do not reintroduce agency wording (pipeline/outbound/demand) in subjects or templates
 - Follow-ups use the email-only `candidate_email` sequence (day 0 / 5 / 12, `SEQUENCE_NAME` env). Every scheduled email must be tagged (`outreach.sequence_name/sequence_step`) and logged with `sequence_dispatcher.record_email_step_sent` after sending, otherwise follow-ups never become due. Tests must mock `sequence_dispatcher.deliver_prospect_email` (the dispatcher has an immediate-send fallback that bypasses the daily cap)
 - `start_gradreach.bat` runs the app + scheduler with auto-restart; the send ramp is `warmup_engine._RAMP` (5/10/15/20 per day from `WARMUP_START_DATE`), and the house account's `daily_send_limit` must be 0 for the ramp to apply
+- Tests must never launch external apps or call paid/live APIs (the deck test used to open PowerPoint through `deck_generator._convert_deck_to_pdf_windows` and call Claude); stub `deck_generator._convert_deck_to_pdf` and clear `ANTHROPIC_API_KEY` as `test_deck_generator.py` does
 
 ## Running
 

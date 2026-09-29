@@ -38,6 +38,11 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### PowerPoint popping up on every test run (2026-09-30)
+- Cause: `test_deck_generator.py::test_generate_deck_creates_pptx` called the real `generate_deck()`. `run_deck_qa` always converts the deck to PDF, and with no LibreOffice (`soffice`) installed `deck_generator._convert_deck_to_pdf_windows` launches PowerPoint via PowerShell COM. Every full test run opened PowerPoint, and the same test also made a live Claude call (`ANTHROPIC_API_KEY` set -> AI deck copy) and took ~30s.
+- Fix: the test now stubs `_convert_deck_to_pdf` / `_rasterize_pdf` and blanks `ANTHROPIC_API_KEY` (template copy); it runs in ~0.1s with no app launch, no API cost and no leftover `deck_test_*` folder. The autopilot never calls `generate_deck`; only the old `/api/...deck` routes in `web_app.py` do.
+- Rule: tests must never launch external apps or hit paid APIs.
+
 ### Hands-free autopilot (2026-09-29)
 Goal: one Yahoo mailbox, no domain, a process that runs itself and gets replies. Audit of the existing scheduler found several things that would have broken that; all fixed:
 - **Lead discovery** used the house account's `niche` ("Graduate Analyst & Operations Outreach") as the Google Maps query, and `find_and_add_prospects` returns already-known companies again (re-researched daily). New `lead_discovery.py`: rotates (query x city) pairs (12 analyst-friendly company types x 17 UK/IE/NL cities), reads up to 3 Maps pages per search, skips irrelevant place types/closed/no-website, dedupes by name AND website domain, returns only NEW prospects; rotation index saved in `data/discovery_state.json`.

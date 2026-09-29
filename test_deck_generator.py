@@ -2,8 +2,17 @@ import os
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 
 import deck_generator
+
+
+def _fake_pdf_export(filepath):
+    """Stand-in for the real PDF export, which opens PowerPoint/LibreOffice on this machine."""
+    pdf_path = os.path.splitext(filepath)[0] + ".pdf"
+    with open(pdf_path, "wb") as fh:
+        fh.write(b"%PDF-1.4 test stub\n")
+    return pdf_path, "ok (stub)"
 
 
 def _prospect(**overrides):
@@ -56,7 +65,10 @@ class TestDeckGenerator(unittest.TestCase):
 
         self.assertEqual(report["copy_issues"], [])
 
-    def test_generate_deck_creates_pptx(self):
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""})  # template copy: no live API call
+    @patch.object(deck_generator, "_rasterize_pdf", return_value=([], "skipped: stubbed in test"))
+    @patch.object(deck_generator, "_convert_deck_to_pdf", side_effect=_fake_pdf_export)
+    def test_generate_deck_creates_pptx(self, _mock_convert, _mock_raster):
         original_output_dir = deck_generator.OUTPUT_DIR
         output_dir = os.path.join(os.getcwd(), f"deck_test_{uuid.uuid4().hex}")
         try:
