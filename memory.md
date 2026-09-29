@@ -49,6 +49,10 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-29 - Hunter recruiter lookup):**
 - `hunter_client.py` finds a named recruiter/HR/executive contact per company domain via Hunter.io (needs `HUNTER_API_KEY`; free 50 credits/month, Starter $34 = 2,000). Pipeline tries Hunter, then `contact_finder`. Built and unit-tested with mocked HTTP only - not yet run against the live API because no key exists yet.
 
+**Session additions (2026-09-29 - coffee-chat framing):**
+- Outreach is now framed as a coffee-chat ask for analyst-type roles (not a job application): AI prompt, fallback templates, subjects and follow-up sequence all rewritten; one CV proof point per email; no CV link or attachment (the Claude artifact CV page is private so recipients probably can't open it); sign-off shows LinkedIn from `CANDIDATE_LINKEDIN` (.env only, repo is public).
+- Pitch PDF still generated but no longer attached (`pdf_path` not stored on outreach rows).
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 

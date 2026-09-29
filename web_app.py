@@ -1725,17 +1725,9 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
         result["stage_statuses"]["pdf"] = "error"
         result["stage_errors"]["pdf"] = str(exc)
 
-    # Persist the PDF path on the outreach draft so send can attach it
-    if result["outreach_id"] and pdf_filepath and os.path.isfile(pdf_filepath):
-        try:
-            with database._get_connection(database.DB_PATH) as conn:
-                conn.execute(
-                    "UPDATE outreach SET pdf_path = ? WHERE id = ?",
-                    (pdf_filepath, result["outreach_id"]),
-                )
-                conn.commit()
-        except Exception as exc:
-            print(f"[Pipeline] pdf_path update failed for '{company}': {exc}")
+    # The pitch PDF is generated for reference but deliberately NOT attached to the
+    # outreach draft: the first email is a low-pressure coffee-chat ask, and a
+    # cold attachment reads as a mass application (and hurts a new mailbox).
 
     if stage_hook:
         stage_hook(

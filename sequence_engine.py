@@ -10,7 +10,7 @@ import re
 
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
 from outreach import generate_email
-from settings import get_candidate_cv_url, get_sender_name
+from settings import get_candidate_linkedin, get_sender_name
 
 DEFAULT_SEQUENCE_NAME = "default_multichannel"
 
@@ -94,6 +94,15 @@ def get_due_touchpoints(
     return due
 
 
+def _signoff() -> str:
+    """Follow-up sign-off: name plus LinkedIn when configured."""
+    lines = ["Thanks,", get_sender_name()]
+    linkedin = get_candidate_linkedin()
+    if linkedin:
+        lines.append(f"LinkedIn: {linkedin}")
+    return "\n".join(lines)
+
+
 def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
     """
     Build a channel-specific message payload for a due touchpoint.
@@ -117,28 +126,24 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
             "body": (
                 f"Hi {first},\n\n"
                 f"Following up in case my last note got buried. I'm a recent FinTech & Data "
-                f"Analytics graduate (Westminster) with hands-on experience in Python, SQL, and "
-                f"Power BI, plus practical automation work building Harmony Booths.\n\n"
-                f"Still keen to hear if {company} has room for a graduate analyst — even a brief "
-                f"chat would help me understand if it's a fit.\n\n"
-                f"Best,\n"
-                f"{get_sender_name()}\n"
-                f"CV: {get_candidate_cv_url()}"
+                f"Analytics graduate (Westminster) looking to build a career in analytics, and "
+                f"I'd really value 15 minutes to hear how the team at {company} works with data.\n\n"
+                f"Would a coffee chat or short call suit you sometime soon?\n\n"
+                f"{_signoff()}"
             ),
         }
 
     if message_type == "email_followup_2":
         return {
-            "subject": f"{company} — one more from me",
+            "subject": f"{company}: one more from me",
             "body": (
                 f"Hi {first},\n\n"
-                f"Didn't want to be a pest, but wanted to try once more. I've spent the past year "
-                f"building and running end-to-end automations for a real business (Harmony Booths) "
-                f"alongside my degree — happy to walk through that or my CV if it's useful context "
-                f"for a Graduate Data/Business Analyst role at {company}.\n\n"
-                f"Best,\n"
-                f"{get_sender_name()}\n"
-                f"CV: {get_candidate_cv_url()}"
+                f"One line of context in case it helps: alongside my degree I run the data and "
+                f"automation side of my own business (Harmony Booths), where A/B testing took "
+                f"booking conversion from 5% to 20%. That's why I'm keen to learn how "
+                f"{company} approaches analytics.\n\n"
+                f"Are you open to a short chat in the next week or two?\n\n"
+                f"{_signoff()}"
             ),
         }
 
@@ -147,11 +152,9 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
             "subject": f"Last one from me, {first}",
             "body": (
                 f"Hi {first},\n\n"
-                f"Final follow-up — if now isn't the right time, no worries at all. If a graduate "
-                f"analyst opening does come up at {company}, I'd still love to be considered.\n\n"
-                f"Best,\n"
-                f"{get_sender_name()}\n"
-                f"CV: {get_candidate_cv_url()}"
+                f"Final note from me. If a coffee chat about analytics at {company} ever makes "
+                f"sense, I'd be glad to make time. If not, no worries at all.\n\n"
+                f"{_signoff()}"
             ),
         }
 
@@ -160,43 +163,42 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
             "subject": f"Closing the loop, {first}",
             "body": (
                 f"Hi {first},\n\n"
-                f"Haven't heard back, so I'll leave it here for now. If a graduate analyst role "
-                f"opens up at {company} down the line, I'd welcome the chance to talk then.\n\n"
-                f"Best,\n"
-                f"{get_sender_name()}"
+                f"Haven't heard back, so I'll leave it here for now. If you're ever open to a "
+                f"conversation about analytics at {company}, I'd welcome it.\n\n"
+                f"{_signoff()}"
             ),
         }
 
     if message_type == "linkedin_connect":
         return {
             "body": (
-                f"Hi {first}, I'm a Data & FinTech Analytics graduate exploring analyst roles and "
-                f"wanted to connect — {company}'s work caught my eye."
+                f"Hi {first}, I'm a Data & FinTech Analytics graduate looking to build a career "
+                f"in analytics. {company}'s work caught my eye and I'd love to be connected."
             )
         }
 
     if message_type == "linkedin_dm":
         return {
             "body": (
-                f"Hi {first}, thanks for connecting. I recently finished my BSc in FinTech & Data "
-                f"Analytics and have hands-on experience in Python, SQL, Power BI, and workflow "
-                f"automation. Happy to share my CV if a graduate analyst role at {company} comes up."
+                f"Hi {first}, thanks for connecting. I recently finished a BSc in FinTech & Data "
+                f"Analytics and I'm keen to learn how {company} uses data. Would you be open to a "
+                f"short coffee chat or call in the next couple of weeks?"
             )
         }
 
     if message_type == "instagram_dm":
         return {
             "body": (
-                f"Hi {first}, following up here in case email got missed — I'm a graduate looking "
-                f"for a Data/Business Analyst role and {company} stood out. Happy to send my CV over."
+                f"Hi {first}, following up here in case email got missed. I'm a graduate building "
+                f"a career in analytics and {company} stood out. Open to a short chat sometime?"
             )
         }
 
     if message_type == "sms_followup":
         return {
             "body": (
-                f"Hi {first}, this is {get_sender_name()} — following up on my email about a "
-                f"graduate analyst role at {company}. Happy to send my CV if useful."
+                f"Hi {first}, this is {get_sender_name()}. I emailed about a short coffee chat on "
+                f"analytics at {company}. Open to it if you have a moment?"
             )
         }
 

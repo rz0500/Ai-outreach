@@ -139,6 +139,7 @@ If a meaningful repo-level change is made, update all three files.
 - `DB_PATH` env var controls database location - set to a persistent volume path in production
 - `clients` table carries candidate-profile columns (`degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`) used by AI prompts, `outreach.py` email templates, and `pdf_generator.py`; these are additive migrations via `ALTER TABLE ... ADD COLUMN` guarded by `try/except sqlite3.OperationalError`
 - `pdf_generator.generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; only `company` is a required field (no enrichment-data gate)
+- Outbound copy is a coffee-chat ask for analyst roles (not a job application): no CV link/attachment on first contact, sign-off uses `CANDIDATE_LINKEDIN` from `.env`; do not reintroduce agency wording (pipeline/outbound/demand) in subjects or templates
 
 ## Running
 

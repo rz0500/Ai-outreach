@@ -52,7 +52,7 @@ from email_validator import (
     score_internal_quality,
     validate_email,
 )
-from settings import get_candidate_cv_url
+from settings import get_candidate_linkedin
 
 # ---------------------------------------------------------------------------
 # Signal keywords
@@ -255,36 +255,32 @@ def _operator_risk_reversal(company: str, market_label: str) -> str:
     )
 
 
+def _coffee_chat_subject(company: str, first: str) -> str:
+    """Plain, human subject for a coffee-chat ask; varies by company but is stable per company."""
+    options = (
+        f"{company} analytics team",
+        f"Question about {company}'s data work",
+        f"Coffee chat about {company}?",
+        f"Early-career analytics at {company}",
+    )
+    return options[sum(ord(c) for c in company) % len(options)]
+
+
 def _build_angle_subject(
     prospect: dict,
     analysis: dict,
     angle: str,
     rewrite_pass: int = 0,
 ) -> str:
-    """Return a short subject that varies with the strongest email angle."""
+    """Return a short, human subject for the coffee-chat email."""
     company = _clean(prospect.get("company")) or "your company"
     first = _first_name(prospect.get("name", "there"))
-    competitor = _clean(analysis.get("relevant_competitor"))
-    feature = _clean(analysis.get("key_offer_or_feature"))
 
     if rewrite_pass > 0:
         return f"quick question, {first}"
     if angle == "hiring signal" and _clean(analysis.get("recent_signal")):
-        return f"{company} hiring"
-    if angle == "competitor" and competitor:
-        return f"{company} and {competitor}"
-    if angle == "product feature" and feature:
-        short_feature = feature.split(",")[0].split(" with ")[0].strip()
-        return f"{company} {short_feature}" if len(short_feature) <= 36 else company
-    if angle == "outbound gap":
-        return f"{company} pipeline"
-    if angle == "funnel weakness":
-        return f"{company} demand"
-    if angle == "ICP mismatch":
-        return f"{company} buyers"
-    if angle == "positioning":
-        return f"{company} outbound"
-    return company
+        return f"{company} analytics team"
+    return _coffee_chat_subject(company, first)
 
 
 def _detect_signals(notes: str) -> dict:
@@ -415,25 +411,43 @@ def choose_primary_angle(analysis: dict) -> str:
     return "positioning"
 
 
+def _signature() -> str:
+    """Sign-off block: name, degree, and LinkedIn when configured."""
+    lines = [
+        "Thanks,",
+        "Ritish",
+        "BSc FinTech & Data Analytics | University of Westminster",
+    ]
+    linkedin = get_candidate_linkedin()
+    if linkedin:
+        lines.append(f"LinkedIn: {linkedin}")
+    return "\n".join(lines)
+
+
+_COFFEE_CHAT_ASK = (
+    "I'm looking to build a career in analytics and would value 15 minutes to hear "
+    "how your team uses data and what makes an early-career analyst stand out. "
+    "Would a coffee chat or short call in the next couple of weeks suit you?"
+)
+
+
 def _weak_data_email(prospect: dict, analysis: dict) -> dict:
     """
-    Fallback email for thin-data prospects tailored for graduate career outreach.
+    Fallback email for thin-data prospects: a low-pressure coffee-chat ask,
+    not a job application.
     """
     first   = _first_name(prospect.get("name", "there"))
     company = prospect.get("company", "your company")
 
-    subject = f"{company} analytics & ops"
+    subject = _coffee_chat_subject(company, first)
     body = (
         f"Hi {first},\n\n"
-        f"Noticed {company}'s growth and wanted to reach out directly to your team.\n\n"
+        f"Noticed {company}'s work and wanted to ask you something directly.\n\n"
         f"I recently completed my BSc in FinTech & Data Analytics at the University of Westminster. "
-        f"Alongside Python, SQL, and Power BI, I've spent the past year building workflow automations (n8n, Twilio/Stripe APIs) and managing conversion funnels for Harmony Booths.\n\n"
-        f"I'm exploring graduate Data Analyst, Business Analyst, and RevOps roles. I'd love to bring this practical technical and commercial skill set to {company}.\n\n"
-        f"Open to a brief 10-minute coffee chat or quick portfolio review this week?\n\n"
-        f"Best regards,\n"
-        f"Ritish\n"
-        f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"CV: {get_candidate_cv_url()}"
+        f"Alongside my degree I've run the data and automation side of my own business, "
+        f"Harmony Booths, using Python, SQL, Power BI and n8n.\n\n"
+        f"{_COFFEE_CHAT_ASK}\n\n"
+        f"{_signature()}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": True}
 
@@ -445,7 +459,8 @@ def _build_data_driven_email(
     rewrite_pass: int = 0,
 ) -> dict:
     """
-    Build a conversational cold email for graduate career outreach.
+    Build a conversational coffee-chat email (not a job application) from
+    structured analysis and one primary angle.
     """
     first   = _first_name(prospect.get("name", "there"))
     company = prospect.get("company", "your company")
@@ -455,15 +470,12 @@ def _build_data_driven_email(
 
     body = (
         f"Hi {first},\n\n"
-        f"Noticed how {company} is positioned around {headline} and wanted to reach out directly.\n\n"
+        f"Noticed how {company} is positioned around {headline} and wanted to ask you something directly.\n\n"
         f"I recently finished my BSc in FinTech & Data Analytics at Westminster. "
-        f"Alongside Python, SQL, and Power BI, I've built commercial automations (n8n, Stripe/Twilio APIs) and managed conversion funnels for Harmony Booths.\n\n"
-        f"I'd love to help {company} streamline reporting dashboards, analyze user data, or optimize RevOps funnels as a Graduate Data/Business Analyst.\n\n"
-        f"Open to a brief 10-minute coffee chat or quick portfolio review this week?\n\n"
-        f"Best regards,\n"
-        f"Ritish\n"
-        f"BSc FinTech & Data Analytics | University of Westminster\n"
-        f"CV: {get_candidate_cv_url()}"
+        f"I've also run the data and automation side of my own business, Harmony Booths, "
+        f"where A/B testing with Python, SQL and Power BI took booking conversion from 5% to 20%.\n\n"
+        f"{_COFFEE_CHAT_ASK}\n\n"
+        f"{_signature()}"
     )
     return {"subject": subject, "body": body, "needs_enrichment": False}
 
