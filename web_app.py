@@ -2821,6 +2821,17 @@ def _send_scheduled_outreach() -> None:
             print(f"[Scheduled send] Failed for outreach_id={outreach_id}: {send_err}")
             if "Daily send limit" in (send_err or ""):
                 break  # cap reached: the rest wait for tomorrow
+            from deliverability import classify_delivery_failure
+
+            if classify_delivery_failure(send_err) == "invalid_recipient":
+                # The server refused this address outright: stop, don't retry it every cycle.
+                database.suppress_prospect(
+                    prospect_id, reason="invalid_recipient_refused", source="scheduled_send", db_path=_db
+                )
+                database.update_sequence_enrollment_status(
+                    prospect_id, "paused", paused_reason="invalid_recipient", db_path=_db
+                )
+                database.skip_pending_outreach(prospect_id, db_path=_db)
 
 
 # ---------------------------------------------------------------------------

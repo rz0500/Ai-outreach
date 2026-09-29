@@ -55,6 +55,7 @@ If a meaningful repo-level change is made, update all three files.
   - `get_pending_sends()` - outreach rows with `send_after <= now` and `sent_at IS NULL`
 
 ### Delivery
+- **`bounce_handler.py`** - detects delivery-failure notices and, on a hard bounce, suppresses the prospect, pauses the sequence and cancels queued drafts (called from `inbox_monitor`)
 - **`mailer.py`** - SMTP delivery with sender override and optional `html_body` parameter
 - **`sendgrid_mailer.py`** - SendGrid delivery with `html_body` support (used as `html_content`)
 - **`deliverability.py`** - shared outbound suppression checks, failure classification, event logging, per-client sender identity, unsubscribe token generation/verification
@@ -141,6 +142,7 @@ If a meaningful repo-level change is made, update all three files.
 - `clients` table carries candidate-profile columns (`degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`) used by AI prompts, `outreach.py` email templates, and `pdf_generator.py`; these are additive migrations via `ALTER TABLE ... ADD COLUMN` guarded by `try/except sqlite3.OperationalError`
 - `pdf_generator.generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; only `company` is a required field (no enrichment-data gate)
 - Outbound copy is a coffee-chat ask for analyst roles (not a job application): no CV link/attachment on first contact, sign-off uses `CANDIDATE_LINKEDIN` from `.env`; do not reintroduce agency wording (pipeline/outbound/demand) in subjects or templates
+- Hard bounces (`bounce_handler`) and SMTP-refused addresses suppress the prospect; never leave a refused address in the retry loop
 - `inbox_monitor` scans INBOX **and the provider's spam folder** (Yahoo files replies to cold outreach under "Bulk") and rescues genuine prospect replies to INBOX; replies match by exact address, else by company domain when exactly one active prospect is there. `conftest.py` blocks real SMTP in all tests
 - Follow-ups use the email-only `candidate_email` sequence (day 0 / 5 / 12, `SEQUENCE_NAME` env). Every scheduled email must be tagged (`outreach.sequence_name/sequence_step`) and logged with `sequence_dispatcher.record_email_step_sent` after sending, otherwise follow-ups never become due. Tests must mock `sequence_dispatcher.deliver_prospect_email` (the dispatcher has an immediate-send fallback that bypasses the daily cap)
 - `start_gradreach.bat` runs the app + scheduler with auto-restart; the send ramp is `warmup_engine._RAMP` (5/10/15/20 per day from `WARMUP_START_DATE`), and the house account's `daily_send_limit` must be 0 for the ramp to apply

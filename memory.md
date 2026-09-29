@@ -60,7 +60,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 
 **Session additions (2026-09-30 - rehearsal):**
 - End-to-end rehearsal on a DB copy with only Ritish's Gmail as recipient passed: send -> step logging -> follow-up -> reply -> classification -> alert -> follow-up 2 skipped. It exposed that Yahoo files replies in its spam folder ("Bulk"); `inbox_monitor` now scans the junk folder and rescues genuine prospect replies to INBOX, and matches colleague replies by company domain. `conftest.py` blocks real SMTP in tests (the `/onboard` tests had been emailing the operator on every run).
-- Still open: bounce notices are ignored (should suppress the address), plus the remaining pre-launch checklist items.
+- Bounces are now handled (`bounce_handler.py`: hard bounce -> suppress, pause sequence, cancel queue; SMTP-refused addresses are no longer retried every cycle). Still open: the remaining pre-launch checklist items.
 
 **Completed modules:**
 (added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `start_gradreach.bat`)

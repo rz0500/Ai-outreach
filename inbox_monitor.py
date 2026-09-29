@@ -28,6 +28,7 @@ import database
 from database import save_reply_draft
 from ai_engine import classify_reply
 from settings import get_imap_max_messages_per_poll, get_warmup_addresses, get_app_base_url
+import bounce_handler
 import warmup_engine
 import mailer
 
@@ -338,6 +339,7 @@ def _scan_folder(mail, folder: str, mark_as_read: bool, rescue_replies: bool = F
 
     for msg_id in message_ids:
         matched_prospect = False
+        handled_notice = False
 
         # Fetch full message so we can read the body
         status, msg_data = mail.fetch(msg_id, "(RFC822)")
@@ -384,6 +386,15 @@ def _scan_folder(mail, folder: str, mark_as_read: bool, rescue_replies: bool = F
                     logging.warning(f"  Warmup auto-reply failed for {sender_email}: {exc}")
                 continue  # do not classify as a real prospect reply
 
+            # ── Delivery-failure notices (bounces) ────────────────────
+            if bounce_handler.is_bounce(msg, sender_email, inbound_subject):
+                handled_notice = True
+                try:
+                    bounce_handler.process_bounce(msg)
+                except Exception as exc:
+                    logging.warning(f"  Could not process bounce notice: {exc}")
+                continue
+
             prospect = _prospect_for_sender(sender_email)
             if not prospect:
                 continue
@@ -427,12 +438,12 @@ def _scan_folder(mail, folder: str, mark_as_read: bool, rescue_replies: bool = F
                 inbound_subject=inbound_subject,
             )
 
-        if rescue_replies and not matched_prospect:
+        if rescue_replies and not (matched_prospect or handled_notice):
             continue  # ordinary spam: leave it exactly as it was
 
         if mark_as_read:
             mail.store(msg_id, "+FLAGS", "\\Seen")
-        if rescue_replies:
+        if rescue_replies and matched_prospect:
             rescue_ids.append(msg_id)
 
     for msg_id in rescue_ids:

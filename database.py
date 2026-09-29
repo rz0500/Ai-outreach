@@ -1633,6 +1633,21 @@ def has_outreach_for_step(
         return row is not None
 
 
+def skip_pending_outreach(prospect_id: int, db_path: str = DB_PATH) -> int:
+    """Cancel every unsent draft for a prospect (e.g. after a hard bounce). Returns rows changed."""
+    with _get_connection(db_path) as conn:
+        try:
+            cursor = conn.execute(
+                "UPDATE outreach SET status = 'skipped' "
+                "WHERE prospect_id = ? AND status = 'draft' AND sent_at IS NULL",
+                (prospect_id,),
+            )
+        except sqlite3.OperationalError:
+            return 0  # outreach table not created yet
+        conn.commit()
+        return cursor.rowcount
+
+
 def save_outreach(
     prospect_id: int,
     subject: str,
