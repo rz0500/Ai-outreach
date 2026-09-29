@@ -8,7 +8,14 @@ delivery channel and logs the result.
 import os
 from datetime import date
 
-from database import DB_PATH, log_communication_event, update_sequence_enrollment_status, get_client
+from database import (
+    DB_PATH,
+    get_client,
+    has_outreach_for_step,
+    log_communication_event,
+    tag_outreach_sequence_step,
+    update_sequence_enrollment_status,
+)
 from deliverability import deliver_prospect_email
 from sms_agent import send_sms
 from social_agent import send_instagram_dm, send_linkedin_connection
@@ -29,6 +36,30 @@ def _safe_metadata(sequence_name: str, step: int, channel: str, extra: str = "")
     return f"{base};{extra}" if extra else base
 
 
+def record_email_step_sent(outreach_row: dict, db_path: str = DB_PATH) -> bool:
+    """
+    Log a sequence step as sent once its scheduled email has really gone out.
+
+    Without this the sequence never sees the step as done, so follow-ups
+    would never become due. Returns True if a step event was written.
+    """
+    step = outreach_row.get("sequence_step")
+    sequence_name = outreach_row.get("sequence_name")
+    if not step or not sequence_name:
+        return False
+    log_communication_event(
+        outreach_row["prospect_id"],
+        "email",
+        "outbound",
+        "sequence_step",
+        "sent",
+        content_excerpt=(outreach_row.get("subject") or "")[:120],
+        metadata=_safe_metadata(sequence_name, step, "email"),
+        db_path=db_path,
+    )
+    return True
+
+
 def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict:
     """
     Dispatch one touchpoint and log the result.
@@ -36,9 +67,29 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
     touchpoint = item["next_touchpoint"]
     prospect_id = item["id"]
     channel = touchpoint["channel"]
-    message = build_touchpoint_message(item, touchpoint)
     step = touchpoint["step"]
     sequence_name = item["sequence_name"]
+
+    # Never queue the same email step twice (the daily run repeats until the
+    # scheduled send actually goes out and the step is logged as sent).
+    if (
+        channel == "email"
+        and not dry_run
+        and has_outreach_for_step(prospect_id, sequence_name, step, db_path=db_path)
+    ):
+        return {
+            "prospect_id": prospect_id,
+            "name": item.get("name", ""),
+            "channel": channel,
+            "step": step,
+            "label": touchpoint["label"],
+            "sent": False,
+            "error": "",
+            "dry_run": dry_run,
+            "event_status": "already_scheduled",
+        }
+
+    message = build_touchpoint_message(item, touchpoint)
 
     result = {
         "prospect_id": prospect_id,
@@ -91,6 +142,7 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
                         (send_after, outreach_id),
                     )
                     conn.commit()
+                tag_outreach_sequence_step(outreach_id, sequence_name, step, db_path=db_path)
                 result["sent"] = False
                 result["error"] = ""
                 result["event_status"] = "scheduled"
@@ -159,7 +211,14 @@ def _dispatch_single_touchpoint(item: dict, dry_run: bool, db_path: str) -> dict
         result["error"] = f"Unsupported channel '{channel}'."
 
     if channel != "email":
-        status = "sent" if result["sent"] else "failed"
+        cannot_run = (
+            result.get("dry_run")
+            or "No LinkedIn URL" in result["error"]
+            or "No Instagram profile" in result["error"]
+            or "No phone number" in result["error"]
+            or "SMS skipped" in result["error"]
+        )
+        status = "sent" if result["sent"] else ("skipped" if cannot_run else "failed")
         log_communication_event(
             prospect_id,
             channel,

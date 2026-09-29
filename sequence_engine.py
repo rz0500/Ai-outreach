@@ -9,10 +9,20 @@ from datetime import date
 import re
 
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
+from email_validator import _company_core_name
 from outreach import generate_email
 from settings import get_candidate_linkedin, get_sender_name
 
 DEFAULT_SEQUENCE_NAME = "default_multichannel"
+# Email-only sequence used for personal outreach: LinkedIn/Instagram/SMS steps
+# cannot run without profile URLs, and would otherwise stall the whole sequence.
+CANDIDATE_EMAIL_SEQUENCE_NAME = "candidate_email"
+
+CANDIDATE_EMAIL_SEQUENCE = [
+    {"step": 1, "day_offset": 0,  "channel": "email", "label": "Initial email",    "message_type": "email_initial"},
+    {"step": 2, "day_offset": 5,  "channel": "email", "label": "Email follow-up 1", "message_type": "email_followup_1"},
+    {"step": 3, "day_offset": 12, "channel": "email", "label": "Email follow-up 2", "message_type": "email_followup_2"},
+]
 
 # Original blueprint mapped to zero-based offsets from enrollment date:
 # Day 1 -> 0, Day 2 -> 1, Day 4 -> 3, etc.
@@ -28,14 +38,21 @@ DEFAULT_MULTI_CHANNEL_SEQUENCE = [
 ]
 
 
+_GENERIC_NAMES = {"owner/manager", "owner", "manager", "team", "there", "sir/madam"}
+
+
 def _first_name(name: str | None) -> str:
-    """Return the first token from a name, or a fallback."""
+    """First token of a name; "there" for empty or placeholder names like Owner/Manager."""
     raw = (name or "").strip()
-    return raw.split()[0] if raw else "there"
+    if not raw or raw.lower() in _GENERIC_NAMES:
+        return "there"
+    return raw.split()[0]
 
 
 def get_sequence_definition(sequence_name: str = DEFAULT_SEQUENCE_NAME) -> list:
     """Return the touchpoint plan for a named sequence."""
+    if sequence_name == CANDIDATE_EMAIL_SEQUENCE_NAME:
+        return [dict(step) for step in CANDIDATE_EMAIL_SEQUENCE]
     if sequence_name != DEFAULT_SEQUENCE_NAME:
         raise ValueError(f"Unknown sequence '{sequence_name}'")
     return [dict(step) for step in DEFAULT_MULTI_CHANNEL_SEQUENCE]
@@ -48,7 +65,7 @@ def _extract_sent_sequence_steps(events: list, sequence_name: str) -> set[int]:
     name_pattern = re.compile(r"(?:^|[;, ])sequence=([a-zA-Z0-9_]+)(?:$|[;, ])")
 
     for event in events:
-        if event.get("event_type") != "sequence_step" or event.get("status") != "sent":
+        if event.get("event_type") != "sequence_step" or event.get("status") not in ("sent", "skipped"):
             continue
         metadata = event.get("metadata") or ""
         name_match = name_pattern.search(metadata)
@@ -114,7 +131,7 @@ def build_touchpoint_message(prospect: dict, touchpoint: dict) -> dict:
             {"body": ...}
     """
     first = _first_name(prospect.get("name"))
-    company = prospect.get("company") or "your company"
+    company = _company_core_name(prospect.get("company") or "") or prospect.get("company") or "your company"
     message_type = touchpoint["message_type"]
 
     if message_type == "email_initial":

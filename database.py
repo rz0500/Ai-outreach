@@ -1502,7 +1502,7 @@ def get_active_sequence_enrollments(
         sql += " AND se.sequence_name = ?"
         params.append(sequence_name)
     sql += """
-          AND p.status = 'in_sequence'
+          AND p.status IN ('in_sequence', 'contacted')
           AND (p.email IS NULL OR lower(p.email) NOT IN (
                 SELECT lower(email) FROM suppression_list
           ))
@@ -1568,12 +1568,51 @@ def initialize_outreach_table(db_path: str = DB_PATH) -> None:
         """)
         # Migrate: add sent_at, pdf_path, and client_id columns
         for col in ("sent_at TEXT", "pdf_path TEXT",
-                    "client_id INTEGER NOT NULL DEFAULT 1"):
+                    "client_id INTEGER NOT NULL DEFAULT 1",
+                    "sequence_name TEXT", "sequence_step INTEGER"):
             try:
                 conn.execute(f"ALTER TABLE outreach ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass  # column already exists
         conn.commit()
+
+
+def tag_outreach_sequence_step(
+    outreach_id: int,
+    sequence_name: str,
+    step: int,
+    db_path: str = DB_PATH,
+) -> None:
+    """Record which sequence step an outreach row belongs to."""
+    with _get_connection(db_path) as conn:
+        conn.execute(
+            "UPDATE outreach SET sequence_name = ?, sequence_step = ? WHERE id = ?",
+            (sequence_name, step, outreach_id),
+        )
+        conn.commit()
+
+
+def has_outreach_for_step(
+    prospect_id: int,
+    sequence_name: str,
+    step: int,
+    db_path: str = DB_PATH,
+) -> bool:
+    """True if a live outreach row already exists for this prospect's sequence step."""
+    with _get_connection(db_path) as conn:
+        try:
+            row = conn.execute(
+                """
+                SELECT 1 FROM outreach
+                WHERE prospect_id = ? AND sequence_name = ? AND sequence_step = ?
+                  AND status NOT IN ('rejected_draft', 'skipped')
+                LIMIT 1
+                """,
+                (prospect_id, sequence_name, step),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return False  # outreach table not created yet: nothing queued
+        return row is not None
 
 
 def save_outreach(

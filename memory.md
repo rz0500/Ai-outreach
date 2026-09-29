@@ -53,6 +53,11 @@ This file is the long-term memory for the repo. Update it when significant archi
 - Outreach is now framed as a coffee-chat ask for analyst-type roles (not a job application): AI prompt, fallback templates, subjects and follow-up sequence all rewritten; one CV proof point per email; no CV link or attachment (the Claude artifact CV page is private so recipients probably can't open it); sign-off shows LinkedIn from `CANDIDATE_LINKEDIN` (.env only, repo is public).
 - Pitch PDF still generated but no longer attached (`pdf_path` not stored on outreach rows).
 
+**Session additions (2026-09-29 - hands-free autopilot):**
+- Daily loop is now: `lead_discovery` (rotating searches, only new companies) -> pipeline (contact via Hunter/site crawl, AI coffee-chat email, `require_email=True`) -> scheduled send at 08:00 local within the ramp cap (5/10/15/20 per day) -> replies polled over IMAP and alerted to Ritish's real inbox -> email-only follow-ups at day 5 and 12 (`candidate_email` sequence). Follow-ups previously never worked (sequence stalled on LinkedIn step, steps never logged as sent, contacted prospects dropped out of the sequence); fixed and covered by `test_followup_lifecycle.py`.
+- Run with `start_gradreach.bat` (PC must stay on). Mailivery is off (expired). Nothing is attached to emails; sign-off has LinkedIn only.
+- Test-safety lesson: never let a test reach the dispatcher's immediate-send fallback (one real email went to sam@acmedata.com during development); mock `sequence_dispatcher.deliver_prospect_email`.
+
 **Completed modules:**
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 

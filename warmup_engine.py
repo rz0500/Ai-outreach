@@ -9,12 +9,10 @@ Two jobs:
    Tracks how many real outreach emails have been sent today.
    Enforces a graduated daily cap based on days since WARMUP_START_DATE:
 
-       Days 1-7:   15 / day
-       Days 8-14:  30 / day
-       Days 15-21: 60 / day
-       Days 22-28: 100 / day
-       Days 29-35: 150 / day
-       Day 36+:    200 / day  (fully warmed)
+       Days 1-7:   5 / day
+       Days 8-14:  10 / day
+       Days 15-21: 15 / day
+       Day 22+:    20 / day  (cap for a personal freemail mailbox)
 
    Set MAX_DAILY_SENDS in .env to override the schedule with a hard cap.
    Leave WARMUP_START_DATE empty to skip throttling entirely (dev mode).
@@ -60,12 +58,10 @@ WARMUP_SUBJECT_PREFIX = ""  # no visible prefix — use the header instead
 
 # (max_day_inclusive, daily_limit)
 _RAMP: list[tuple[int, int]] = [
-    (7,   10),
-    (14,  20),
-    (21,  40),
-    (28,  70),
-    (35,  120),
-    (9999, 200),
+    (7,   5),
+    (14,  10),
+    (21,  15),
+    (9999, 20),
 ]
 
 
@@ -93,7 +89,7 @@ def get_daily_limit() -> int:
     for max_day, limit in _RAMP:
         if days_elapsed <= max_day:
             return limit
-    return 200
+    return _RAMP[-1][1]
 
 
 def can_send_today(
@@ -171,10 +167,10 @@ def get_warmup_status(db_path: str = database.DB_PATH) -> dict:
     warmup_stats = database.get_warmup_stats(db_path=db_path)
 
     remaining = max(0, limit - sent_today) if limit > 0 else -1
-    fully_warmed = days_elapsed > 35
+    fully_warmed = days_elapsed > 21
 
-    # Compute progress % through the full 35-day ramp
-    pct = min(100, int((days_elapsed / 35) * 100))
+    # Compute progress % through the full 21-day ramp
+    pct = min(100, int((days_elapsed / 21) * 100))
 
     # Tier label
     if fully_warmed:

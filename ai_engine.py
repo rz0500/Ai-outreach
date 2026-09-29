@@ -336,44 +336,74 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
         f"if data is limited, write a shorter simpler email but always return valid JSON."
     )
 
-    response = _client.messages.create(
-        model=MODEL,
-        max_tokens=512,
-        system=[
-            {
-                "type": "text",
-                "text": _EMAIL_SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": user_prompt}],
-    )
+    from email_validator import _company_core_name
 
-    result = _extract_json(response)
+    display_name = _company_core_name(prospect.get("company") or "") or "the company"
+    messages = [{"role": "user", "content": user_prompt}]
+    last_error: Exception | None = None
 
-    if "subject" not in result or "body" not in result:
-        raise ValueError(f"AI response missing 'subject' or 'body' keys: {result}")
-
-    subject = str(result["subject"])
-    body = str(result["body"])
-
-    # --- Output quality gate ---
-    analysis = analyze_company(prospect)
-    angle = choose_primary_angle(analysis)
-    validation = validate_email(subject, body, prospect)
-    internal_quality = score_internal_quality(subject, body, prospect, analysis, validation)
-    if not validation.passed:
-        raise ValueError(
-            f"Generated email failed quality gate for '{prospect.get('company')}'.\n"
-            f"{validation.summary()}"
+    # The model occasionally writes a draft that is too long or shortens the company
+    # name. Tell it exactly what failed and let it fix that, instead of silently
+    # falling back to the plainer template.
+    for _attempt in range(3):
+        response = _client.messages.create(
+            model=MODEL,
+            max_tokens=512,
+            system=[
+                {
+                    "type": "text",
+                    "text": _EMAIL_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            messages=messages,
         )
-    if internal_quality.rewrite_required:
-        raise ValueError(
-            f"Generated email failed internal quality thresholds for '{prospect.get('company')}'. "
-            f"Specificity={internal_quality.specificity}, "
-            f"Credibility={internal_quality.credibility}, "
-            f"GenericRisk={internal_quality.generic_risk}"
-        )
+        raw_text = "".join(
+            getattr(block, "text", "") for block in response.content
+        ).strip()
+
+        try:
+            result = _extract_json(response)
+            if "subject" not in result or "body" not in result:
+                raise ValueError(f"AI response missing 'subject' or 'body' keys: {result}")
+
+            subject = str(result["subject"])
+            body = str(result["body"])
+
+            # --- Output quality gate ---
+            analysis = analyze_company(prospect)
+            angle = choose_primary_angle(analysis)
+            validation = validate_email(subject, body, prospect)
+            internal_quality = score_internal_quality(subject, body, prospect, analysis, validation)
+            if not validation.passed:
+                raise ValueError(
+                    f"Generated email failed quality gate for '{prospect.get('company')}'.\n"
+                    f"{validation.summary()}"
+                )
+            if internal_quality.rewrite_required:
+                raise ValueError(
+                    f"Generated email failed internal quality thresholds for '{prospect.get('company')}'. "
+                    f"Specificity={internal_quality.specificity}, "
+                    f"Credibility={internal_quality.credibility}, "
+                    f"GenericRisk={internal_quality.generic_risk}"
+                )
+            break
+        except ValueError as exc:
+            last_error = exc
+            messages = messages + [
+                {"role": "assistant", "content": raw_text or "{}"},
+                {
+                    "role": "user",
+                    "content": (
+                        f"That draft was rejected: {exc}\n"
+                        f"Rewrite it and fix exactly that. Hard limits: 90-130 words in the body, "
+                        f"name the company as \"{display_name}\" in the body, no em dashes, "
+                        f"keep the coffee-chat ask. Respond with the JSON object only."
+                    ),
+                },
+            ]
+    else:
+        raise last_error  # type: ignore[misc]
 
     return {
         "subject": subject,

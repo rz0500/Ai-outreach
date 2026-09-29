@@ -48,6 +48,7 @@ from database import (
     update_outreach_status,
 )
 from email_validator import (
+    _company_core_name,
     check_enrichment_sufficiency,
     score_internal_quality,
     validate_email,
@@ -82,9 +83,20 @@ OPT_OUT_LINE = "If this isn't relevant, reply no thanks and I'll stop."
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+_GENERIC_NAMES = {"owner/manager", "owner", "manager", "team", "there", "sir/madam"}
+
+
 def _first_name(full_name: str) -> str:
-    """Return just the first word of a name."""
-    return full_name.strip().split()[0] if full_name.strip() else "there"
+    """First word of a name; "there" for empty or placeholder names like Owner/Manager."""
+    raw = (full_name or "").strip()
+    if not raw or raw.lower() in _GENERIC_NAMES:
+        return "there"
+    return raw.split()[0]
+
+
+def _display_company(company: str) -> str:
+    """Brand name without Maps noise like '(LDC)' or ' - London, UK'."""
+    return _company_core_name(company or "") or (company or "")
 
 
 def _clean(value: str | None) -> str:
@@ -273,7 +285,7 @@ def _build_angle_subject(
     rewrite_pass: int = 0,
 ) -> str:
     """Return a short, human subject for the coffee-chat email."""
-    company = _clean(prospect.get("company")) or "your company"
+    company = _display_company(_clean(prospect.get("company"))) or "your company"
     first = _first_name(prospect.get("name", "there"))
 
     if rewrite_pass > 0:
@@ -437,7 +449,7 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
     not a job application.
     """
     first   = _first_name(prospect.get("name", "there"))
-    company = prospect.get("company", "your company")
+    company = _display_company(prospect.get("company", "your company"))
 
     subject = _coffee_chat_subject(company, first)
     body = (
@@ -463,7 +475,7 @@ def _build_data_driven_email(
     structured analysis and one primary angle.
     """
     first   = _first_name(prospect.get("name", "there"))
-    company = prospect.get("company", "your company")
+    company = _display_company(prospect.get("company", "your company"))
 
     subject = _build_angle_subject(prospect, analysis, angle, rewrite_pass)
     headline = _clean(analysis.get("company_positioning")) or f"{company}'s work"

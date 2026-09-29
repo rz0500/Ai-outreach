@@ -63,3 +63,8 @@ playwright-browsers/
 
 # Claude/Codex local worktree scratch
 .claude/worktrees/
+
+# Autopilot runtime files
+gradreach.log
+data/discovery_state.json
+data/*.db

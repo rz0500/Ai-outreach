@@ -58,6 +58,11 @@ def get_candidate_portfolio() -> str:
     return (os.getenv("CANDIDATE_PORTFOLIO") or "https://harmonybooths.com").strip()
 
 
+def get_active_sequence_name() -> str:
+    """Return the follow-up sequence used for new prospects (env SEQUENCE_NAME)."""
+    return (os.getenv("SEQUENCE_NAME") or "candidate_email").strip()
+
+
 def get_candidate_linkedin() -> str:
     """Return the candidate's LinkedIn URL for email sign-offs, or '' if unset."""
     return (os.getenv("CANDIDATE_LINKEDIN") or "").strip()

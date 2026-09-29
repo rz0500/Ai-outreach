@@ -190,6 +190,29 @@ def _company_core_name(company: str) -> str:
     return " ".join(words) if words else core
 
 
+_GENERIC_NAME_WORDS = {
+    "fintech", "data", "group", "london", "consulting", "consultancy", "technologies",
+    "technology", "tech", "solutions", "global", "limited", "the", "and", "company",
+    "services", "digital", "software", "analytics", "systems", "labs", "studio",
+    "partners", "international", "holdings", "financial", "finance", "business",
+}
+
+
+def _company_mentioned(core_name: str, body_lower: str) -> bool:
+    """
+    True if the body names the company: the full core name, or a distinctive word
+    from it (a shortened brand like "Traction" for "TRAction Fintech"). Generic
+    words such as "fintech" or "data" never count on their own.
+    """
+    if core_name in body_lower:
+        return True
+    tokens = [
+        t for t in re.split(r"[^a-z0-9]+", core_name)
+        if len(t) >= 4 and t not in _GENERIC_NAME_WORDS
+    ]
+    return any(t in body_lower for t in tokens)
+
+
 def validate_email(subject: str, body: str, prospect: dict) -> ValidationResult:
     """
     Run quality checks on a generated email draft.
@@ -216,7 +239,7 @@ def validate_email(subject: str, body: str, prospect: dict) -> ValidationResult:
     # scraped listings often append) since a human-sounding email won't repeat
     # those verbatim.
     company_core = _company_core_name(company)
-    if company_core and company_core not in body_lower:
+    if company_core and not _company_mentioned(company_core, body_lower):
         result.errors.append(
             f"Company name '{prospect.get('company')}' missing from body. Email is too generic."
         )

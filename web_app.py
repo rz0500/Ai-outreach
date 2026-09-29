@@ -191,7 +191,8 @@ def _background_scheduler() -> None:
         if now_utc.hour >= run_hour and last_sequence_date != today:
             try:
                 from sequence_dispatcher import run_multichannel_sequence
-                run_multichannel_sequence(dry_run=False)
+                from settings import get_active_sequence_name
+                run_multichannel_sequence(dry_run=False, sequence_name=get_active_sequence_name())
                 _scheduler_state["last_sequence_run"]   = now_utc
                 _scheduler_state["last_sequence_error"] = None
                 last_sequence_date = today
@@ -199,28 +200,14 @@ def _background_scheduler() -> None:
                 _scheduler_state["last_sequence_error"] = str(exc)
                 last_sequence_date = today  # don't retry same day on error
 
-        # ── Daily self-prospecting (house account) ────────────────────────
+        # ── Daily autopilot: top up the send queue with fresh leads ────────
         sp_hour = get_self_prospect_run_hour()
         if now_utc.hour >= sp_hour and last_self_prospect_date != today:
-            _house = database.get_client(1, db_path=database.DB_PATH)
-            niche    = (_house or {}).get("niche") or get_self_prospect_niche()
-            location = (_house or {}).get("location") or get_self_prospect_location()
-            if niche and location:
-                try:
-                    from google_maps_finder import find_and_add_prospects
-                    limit     = get_self_prospect_daily_limit()
-                    new_leads = find_and_add_prospects(niche, location, limit=limit, client_id=1)
-                    for prospect in new_leads:
-                        try:
-                            _run_pipeline_for_db_prospect(prospect)
-                            database.ensure_sequence_enrollment(prospect["id"])
-                            database.update_status(prospect["id"], "in_sequence")
-                        except Exception as exc:
-                            print(f"[Scheduler] self-prospect pipeline failed for '{prospect.get('company')}': {exc}")
-                    _scheduler_state["last_self_prospect_count"] = len(new_leads)
-                    _scheduler_state["last_self_prospect_error"] = None
-                except Exception as exc:
-                    _scheduler_state["last_self_prospect_error"] = str(exc)
+            try:
+                _scheduler_state["last_self_prospect_count"] = _run_daily_autopilot()
+                _scheduler_state["last_self_prospect_error"] = None
+            except Exception as exc:
+                _scheduler_state["last_self_prospect_error"] = str(exc)
             last_self_prospect_date = today
 
         # ── Drain pending client research queue (from /onboard) ───────────
@@ -1551,7 +1538,12 @@ def _next_8am_utc(tz_name: str) -> datetime.datetime:
         return target
 
 
-def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
+def _run_pipeline_for_db_prospect(
+    prospect: dict,
+    stage_hook=None,
+    require_email: bool = False,
+    make_pdf: bool = True,
+) -> dict:
     """
     Run research + email + PDF for a prospect that is already in the DB.
     Returns a result dict consumed by the find-and-fire endpoint.
@@ -1664,6 +1656,13 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
                 database.update_prospect(prospect_id, db_path=database.DB_PATH, **updates)
                 enriched.update(updates)
 
+    if require_email and not enriched.get("email"):
+        result["status"] = "no_contact"
+        result["stage_statuses"]["email"] = "skipped"
+        result["stage_statuses"]["pdf"] = "skipped"
+        result["stage_statuses"]["send"] = "skipped"
+        return result
+
     # Step 2 — Email
     has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
     if stage_hook:
@@ -1715,15 +1714,18 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
     pdf_filepath = ""
     if stage_hook:
         stage_hook("pdf", "active", {"company": company})
-    try:
-        pdf_filepath = generate_proposal(enriched)
-        filename = os.path.basename(pdf_filepath)
-        result["pdf"] = {"url": f"/proposals/{filename}", "filename": filename}
-        result["stage_statuses"]["pdf"] = "done"
-    except Exception as exc:
-        result["pdf"] = {"url": "", "filename": "", "error": str(exc)}
-        result["stage_statuses"]["pdf"] = "error"
-        result["stage_errors"]["pdf"] = str(exc)
+    if not make_pdf:
+        result["stage_statuses"]["pdf"] = "skipped"
+    else:
+        try:
+            pdf_filepath = generate_proposal(enriched)
+            filename = os.path.basename(pdf_filepath)
+            result["pdf"] = {"url": f"/proposals/{filename}", "filename": filename}
+            result["stage_statuses"]["pdf"] = "done"
+        except Exception as exc:
+            result["pdf"] = {"url": "", "filename": "", "error": str(exc)}
+            result["stage_statuses"]["pdf"] = "error"
+            result["stage_errors"]["pdf"] = str(exc)
 
     # The pitch PDF is generated for reference but deliberately NOT attached to the
     # outreach draft: the first email is a low-pressure coffee-chat ask, and a
@@ -1775,6 +1777,17 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
                         (send_after_str, result["outreach_id"]),
                     )
                     conn.commit()
+                # This draft is step 1 of the follow-up sequence: enrol the prospect
+                # so follow-ups are scheduled after the first email really goes out.
+                from settings import get_active_sequence_name
+
+                seq_name = get_active_sequence_name()
+                database.ensure_sequence_enrollment(
+                    prospect_id, sequence_name=seq_name, db_path=database.DB_PATH
+                )
+                database.tag_outreach_sequence_step(
+                    result["outreach_id"], seq_name, 1, db_path=database.DB_PATH
+                )
             except Exception as exc:
                 print(f"[Pipeline] send_after update failed for '{company}': {exc}")
         result["stage_statuses"]["send"] = "scheduled"
@@ -2688,14 +2701,61 @@ def _send_daily_client_reports() -> None:
             print(f"[Daily report] Failed for client {cid}: {exc}")
 
 
+def _queued_initial_sends(db_path: str) -> int:
+    """Scheduled first emails still waiting to go out."""
+    with database._get_connection(db_path) as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM outreach WHERE status='draft' AND sent_at IS NULL "
+            "AND send_after IS NOT NULL AND (sequence_step IS NULL OR sequence_step = 1)"
+        ).fetchone()[0]
+
+
+def _run_daily_autopilot() -> int:
+    """
+    Keep about two days of first emails queued: discover new companies (rotating
+    searches), find a contact for each, write and schedule the email. Leads with
+    no contact email are dropped before any AI cost. Returns leads processed.
+    """
+    from lead_discovery import discover_new_leads
+
+    _db = database.DB_PATH
+    house = database.get_client(1, db_path=_db) or {}
+    if house.get("campaign_paused"):
+        return 0
+
+    cap = int(house.get("daily_send_limit") or 0) or warmup_engine.get_daily_limit() or 20
+    queue_target = cap * 2
+    processed = 0
+    for _ in range(3):
+        backlog = _queued_initial_sends(_db)
+        if backlog >= queue_target:
+            break
+        # roughly half of companies yield a contact email, so look at twice as many
+        leads = discover_new_leads(
+            target=min(15, (queue_target - backlog) * 2), client_id=1, db_path=_db
+        )
+        if not leads:
+            break
+        for prospect in leads:
+            try:
+                _run_pipeline_for_db_prospect(prospect, require_email=True, make_pdf=False)
+                processed += 1
+            except Exception as exc:
+                print(f"[Autopilot] pipeline failed for '{prospect.get('company')}': {exc}")
+    print(f"[Autopilot] processed {processed} new leads; queue={_queued_initial_sends(_db)}/{queue_target}")
+    return processed
+
+
 def _send_scheduled_outreach() -> None:
     """
     Send all outreach records whose send_after time has passed.
     Called every scheduler cycle so emails go out at 08:00 local time.
     """
     import json as _json
+    from sequence_dispatcher import record_email_step_sent
     _db = database.DB_PATH
     due = database.get_pending_sends(db_path=_db)
+    _paused: dict = {}
     for row in due:
         prospect_id   = row["prospect_id"]
         outreach_id   = row["id"]
@@ -2708,7 +2768,18 @@ def _send_scheduled_outreach() -> None:
 
         if not to_email or not subject or not body:
             continue
-        if prospect_status == "contacted":
+        if client_id not in _paused:
+            _paused[client_id] = bool(
+                (database.get_client(client_id, db_path=_db) or {}).get("campaign_paused")
+            )
+        if _paused[client_id]:
+            continue
+        # Follow-ups (step > 1) go to prospects we already contacted; anything
+        # else must not be sent to someone who replied, booked or was rejected.
+        is_followup = (row.get("sequence_step") or 1) > 1
+        if prospect_status in ("replied", "booked", "rejected") or (
+            prospect_status == "contacted" and not is_followup
+        ):
             # Mark the outreach row so we don't retry
             with database._get_connection(_db) as conn:
                 conn.execute(
@@ -2734,6 +2805,7 @@ def _send_scheduled_outreach() -> None:
                 )
                 conn.commit()
             database.update_status(prospect_id, "contacted", db_path=_db)
+            record_email_step_sent(row, db_path=_db)
             database.log_communication_event(
                 prospect_id=prospect_id,
                 channel="email",
@@ -2747,6 +2819,8 @@ def _send_scheduled_outreach() -> None:
             print(f"[Scheduled send] Sent to {to_email} (outreach_id={outreach_id})")
         else:
             print(f"[Scheduled send] Failed for outreach_id={outreach_id}: {send_err}")
+            if "Daily send limit" in (send_err or ""):
+                break  # cap reached: the rest wait for tomorrow
 
 
 # ---------------------------------------------------------------------------

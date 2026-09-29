@@ -64,6 +64,7 @@ If a meaningful repo-level change is made, update all three files.
 
 - **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
 - **`hunter_client.py`** - optional Hunter.io Domain Search lookup (`HUNTER_API_KEY`): returns the best named recruiter/HR contact (then executive/management) with title and verification status; never raises, returns `{}` without a key. Find-and-Fire tries it first, then falls back to `contact_finder`
+- **`lead_discovery.py`** - daily autopilot discovery: rotates (query x city) Google Maps searches, up to 3 pages each, returns only companies new by name and website domain (state in `data/discovery_state.json`); used by `web_app._run_daily_autopilot`
 - **`google_maps_finder.py`** - Google Maps discovery (first results page only, max 5 per Find-and-Fire run)
 
 ### Web
@@ -140,6 +141,8 @@ If a meaningful repo-level change is made, update all three files.
 - `clients` table carries candidate-profile columns (`degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`) used by AI prompts, `outreach.py` email templates, and `pdf_generator.py`; these are additive migrations via `ALTER TABLE ... ADD COLUMN` guarded by `try/except sqlite3.OperationalError`
 - `pdf_generator.generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; only `company` is a required field (no enrichment-data gate)
 - Outbound copy is a coffee-chat ask for analyst roles (not a job application): no CV link/attachment on first contact, sign-off uses `CANDIDATE_LINKEDIN` from `.env`; do not reintroduce agency wording (pipeline/outbound/demand) in subjects or templates
+- Follow-ups use the email-only `candidate_email` sequence (day 0 / 5 / 12, `SEQUENCE_NAME` env). Every scheduled email must be tagged (`outreach.sequence_name/sequence_step`) and logged with `sequence_dispatcher.record_email_step_sent` after sending, otherwise follow-ups never become due. Tests must mock `sequence_dispatcher.deliver_prospect_email` (the dispatcher has an immediate-send fallback that bypasses the daily cap)
+- `start_gradreach.bat` runs the app + scheduler with auto-restart; the send ramp is `warmup_engine._RAMP` (5/10/15/20 per day from `WARMUP_START_DATE`), and the house account's `daily_send_limit` must be 0 for the ramp to apply
 
 ## Running
 
