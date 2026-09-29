@@ -1490,94 +1490,14 @@ def api_seed_demo_reply():
 
 def _extract_email_from_website(url: str) -> str:
     """
-    Scrape a company website and return the first business email address found.
+    Return the best contact email found on a company website, or "".
 
-    Strategy (in order):
-      1. Look for mailto: links — most reliable signal.
-      2. Regex-scan page text for email patterns.
-      3. If nothing found on the homepage, retry on /contact.
-
-    Filters out noreply/postmaster/bounce addresses unless nothing else
-    is available.
-
-    Returns an empty string if no address can be found.
+    Crawls contact/about/team/careers pages and ranks careers@/jobs@ first,
+    named people second, generic inboxes last (see contact_finder.py).
     """
-    import re as _re
-    import requests as _req
-    from bs4 import BeautifulSoup as _BS
-    from urllib.parse import urljoin
+    from contact_finder import find_best_contact
 
-    _SKIP = ("noreply", "no-reply", "donotreply", "bounce", "postmaster",
-             "webmaster", "mailer", "daemon", "support", "help")
-    _EMAIL_RE = _re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-
-    def _scrape(page_url: str) -> list[str]:
-        try:
-            resp = _req.get(page_url, timeout=8, headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                )
-            })
-            resp.raise_for_status()
-        except Exception:
-            return []
-
-        soup = _BS(resp.text, "html.parser")
-        found: set[str] = set()
-
-        # mailto: links are the strongest signal
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.lower().startswith("mailto:"):
-                addr = href[7:].split("?")[0].strip().lower()
-                if "@" in addr:
-                    found.add(addr)
-
-        # Regex scan over full page text
-        for match in _EMAIL_RE.findall(soup.get_text()):
-            found.add(match.lower())
-
-        return list(found)
-
-    def _valid(addr: str) -> bool:
-        """Basic sanity: local@domain.tld, domain ≤63 chars, local ≤64 chars, no spaces."""
-        if " " in addr or len(addr) > 254:
-            return False
-        parts = addr.split("@")
-        if len(parts) != 2:
-            return False
-        local, domain = parts
-        if not local or len(local) > 64:
-            return False
-        if "." not in domain or len(domain) > 63:
-            return False
-        # reject domains that look like they have path/nav text appended
-        tld = domain.rsplit(".", 1)[-1]
-        if len(tld) > 6 or not tld.isalpha():
-            return False
-        return True
-
-    def _pick(emails: list[str]) -> str:
-        valid = [e for e in emails if _valid(e)]
-        if not valid:
-            return ""
-        preferred = [e for e in valid if not any(e.startswith(s) for s in _SKIP)]
-        return (preferred or valid)[0]
-
-    if not url:
-        return ""
-    if not url.startswith("http"):
-        url = "https://" + url
-
-    found = _scrape(url)
-    if found:
-        return _pick(found)
-
-    # Retry on /contact page
-    found = _scrape(urljoin(url, "/contact"))
-    return _pick(found)
+    return find_best_contact(url).get("email", "")
 
 
 def _infer_timezone(location: str) -> str:
@@ -1721,12 +1641,19 @@ def _run_pipeline_for_db_prospect(prospect: dict, stage_hook=None) -> dict:
 
     # Auto-extract email if the prospect has no email on file
     if not enriched.get("email") and website:
-        extracted = _extract_email_from_website(website)
+        from contact_finder import find_best_contact
+
+        contact = find_best_contact(website)
+        extracted = contact.get("email", "")
         if extracted:
-            database.update_prospect_email(prospect_id, extracted)
+            database.update_prospect_email(prospect_id, extracted, db_path=database.DB_PATH)
             enriched = dict(enriched)   # make mutable
             enriched["email"] = extracted
             result["prospect_email"] = extracted
+            # Greet a named person by name instead of "Owner/Manager"
+            if contact.get("name") and (enriched.get("name") or "").strip() in ("", "Owner/Manager"):
+                database.update_prospect(prospect_id, name=contact["name"], db_path=database.DB_PATH)
+                enriched["name"] = contact["name"]
 
     # Step 2 — Email
     has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())

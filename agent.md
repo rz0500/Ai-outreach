@@ -34,6 +34,13 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Contact finder (2026-09-29)
+- New `contact_finder.py` replaces the old homepage-only email scrape (`web_app._extract_email_from_website` now delegates to it). It crawls the homepage plus contact/about/team/careers pages (links found on the homepage and fixed paths, max 8 extra pages), decodes Cloudflare-protected and "name [at] domain [dot] com" addresses, drops junk (press@, marketing@, editor@, noreply@, legal/privacy, billing) and third-party/file-name lookalikes, and ranks: careers/jobs/recruitment > named person > generic inbox (hello/info/contact) > sales/support and freemail as last resort. Only addresses that appear on the company's own site are returned; nothing is guessed.
+- Find-and-Fire pipeline (`_run_pipeline_for_db_prospect`) now uses `find_best_contact` and, when the address is a named person (e.g. `first.last@`), renames the prospect from "Owner/Manager" to that name so the greeting is personal.
+- Measured on 48 London fintech/data/SaaS company sites from Google Maps: emails found on 24 (50%) vs 16 of 47 (34%) with the old scraper; 6 were careers/jobs inboxes (0 before). Realistic yield from Maps alone is still ~10-20 relevant leads/day, so 50-100/day needs more sources (multi-page Maps, more query/city combos, company-registry seeds) - not built yet.
+- Ritish does not want the Tsenta connector; don't suggest it.
+- 16 new tests in `test_contact_finder.py`.
+
 ### Yahoo sending mailbox switch (2026-09-29)
 - Moved outbound off SendGrid and off the `info@outreachempower.com` (Gmail/Workspace) mailbox onto a personal Yahoo mailbox using an app password: `.env` now has `SMTP_HOST=smtp.mail.yahoo.com`, `SMTP_PORT=465`, `IMAP_HOST=imap.mail.yahoo.com`, `IMAP_PORT=993`, `USE_SENDGRID=false` (old lines kept commented out in `.env` for rollback). Free Outlook.com was ruled out (needs OAuth2 for SMTP) and the secondary Gmail was blocked (no App Passwords option on the account).
 - House account `sender_email` set to the Yahoo address and marked verified; SMTP and IMAP logins both verified, and a test email sent through `deliverability.route_outbound_email` (provider=smtp) delivered.

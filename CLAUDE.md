@@ -60,6 +60,11 @@ If a meaningful repo-level change is made, update all three files.
 - **`deliverability.py`** - shared outbound suppression checks, failure classification, event logging, per-client sender identity, unsubscribe token generation/verification
 - **`_route_send_email()` in `web_app.py`** - the only approved outbound send path inside the web app; accepts `html_body`
 
+### Lead discovery
+
+- **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
+- **`google_maps_finder.py`** - Google Maps discovery (first results page only, max 5 per Find-and-Fire run)
+
 ### Web
 - **`web_app.py`** - Flask dashboard and API surface. Important endpoints:
   - `GET /`
