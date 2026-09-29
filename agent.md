@@ -38,6 +38,14 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Rehearsal passed + reply-monitor fixes (2026-09-30)
+Ran the end-to-end rehearsal on a COPY of the DB (`data/rehearsal.db`, gitignored) with every recipient set to Ritish's own Gmail, over the real Yahoo mailbox:
+- Pipeline (real research + Claude, quality 100) -> real `_send_scheduled_outreach` send -> step 1 logged -> simulated day 5 -> follow-up 1 scheduled by the dispatcher and sent -> step 2 logged. Worked first time.
+- Ritish replied from Gmail. **Yahoo filed the reply in its spam folder ("Bulk")** and the monitor only read INBOX, so a real reply would have been missed. Fixed: `inbox_monitor` now scans the provider's spam folder (`_find_junk_folder`, RFC 6154 `\\Junk` flag) via `_scan_folder`; genuine prospect replies found there are processed and moved to INBOX (which also tells the provider the sender is not spam), while ordinary spam is left untouched. After the fix the reply was classified `interested`, the prospect became `replied`, the enrollment paused (`interested_reply_awaiting_response`), a draft response was saved (`pending_review`), an alert was emailed to Ritish, and the already-queued follow-up 2 was skipped, not sent.
+- Replies from a colleague at the same company (e.g. `sarah@` answering an `info@` email) were also missed because matching was by exact address. `_prospect_for_sender` now falls back to `database.get_prospects_by_email_domain` when exactly one active prospect is at the sender's company domain; freemail, system senders (mailer-daemon/postmaster/noreply) and ambiguous domains never match.
+- Test hygiene: a new `conftest.py` blocks real SMTP for every test. The `/onboard` tests had been sending two real "New lead" emails from the live mailbox to the operator address on every full run (found in the Yahoo Sent folder).
+- Known gaps, not yet fixed: bounce notices (MAILER-DAEMON "Failure Notice") are ignored instead of suppressing the address; `mark_as_read=True` marks every unread inbox message read, so the Yahoo account must stay dedicated to this tool.
+
 ### PowerPoint popping up on every test run (2026-09-30)
 - Cause: `test_deck_generator.py::test_generate_deck_creates_pptx` called the real `generate_deck()`. `run_deck_qa` always converts the deck to PDF, and with no LibreOffice (`soffice`) installed `deck_generator._convert_deck_to_pdf_windows` launches PowerPoint via PowerShell COM. Every full test run opened PowerPoint, and the same test also made a live Claude call (`ANTHROPIC_API_KEY` set -> AI deck copy) and took ~30s.
 - Fix: the test now stubs `_convert_deck_to_pdf` / `_rasterize_pdf` and blanks `ANTHROPIC_API_KEY` (template copy); it runs in ~0.1s with no app launch, no API cost and no leftover `deck_test_*` folder. The autopilot never calls `generate_deck`; only the old `/api/...deck` routes in `web_app.py` do.
@@ -216,7 +224,7 @@ The application has been successfully rebranded to **OutreachEmpower**. The UI h
 
 ## Next Session - Planned Tasks
 
-1. **Safe end-to-end rehearsal** on a copy of the DB with every recipient set to Ritish's own inbox: real scheduled send -> step logged -> day-5 follow-up scheduled -> Ritish replies -> `inbox_monitor` classifies it -> alert email arrives. Not yet done; the scheduler send loop has never run for real.
+1. ~~Safe end-to-end rehearsal~~ **Done 2026-09-30** (send, step logging, follow-up, reply detection, alert all verified; see entry above). Remaining rehearsal idea: a bounce test.
 2. **Ritish approves the email wording** (sample coffee-chat email + follow-ups) and the **target list** (`lead_discovery.QUERIES` x `CITIES`, currently 12 company types x 17 UK/IE/NL cities).
 3. **Decide where it runs**: PC only sends while on and awake (`start_gradreach.bat`); a cloud host (~GBP 7/month) is the only truly hands-off option. Add a Windows "at log on" task if staying on the PC.
 4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.

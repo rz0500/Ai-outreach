@@ -141,6 +141,7 @@ If a meaningful repo-level change is made, update all three files.
 - `clients` table carries candidate-profile columns (`degree_title`, `university`, `target_roles`, `skills`, `portfolio_url`, `cv_url`, `work_eligibility`) used by AI prompts, `outreach.py` email templates, and `pdf_generator.py`; these are additive migrations via `ALTER TABLE ... ADD COLUMN` guarded by `try/except sqlite3.OperationalError`
 - `pdf_generator.generate_proposal()` now builds a candidate portfolio/pitch PDF (`candidate_pitch_<company>.pdf`) instead of a prospect growth-breakdown deck; only `company` is a required field (no enrichment-data gate)
 - Outbound copy is a coffee-chat ask for analyst roles (not a job application): no CV link/attachment on first contact, sign-off uses `CANDIDATE_LINKEDIN` from `.env`; do not reintroduce agency wording (pipeline/outbound/demand) in subjects or templates
+- `inbox_monitor` scans INBOX **and the provider's spam folder** (Yahoo files replies to cold outreach under "Bulk") and rescues genuine prospect replies to INBOX; replies match by exact address, else by company domain when exactly one active prospect is there. `conftest.py` blocks real SMTP in all tests
 - Follow-ups use the email-only `candidate_email` sequence (day 0 / 5 / 12, `SEQUENCE_NAME` env). Every scheduled email must be tagged (`outreach.sequence_name/sequence_step`) and logged with `sequence_dispatcher.record_email_step_sent` after sending, otherwise follow-ups never become due. Tests must mock `sequence_dispatcher.deliver_prospect_email` (the dispatcher has an immediate-send fallback that bypasses the daily cap)
 - `start_gradreach.bat` runs the app + scheduler with auto-restart; the send ramp is `warmup_engine._RAMP` (5/10/15/20 per day from `WARMUP_START_DATE`), and the house account's `daily_send_limit` must be 0 for the ramp to apply
 - Tests must never launch external apps or call paid/live APIs (the deck test used to open PowerPoint through `deck_generator._convert_deck_to_pdf_windows` and call Claude); stub `deck_generator._convert_deck_to_pdf` and clear `ANTHROPIC_API_KEY` as `test_deck_generator.py` does
@@ -243,7 +244,7 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 
 ## Live State (as of 2026-09-29)
 
-**Status: built and tested, NOT started.** Ritish asked to get everything sorted before launching; nothing has been sent by the autopilot and `start_gradreach.bat` has never been run. The only real emails sent since the pivot were two manual test emails.
+**Status: built and tested, NOT started.** Ritish asked to get everything sorted before launching; nothing has been sent by the autopilot and `start_gradreach.bat` has never been run. The only real emails sent since the pivot were manual test emails and the 2026-09-30 rehearsal (two emails to Ritish's own Gmail).
 
 - **Product**: GradReach is a single-user tool that emails hiring managers and analytics leads asking for a coffee chat (analyst-type roles), not a job application. Ritish works from `/ops`; the `/client` flow and public landing page are unused but left in place.
 - **Sender**: personal Yahoo mailbox over plain SMTP (`smtp.mail.yahoo.com:465`, IMAP `imap.mail.yahoo.com:993`, app-password auth), `USE_SENDGRID=false`. House account (`client_id=1`) `sender_email` is that address, `sender_email_verified=1` (Yahoo rejects a From that differs from the login). SendGrid is unused (account not yet cancelled). Credentials live only in the gitignored `.env`; the repo is public.
@@ -266,7 +267,7 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 
 ## Planned Next Tasks (pre-launch checklist)
 
-1. **Safe end-to-end rehearsal** on a copy of the DB with every recipient set to Ritish's own inbox: real scheduled send -> step logged -> day-5 follow-up scheduled -> Ritish replies -> `inbox_monitor` classifies it -> alert email arrives. Not yet done; the scheduler send loop has never run for real.
+1. ~~Safe end-to-end rehearsal~~ **Done 2026-09-30** on a copy of the DB with Ritish's own inbox as the only recipient: send, step logging, follow-up, reply detection and alert all verified.
 2. **Ritish approves the email wording** (sample coffee-chat email + follow-ups) and the **target list** (`lead_discovery.QUERIES` x `CITIES`, currently 12 company types x 17 UK/IE/NL cities).
 3. **Decide where it runs**: PC only sends while on and awake (`start_gradreach.bat`); a cloud host (~GBP 7/month) is the only truly hands-off option. Add a Windows "at log on" task if staying on the PC.
 4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.

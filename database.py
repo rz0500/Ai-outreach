@@ -1102,6 +1102,24 @@ def update_sequence_progress(
 # Outreach table
 # ---------------------------------------------------------------------------
 
+def get_prospects_by_email_domain(domain: str, db_path: str = DB_PATH) -> list:
+    """
+    Prospects we are actively emailing (contacted / in_sequence) whose address is
+    at this domain. Used to match a reply that comes from a different person at
+    the same company than the one we wrote to.
+    """
+    domain = (domain or "").strip().lower()
+    if not domain:
+        return []
+    with _get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM prospects WHERE lower(email) LIKE ? "
+            "AND status IN ('contacted', 'in_sequence')",
+            (f"%@{domain}",),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_prospect_by_email(email: str, db_path: str = DB_PATH) -> Optional[dict]:
     """
     Retrieve a single prospect by their exact email address.

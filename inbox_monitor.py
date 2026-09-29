@@ -18,6 +18,7 @@ For each matched reply it:
 
 import os
 import imaplib
+import re
 import email
 from email.header import decode_header
 import logging
@@ -260,9 +261,201 @@ def _handle_classified_reply(
 # Public API
 # ---------------------------------------------------------------------------
 
+_FREEMAIL_DOMAINS = {
+    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk", "outlook.com",
+    "hotmail.com", "hotmail.co.uk", "live.com", "icloud.com", "me.com", "aol.com",
+    "proton.me", "protonmail.com",
+}
+_SYSTEM_SENDERS = {"mailer-daemon", "postmaster", "noreply", "no-reply", "donotreply", "do-not-reply"}
+
+
+def _prospect_for_sender(sender_email: str):
+    """
+    The prospect a reply belongs to: an exact address match first, otherwise the
+    single active prospect at the sender's company domain (a colleague replying
+    to a shared inbox such as info@). Ambiguous or freemail/system senders never
+    match, so an unrelated message cannot flip a prospect to "replied".
+    """
+    prospect = database.get_prospect_by_email(sender_email)
+    if prospect:
+        return prospect
+    local, _, domain = sender_email.partition("@")
+    if not domain or domain in _FREEMAIL_DOMAINS or local in _SYSTEM_SENDERS:
+        return None
+    candidates = database.get_prospects_by_email_domain(domain)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _find_junk_folder(mail) -> str | None:
+    """
+    Name of the provider's spam folder (RFC 6154 \\Junk flag), e.g. Yahoo's "Bulk",
+    or None if it cannot be determined. Never raises.
+    """
+    try:
+        status, folders = mail.list()
+        if status != "OK":
+            return None
+        for raw in folders or []:
+            line = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw)
+            match = re.match(r'\((?P<flags>[^)]*)\)\s+"[^"]*"\s+(?P<name>.+)$', line.strip())
+            if match and "\\junk" in match.group("flags").lower():
+                return match.group("name").strip().strip('"')
+    except Exception:
+        return None
+    return None
+
+
+def _scan_folder(mail, folder: str, mark_as_read: bool, rescue_replies: bool = False) -> int:
+    """
+    Process unread messages in one folder and return how many prospects changed status.
+
+    In a spam folder (rescue_replies=True) only genuine prospect replies are touched:
+    they are marked read (if requested) and moved to the INBOX, which both surfaces
+    the reply and tells the provider the sender is not spam. Other spam is left alone.
+    """
+    status, _ = mail.select(f'"{folder}"' if " " in folder else folder)
+    if status != "OK":
+        logging.error(f"Could not select {folder}.")
+        return 0
+
+    status, response = mail.search(None, "UNSEEN")
+    if status != "OK":
+        logging.error(f"Could not search for unread messages in {folder}.")
+        return 0
+
+    message_ids = response[0].split()
+    total_unread = len(message_ids)
+    max_messages = get_imap_max_messages_per_poll()
+    if total_unread > max_messages:
+        message_ids = message_ids[:max_messages]
+    logging.info(
+        f"[{folder}] Found {total_unread} unread message(s). "
+        f"Processing {len(message_ids)} this poll."
+    )
+
+    updated_count = 0
+    rescue_ids = []
+
+    for msg_id in message_ids:
+        matched_prospect = False
+
+        # Fetch full message so we can read the body
+        status, msg_data = mail.fetch(msg_id, "(RFC822)")
+        if status != "OK":
+            continue
+
+        for response_part in msg_data:
+            if not isinstance(response_part, tuple):
+                continue
+
+            msg = email.message_from_bytes(response_part[1])
+            from_header       = decode_mime_words(msg.get("From", ""))
+            sender_email      = extract_email_address(from_header)
+            inbound_message_id = (msg.get("Message-ID") or "").strip()
+            inbound_subject    = decode_mime_words(msg.get("Subject", "")).strip()
+
+            if not sender_email:
+                continue
+
+            # ── Warmup auto-reply ─────────────────────────────────────
+            # If the message came from a warmup partner (sender in our
+            # WARMUP_ADDRESSES list, or it carries our custom warmup header)
+            # auto-reply immediately and skip prospect classification.
+            raw_headers = {k: v for k, v in msg.items()}
+            _warmup_addrs = get_warmup_addresses()
+            if (
+                sender_email in [a.lower() for a in _warmup_addrs]
+                or warmup_engine.is_warmup_email(inbound_subject, raw_headers)
+            ):
+                reply_body = warmup_engine.warmup_reply_body()
+                reply_subject = (
+                    inbound_subject
+                    if inbound_subject.lower().startswith("re:")
+                    else f"Re: {inbound_subject}"
+                )
+                try:
+                    warmup_engine._send_warmup_smtp(sender_email, reply_subject, reply_body)
+                    database.log_warmup_email(
+                        sender_email, reply_subject,
+                        direction="outbound", status="sent",
+                    )
+                    logging.info(f"  Warmup auto-reply sent to {sender_email}.")
+                except Exception as exc:
+                    logging.warning(f"  Warmup auto-reply failed for {sender_email}: {exc}")
+                continue  # do not classify as a real prospect reply
+
+            prospect = _prospect_for_sender(sender_email)
+            if not prospect:
+                continue
+            matched_prospect = True
+
+            current_status = prospect["status"]
+            if current_status in ("booked",):
+                # Already won — don't touch
+                continue
+
+            body = extract_body(msg)
+
+            # Classify with Claude (gracefully degrade if API unavailable)
+            try:
+                classified = classify_reply(prospect, body or "(no body)")
+                classification = classified["classification"]
+                reasoning      = classified["reasoning"]
+                drafted_reply  = classified["drafted_reply"]
+                logging.info(
+                    f"Reply from {sender_email} classified as '{classification}': {reasoning}"
+                )
+            except Exception as exc:
+                logging.warning(
+                    f"Could not classify reply from {sender_email}: {exc}. "
+                    f"Defaulting to 'replied' status update."
+                )
+                classification = "interested"
+                reasoning      = "classification failed — manual review needed"
+                drafted_reply  = ""
+
+            # Mark as replied in DB before handling (so suppress_prospect
+            # doesn't double-set rejected on an already-rejected record)
+            if current_status not in ("replied", "rejected"):
+                database.update_status(prospect["id"], "replied")
+                updated_count += 1
+
+            _handle_classified_reply(
+                prospect, classification, reasoning, drafted_reply,
+                sender_email, inbound_body=body,
+                inbound_message_id=inbound_message_id,
+                inbound_subject=inbound_subject,
+            )
+
+        if rescue_replies and not matched_prospect:
+            continue  # ordinary spam: leave it exactly as it was
+
+        if mark_as_read:
+            mail.store(msg_id, "+FLAGS", "\\Seen")
+        if rescue_replies:
+            rescue_ids.append(msg_id)
+
+    for msg_id in rescue_ids:
+        try:
+            copy_status, _ = mail.copy(msg_id, "INBOX")
+            if copy_status == "OK":
+                mail.store(msg_id, "+FLAGS", "\\Deleted")
+                logging.info(f"[{folder}] Rescued a prospect reply to INBOX.")
+        except Exception as exc:
+            logging.warning(f"[{folder}] Could not move reply to INBOX: {exc}")
+    if rescue_ids:
+        mail.expunge()
+
+    return updated_count
+
+
 def check_for_replies(mark_as_read: bool = True) -> int:
     """
     Connect to IMAP, fetch unread emails, classify any replies from prospects.
+
+    Scans the INBOX and, when the provider has one, the spam folder too: mail
+    providers such as Yahoo often file replies to cold outreach as spam, and a
+    missed reply is the costliest failure this tool can have.
 
     Args:
         mark_as_read: If True, marks processed emails as read in the inbox.
@@ -279,118 +472,11 @@ def check_for_replies(mark_as_read: bool = True) -> int:
         mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
         mail.login(IMAP_USER, IMAP_PASSWORD)
 
-        status, _ = mail.select("INBOX")
-        if status != "OK":
-            logging.error("Could not select INBOX.")
-            return 0
+        updated_count = _scan_folder(mail, "INBOX", mark_as_read)
 
-        status, response = mail.search(None, "UNSEEN")
-        if status != "OK":
-            logging.error("Could not search for unread messages.")
-            return 0
-
-        message_ids = response[0].split()
-        total_unread = len(message_ids)
-        max_messages = get_imap_max_messages_per_poll()
-        if total_unread > max_messages:
-            message_ids = message_ids[:max_messages]
-        logging.info(
-            f"Found {total_unread} unread message(s). "
-            f"Processing {len(message_ids)} this poll."
-        )
-
-        updated_count = 0
-
-        for msg_id in message_ids:
-            # Fetch full message so we can read the body
-            status, msg_data = mail.fetch(msg_id, "(RFC822)")
-            if status != "OK":
-                continue
-
-            for response_part in msg_data:
-                if not isinstance(response_part, tuple):
-                    continue
-
-                msg = email.message_from_bytes(response_part[1])
-                from_header       = decode_mime_words(msg.get("From", ""))
-                sender_email      = extract_email_address(from_header)
-                inbound_message_id = (msg.get("Message-ID") or "").strip()
-                inbound_subject    = decode_mime_words(msg.get("Subject", "")).strip()
-
-                if not sender_email:
-                    continue
-
-                # ── Warmup auto-reply ─────────────────────────────────────
-                # If the message came from a warmup partner (sender in our
-                # WARMUP_ADDRESSES list, or it carries our custom warmup header)
-                # auto-reply immediately and skip prospect classification.
-                raw_headers = {k: v for k, v in msg.items()}
-                _warmup_addrs = get_warmup_addresses()
-                if (
-                    sender_email in [a.lower() for a in _warmup_addrs]
-                    or warmup_engine.is_warmup_email(inbound_subject, raw_headers)
-                ):
-                    reply_body = warmup_engine.warmup_reply_body()
-                    reply_subject = (
-                        inbound_subject
-                        if inbound_subject.lower().startswith("re:")
-                        else f"Re: {inbound_subject}"
-                    )
-                    try:
-                        warmup_engine._send_warmup_smtp(sender_email, reply_subject, reply_body)
-                        database.log_warmup_email(
-                            sender_email, reply_subject,
-                            direction="outbound", status="sent",
-                        )
-                        logging.info(f"  Warmup auto-reply sent to {sender_email}.")
-                    except Exception as exc:
-                        logging.warning(f"  Warmup auto-reply failed for {sender_email}: {exc}")
-                    continue  # do not classify as a real prospect reply
-
-                prospect = database.get_prospect_by_email(sender_email)
-                if not prospect:
-                    continue
-
-                current_status = prospect["status"]
-                if current_status in ("booked",):
-                    # Already won — don't touch
-                    continue
-
-                body = extract_body(msg)
-
-                # Classify with Claude (gracefully degrade if API unavailable)
-                try:
-                    classified = classify_reply(prospect, body or "(no body)")
-                    classification = classified["classification"]
-                    reasoning      = classified["reasoning"]
-                    drafted_reply  = classified["drafted_reply"]
-                    logging.info(
-                        f"Reply from {sender_email} classified as '{classification}': {reasoning}"
-                    )
-                except Exception as exc:
-                    logging.warning(
-                        f"Could not classify reply from {sender_email}: {exc}. "
-                        f"Defaulting to 'replied' status update."
-                    )
-                    classification = "interested"
-                    reasoning      = "classification failed — manual review needed"
-                    drafted_reply  = ""
-
-                # Mark as replied in DB before handling (so suppress_prospect
-                # doesn't double-set rejected on an already-rejected record)
-                if current_status not in ("replied", "rejected"):
-                    database.update_status(prospect["id"], "replied")
-                    updated_count += 1
-
-                _handle_classified_reply(
-                    prospect, classification, reasoning, drafted_reply,
-                    sender_email, inbound_body=body,
-                    inbound_message_id=inbound_message_id,
-                    inbound_subject=inbound_subject,
-                )
-
-            if mark_as_read:
-                mail.store(msg_id, "+FLAGS", "\\Seen")
+        junk_folder = _find_junk_folder(mail)
+        if junk_folder:
+            updated_count += _scan_folder(mail, junk_folder, mark_as_read, rescue_replies=True)
 
         mail.close()
         mail.logout()
