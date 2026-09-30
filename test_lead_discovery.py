@@ -46,7 +46,7 @@ class TestDiscovery(unittest.TestCase):
     def setUp(self):
         if os.path.exists(TEST_DB):
             os.remove(TEST_DB)
-        self.state = os.path.join(os.path.dirname(os.path.abspath(TEST_DB)), "discovery_state.json")
+        self.state = os.path.splitext(os.path.abspath(TEST_DB))[0] + "_discovery_state.json"
         if os.path.exists(self.state):
             os.remove(self.state)
         db.initialize_database(TEST_DB)
@@ -116,6 +116,31 @@ class TestDiscovery(unittest.TestCase):
     def test_no_api_key_returns_empty(self):
         with patch("lead_discovery.get_googlemaps_client", return_value=None):
             self.assertEqual(ld.discover_new_leads(5, db_path=TEST_DB), [])
+
+    def test_next_page_token_not_ready_yet_is_retried(self):
+        class SlowToken(FakeMaps):
+            failures = 2
+
+            def places(self, query=None, page_token=None):
+                if page_token is not None and self.failures > 0:
+                    self.failures -= 1
+                    raise RuntimeError("INVALID_REQUEST")
+                return super().places(query=query, page_token=page_token)
+
+        fake = SlowToken([[_p("a")], [_p("b")]], {"a": "https://a.com", "b": "https://b.com"})
+        leads = self._run(fake, target=10, pages=2, max_searches=1)
+        self.assertEqual({l["company"] for l in leads}, {"A", "B"})
+
+    def test_page_two_failure_keeps_page_one_results(self):
+        class NeverReady(FakeMaps):
+            def places(self, query=None, page_token=None):
+                if page_token is not None:
+                    raise RuntimeError("INVALID_REQUEST")
+                return super().places(query=query, page_token=page_token)
+
+        fake = NeverReady([[_p("a"), _p("b")], [_p("c")]], {k: f"https://{k}.com" for k in "abc"})
+        leads = self._run(fake, target=10, pages=2, max_searches=1)
+        self.assertEqual({l["company"] for l in leads}, {"A", "B"})
 
     def test_domain_of(self):
         self.assertEqual(ld.domain_of("https://www.Acme.com/a?b=1"), "acme.com")

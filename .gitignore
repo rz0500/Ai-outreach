@@ -67,4 +67,6 @@ playwright-browsers/
 # Autopilot runtime files
 gradreach.log
 data/discovery_state.json
+data/*_discovery_state.json
+*_discovery_state.json
 data/*.db

@@ -63,7 +63,8 @@ If a meaningful repo-level change is made, update all three files.
 
 ### Lead discovery
 
-- **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
+- **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox; `find_site_intel()` also returns hiring roles found on careers pages / job boards. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
+- **`ats_jobs.py`** - reads public Greenhouse/Lever/Ashby/Workable/SmartRecruiters job-board JSON linked from a company's pages and returns analyst/analytics/graduate titles (used by `contact_finder.find_site_intel`; stored as `prospects.hiring_signal`, and companies with one are sent first)
 - **`hunter_client.py`** - optional Hunter.io Domain Search lookup (`HUNTER_API_KEY`): returns the best named recruiter/HR contact (then executive/management) with title and verification status; never raises, returns `{}` without a key. Find-and-Fire tries it first, then falls back to `contact_finder`
 - **`lead_discovery.py`** - daily autopilot discovery: rotates (query x city) Google Maps searches, up to 3 pages each, returns only companies new by name and website domain (state in `data/discovery_state.json`); used by `web_app._run_daily_autopilot`
 - **`google_maps_finder.py`** - Google Maps discovery (first results page only, max 5 per Find-and-Fire run)

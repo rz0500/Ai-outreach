@@ -59,8 +59,8 @@ def combos() -> list[tuple[str, str]]:
 
 
 def _state_path(db_path: str) -> str:
-    folder = os.path.dirname(os.path.abspath(db_path)) or "."
-    return os.path.join(folder, "discovery_state.json")
+    """One rotation file per database, so a test or copy can never move the live rotation."""
+    return os.path.splitext(os.path.abspath(db_path))[0] + "_discovery_state.json"
 
 
 def _load_index(db_path: str) -> int:
@@ -96,6 +96,23 @@ def _irrelevant(place: dict) -> bool:
     return any(word in name for word in _SKIP_NAME_WORDS)
 
 
+def _next_page(client, token: str):
+    """
+    Next results page, or None. A fresh next-page token is rejected with
+    INVALID_REQUEST until Google has it ready (a few seconds), so wait and retry.
+    """
+    for attempt in range(4):
+        time.sleep(2.0 + 1.5 * attempt)
+        try:
+            return client.places(page_token=token)
+        except Exception as exc:
+            if "INVALID_REQUEST" not in str(exc):
+                logger.warning("[Discovery] next page failed: %s", exc)
+                return None
+    logger.warning("[Discovery] next page token never became valid; using the pages we have")
+    return None
+
+
 def _search_pages(client, query: str, pages: int):
     """Yield places from up to `pages` result pages (Maps allows 20 per page)."""
     res = client.places(query=query)
@@ -104,8 +121,9 @@ def _search_pages(client, query: str, pages: int):
     for _ in range(max(0, pages - 1)):
         if not token:
             break
-        time.sleep(2.2)  # a next-page token only becomes valid after a short delay
-        res = client.places(page_token=token)
+        res = _next_page(client, token)
+        if res is None:
+            break  # keep everything from the earlier pages
         yield from res.get("results", [])
         token = res.get("next_page_token")
 

@@ -18,6 +18,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+import ats_jobs
+
 _HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -210,10 +212,55 @@ def _candidate_pages(base_url: str, homepage_html: str) -> list[str]:
     return pages[:_MAX_EXTRA_PAGES]
 
 
-def find_contacts(url: str) -> list[dict]:
-    """Return ranked contact candidates found on the company's own site."""
+_CAREER_URL_HINTS = ("career", "job", "vacanc", "join", "hiring", "work-with", "opportunit", "recruit")
+_ROLE_RE = re.compile(
+    r"\b(?:(?:senior|junior|graduate|associate|lead|principal|entry[- ]level)\s+)?"
+    r"(?:(?:data|business|product|commercial|financial|fintech|revenue|operations|insights?|bi|"
+    r"reporting|strategy|marketing|risk|credit|pricing|quantitative|growth|performance|research)\s+){1,2}"
+    r"analyst\b",
+    re.IGNORECASE,
+)
+_GRAD_RE = re.compile(
+    r"graduate (?:scheme|programme|program|analyst|role|opportunit)|early[- ]careers?|entry[- ]level",
+    re.IGNORECASE,
+)
+_MAX_ROLES = 4
+
+
+def _is_career_url(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return any(hint in path for hint in _CAREER_URL_HINTS)
+
+
+def _scan_roles(html: str) -> tuple[list[str], bool]:
+    """Analyst-type job titles and graduate/early-careers wording on a careers page."""
+    text = BeautifulSoup(html, "html.parser").get_text(" ")
+    text = re.sub(r"\s+", " ", text)
+    roles = [" ".join(m.group(0).split()).title() for m in _ROLE_RE.finditer(text)]
+    return roles, bool(_GRAD_RE.search(text))
+
+
+def describe_hiring(intel: dict) -> str:
+    """Short hiring-signal sentence for the email prompt, or '' when there is none."""
+    roles = intel.get("hiring_roles") or []
+    if roles:
+        return "Careers page lists: " + ", ".join(roles)
+    if intel.get("graduate_friendly"):
+        return "Careers page mentions a graduate / early-careers programme"
+    return ""
+
+
+def find_site_intel(url: str) -> dict:
+    """
+    One crawl, two answers: ranked contact candidates plus a hiring signal.
+
+    Returns {'contacts': [...], 'hiring_roles': [analyst-type titles found on careers
+    pages], 'graduate_friendly': bool}. Only careers-style pages are scanned for roles,
+    so marketing copy about "analysts" is not mistaken for a vacancy.
+    """
+    intel = {"contacts": [], "hiring_roles": [], "graduate_friendly": False}
     if not url:
-        return []
+        return intel
     if not url.startswith("http"):
         url = "https://" + url
 
@@ -221,12 +268,36 @@ def find_contacts(url: str) -> list[dict]:
     host = _host(url)
     emails = _emails_from_html(home) if home else []
 
+    roles: list[str] = []
+    raw_pages = [home] if home else []
     pages = _candidate_pages(url, home)
     with ThreadPoolExecutor(4) as ex:
-        for html in ex.map(_fetch, pages):
-            if html:
-                emails.extend(_emails_from_html(html))
-    return rank_emails(emails, host)
+        for page_url, html in zip(pages, ex.map(_fetch, pages)):
+            if not html:
+                continue
+            raw_pages.append(html)
+            emails.extend(_emails_from_html(html))
+            if _is_career_url(page_url):
+                found, graduate = _scan_roles(html)
+                roles.extend(found)
+                intel["graduate_friendly"] = intel["graduate_friendly"] or graduate
+
+    # Real openings from the company's public job board (Greenhouse, Lever, ...) come first:
+    # careers pages usually load their job list with JavaScript, so their HTML shows none.
+    roles = ats_jobs.analyst_jobs(raw_pages) + roles
+    seen: set[str] = set()
+    for role in roles:
+        if role.lower() not in seen:
+            seen.add(role.lower())
+            intel["hiring_roles"].append(role)
+    intel["hiring_roles"] = intel["hiring_roles"][:_MAX_ROLES]
+    intel["contacts"] = rank_emails(emails, host)
+    return intel
+
+
+def find_contacts(url: str) -> list[dict]:
+    """Return ranked contact candidates found on the company's own site."""
+    return find_site_intel(url)["contacts"]
 
 
 def find_best_contact(url: str) -> dict:

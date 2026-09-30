@@ -1633,16 +1633,24 @@ def _run_pipeline_for_db_prospect(
 
     # Auto-extract email if the prospect has no email on file
     if not enriched.get("email") and website:
-        from contact_finder import find_best_contact
+        from contact_finder import describe_hiring, find_site_intel
         from hunter_client import find_hiring_contact
 
+        intel = find_site_intel(website)
         # A named recruiter/HR contact (Hunter, if configured) beats any inbox
         # published on the company's own site.
-        contact = find_hiring_contact(website) or find_best_contact(website)
+        contact = find_hiring_contact(website) or (intel["contacts"][0] if intel["contacts"] else {})
+        enriched = dict(enriched)   # make mutable
+        # Analyst / graduate openings on the careers page: the strongest relevance signal.
+        signal = describe_hiring(intel)
+        if signal and not enriched.get("hiring_signal"):
+            database.update_enrichment_fields(
+                prospect_id, {"hiring_signal": signal}, db_path=database.DB_PATH
+            )
+            enriched["hiring_signal"] = signal
         extracted = contact.get("email", "")
         if extracted:
             database.update_prospect_email(prospect_id, extracted, db_path=database.DB_PATH)
-            enriched = dict(enriched)   # make mutable
             enriched["email"] = extracted
             result["prospect_email"] = extracted
             updates = {}
