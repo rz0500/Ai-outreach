@@ -68,6 +68,9 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-30 - weekdays only):**
 - Sending is weekdays-only (next 08:00 local Mon-Fri; send loop idle at weekends; `SEND_WEEKENDS` override). Found that `pytz`/`timezonefinder` were not installed here, so all send times had silently been 08:00 UTC; installed them and added a startup warning. Planning figure for 1,000 total messages from the one Yahoo inbox: ~2 months (about 9 weeks with a health-based cap, ~11-12 weeks flat 20/day). Pacing jitter and a health-based cap are offered but not built.
 
+**Session additions (2026-09-30 - supply test):**
+- Real supply test: 16 rotation searches gave 250 new companies (~15.6/search, no saturation), 51% with a usable contact, ~8% with a hiring signal; estimated pool ~3,000 companies (~1,600 contactable) with the current 12 queries x 17 cities. Enough for 1,000 total messages (~350 companies) easily; 1,000 companies would use ~60% of the pool. Sending capacity, not leads, is the limit.
+
 **Completed modules:**
 (added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `ats_jobs.py`, `bounce_handler.py`, `start_gradreach.bat`)
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
