@@ -71,8 +71,11 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-30 - supply test):**
 - Real supply test: 16 rotation searches gave 250 new companies (~15.6/search, no saturation), 51% with a usable contact, ~8% with a hiring signal; estimated pool ~3,000 companies (~1,600 contactable) with the current 12 queries x 17 cities. Enough for 1,000 total messages (~350 companies) easily; 1,000 companies would use ~60% of the pool. Sending capacity, not leads, is the limit.
 
+**Session additions (2026-09-30 - Adzuna):**
+- Adzuna key added (in `.env` only). `job_leads.py` finds companies advertising analyst roles (UK: ~1,100 entry-level analyst openings a month), resolves their websites via Maps, and feeds the autopilot ahead of plain Maps discovery; early-career openings are emailed first and named once in the email; senior roles are not named. Live test: 30 companies in 24s, 74% website match, 43% usable contact.
+
 **Completed modules:**
-(added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `ats_jobs.py`, `bounce_handler.py`, `start_gradreach.bat`)
+(added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `ats_jobs.py`, `job_leads.py`, `bounce_handler.py`, `start_gradreach.bat`)
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`
 
 **Current product shape:**
@@ -147,7 +150,7 @@ This file is the long-term memory for the repo. Update it when significant archi
 4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.
 5. **Yahoo mailbox warm-up**: check the account's age; if new, use it normally (real mail to and from friends) for about a week before launch.
 6. **Reset `WARMUP_START_DATE` in `.env` to the real launch day** (it currently holds the day it was configured, 2026-09-29) so the 5/10/15/20 per day ramp starts at launch.
-7. Optional: free **Adzuna + Reed** API keys -> build the job-board lead source (companies with live analyst openings); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
+7. Adzuna job-board lead source **built 2026-09-30** (Reed key optional, not needed); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
 8. Housekeeping: cancel SendGrid once a test send is confirmed; check whether the old `info@outreachempower.com` mailbox is a paid Google Workspace plan; revoke the unused `STRIPE_SECRET_KEY` in `.env`.
 
 ---

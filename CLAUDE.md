@@ -64,6 +64,7 @@ If a meaningful repo-level change is made, update all three files.
 ### Lead discovery
 
 - **`contact_finder.py`** - crawls a company site (homepage + contact/about/team/careers pages), decodes obfuscated emails, filters junk/third-party addresses, and ranks careers@/jobs@ > named person > generic inbox; `find_site_intel()` also returns hiring roles found on careers pages / job boards. Used by Find-and-Fire via `web_app._extract_email_from_website`; only returns addresses that appear on the company's own site
+- **`job_leads.py`** - Adzuna job-board source (`ADZUNA_APP_ID`/`ADZUNA_APP_KEY`): companies advertising a relevant analyst role now; filters agencies and irrelevant titles, finds each employer's website via Maps, stores `hiring_signal = "Advertising: <role>"`; called first by `_run_daily_autopilot`; early-career openings are sent first
 - **`ats_jobs.py`** - reads public Greenhouse/Lever/Ashby/Workable/SmartRecruiters job-board JSON linked from a company's pages and returns analyst/analytics/graduate titles (used by `contact_finder.find_site_intel`; stored as `prospects.hiring_signal`, and companies with one are sent first)
 - **`hunter_client.py`** - optional Hunter.io Domain Search lookup (`HUNTER_API_KEY`): returns the best named recruiter/HR contact (then executive/management) with title and verification status; never raises, returns `{}` without a key. Find-and-Fire tries it first, then falls back to `contact_finder`
 - **`lead_discovery.py`** - daily autopilot discovery: rotates (query x city) Google Maps searches, up to 3 pages each, returns only companies new by name and website domain (state in `data/discovery_state.json`); used by `web_app._run_daily_autopilot`
@@ -277,5 +278,5 @@ External email warmup via Mailivery API (`mailivery_client.py`).
 4. **Decide oversight for the first days**: watch the `/ops` queue daily, or add a review mode for the first batch.
 5. **Yahoo mailbox warm-up**: check the account's age; if new, use it normally (real mail to and from friends) for about a week before launch.
 6. **Reset `WARMUP_START_DATE` in `.env` to the real launch day** (it currently holds the day it was configured, 2026-09-29) so the 5/10/15/20 per day ramp starts at launch.
-7. Optional: free **Adzuna + Reed** API keys -> build the job-board lead source (companies with live analyst openings); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
+7. Adzuna job-board lead source **built 2026-09-30** (Reed key optional, not needed); **Hunter** API key -> named recruiters (`hunter_client.py` is built but untested against the live API); Mailivery is expired (skip or use its free plan).
 8. Housekeeping: cancel SendGrid once a test send is confirmed; check whether the old `info@outreachempower.com` mailbox is a paid Google Workspace plan; revoke the unused `STRIPE_SECRET_KEY` in `.env`.

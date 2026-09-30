@@ -58,6 +58,11 @@ def get_candidate_portfolio() -> str:
     return (os.getenv("CANDIDATE_PORTFOLIO") or "https://harmonybooths.com").strip()
 
 
+def get_adzuna_credentials() -> tuple[str, str]:
+    """(app_id, app_key) for the Adzuna job-search API, or ('', '') when not configured."""
+    return (os.getenv("ADZUNA_APP_ID") or "").strip(), (os.getenv("ADZUNA_APP_KEY") or "").strip()
+
+
 def get_send_weekends() -> bool:
     """True if outreach may go out on Saturday/Sunday (env SEND_WEEKENDS; default: weekdays only)."""
     return os.getenv("SEND_WEEKENDS", "false").strip().lower() in ("1", "true", "yes")

@@ -78,7 +78,7 @@ Ritish's profile:
 - Target Roles: Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst, Junior Strategy/Ops Analyst
 - Never mention his current employer.
 
-Your goal is a 90-130 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it).
+Your goal is a 90-130 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
 
 Internal workflow:
 1. COMPANY ANALYSIS

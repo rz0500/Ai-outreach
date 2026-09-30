@@ -89,6 +89,13 @@ class TestSendPriority(unittest.TestCase):
         due = [row["id"] for row in db.get_pending_sends(db_path=TEST_DB)]
         self.assertEqual(due, [late_with_signal, early_no_signal])
 
+    def test_early_career_openings_go_before_other_signals(self):
+        none_ = self._queue("None", "2020-01-01 08:00:00")
+        senior = self._queue("Senior", "2020-01-02 08:00:00", hiring="Advertising: Senior Data Analyst")
+        grad = self._queue("Grad", "2020-01-03 08:00:00", hiring="Advertising: Graduate Data Analyst")
+        due = [row["id"] for row in db.get_pending_sends(db_path=TEST_DB)]
+        self.assertEqual(due, [grad, senior, none_])
+
     def test_send_time_still_orders_within_each_group(self):
         a = self._queue("A", "2020-01-02 08:00:00")
         b = self._queue("B", "2020-01-01 08:00:00")

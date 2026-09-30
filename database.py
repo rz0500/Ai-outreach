@@ -430,7 +430,13 @@ def get_pending_sends(db_path: str = DB_PATH) -> list:
               AND o.send_after <= ?
               AND o.sent_at IS NULL
               AND o.status = 'draft'
-            ORDER BY (CASE WHEN COALESCE(p.hiring_signal, '') != '' THEN 0 ELSE 1 END),
+            ORDER BY (CASE
+                        WHEN p.hiring_signal LIKE '%raduate%' OR p.hiring_signal LIKE '%unior%'
+                          OR p.hiring_signal LIKE '%rainee%' OR p.hiring_signal LIKE '%pprentice%'
+                          OR p.hiring_signal LIKE '%ntry%' OR p.hiring_signal LIKE '%ntern%'
+                          OR p.hiring_signal LIKE '%ssociate%' THEN 0
+                        WHEN COALESCE(p.hiring_signal, '') != '' THEN 1
+                        ELSE 2 END),
                      o.send_after ASC
             """,
             (now_str,),

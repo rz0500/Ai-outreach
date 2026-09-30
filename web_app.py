@@ -2767,6 +2767,7 @@ def _run_daily_autopilot() -> int:
     searches), find a contact for each, write and schedule the email. Leads with
     no contact email are dropped before any AI cost. Returns leads processed.
     """
+    from job_leads import discover_job_leads
     from lead_discovery import discover_new_leads
 
     _db = database.DB_PATH
@@ -2782,9 +2783,11 @@ def _run_daily_autopilot() -> int:
         if backlog >= queue_target:
             break
         # roughly half of companies yield a contact email, so look at twice as many
-        leads = discover_new_leads(
-            target=min(15, (queue_target - backlog) * 2), client_id=1, db_path=_db
-        )
+        wanted = min(15, (queue_target - backlog) * 2)
+        # Companies advertising an analyst role come first; Google Maps tops up the rest.
+        leads = discover_job_leads(target=wanted, client_id=1, db_path=_db)
+        if len(leads) < wanted:
+            leads += discover_new_leads(target=wanted - len(leads), client_id=1, db_path=_db)
         if not leads:
             break
         for prospect in leads:
