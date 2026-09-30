@@ -86,10 +86,27 @@ def _check_production_safety() -> None:
             "Mount a persistent disk and set DB_PATH=/var/data/prospects.db"
         )
 
-    if not (os.getenv("SENDGRID_WEBHOOK_PUBLIC_KEY") or "").strip():
+    from settings import get_use_sendgrid
+
+    if (
+        get_use_sendgrid()
+        and not (os.getenv("SENDGRID_WEBHOOK_PUBLIC_KEY") or "").strip()
+    ):
         warnings.append(
             "WARNING: SENDGRID_WEBHOOK_PUBLIC_KEY not set — webhook events are not "
             "being verified. Set it to the key from your SendGrid Event Webhook settings."
+        )
+
+    missing_tz = []
+    for module_name in ("pytz", "timezonefinder"):
+        try:
+            __import__(module_name)
+        except ImportError:
+            missing_tz.append(module_name)
+    if missing_tz:
+        warnings.append(
+            f"WARNING: {', '.join(missing_tz)} not installed - send times silently fall back "
+            "to UTC (wrong 08:00 slot, weekend rule off). Run: pip install -r requirements.txt"
         )
 
     if warnings:
@@ -1517,25 +1534,51 @@ def _infer_timezone(location: str) -> str:
         return "UTC"
 
 
-def _next_8am_utc(tz_name: str) -> datetime.datetime:
+def _next_8am_utc(tz_name: str, now: datetime.datetime | None = None) -> datetime.datetime:
     """
-    Return the next occurrence of 08:00 in the given IANA timezone as a UTC datetime.
-    Falls back to today 08:00 UTC if pytz is unavailable.
+    Return the next 08:00 in the given IANA timezone, as a naive UTC datetime, moved
+    forward to Monday if it would land on a Saturday or Sunday (unless SEND_WEEKENDS is
+    on). `now` (an aware datetime) exists so the rule can be tested. Falls back to UTC
+    if pytz is unavailable.
     """
+    from settings import get_send_weekends
+
+    weekdays_only = not get_send_weekends()
+    eight = datetime.time(8, 0)
     try:
         import pytz
         tz = pytz.timezone(tz_name)
-        now_local = datetime.datetime.now(tz)
-        target = now_local.replace(hour=8, minute=0, second=0, microsecond=0)
-        if now_local >= target:
-            target += datetime.timedelta(days=1)
+        now_local = now.astimezone(tz) if now else datetime.datetime.now(tz)
+        day = now_local.date()
+        if now_local.replace(tzinfo=None) >= datetime.datetime.combine(day, eight):
+            day += datetime.timedelta(days=1)
+        while weekdays_only and day.weekday() >= 5:
+            day += datetime.timedelta(days=1)
+        target = tz.localize(datetime.datetime.combine(day, eight))
         return target.astimezone(pytz.utc).replace(tzinfo=None)
     except Exception:
-        now_utc = datetime.datetime.utcnow()
-        target = now_utc.replace(hour=8, minute=0, second=0, microsecond=0)
-        if now_utc >= target:
-            target += datetime.timedelta(days=1)
-        return target
+        now_utc = now.astimezone(datetime.timezone.utc).replace(tzinfo=None) if now else datetime.datetime.utcnow()
+        day = now_utc.date()
+        if now_utc >= datetime.datetime.combine(day, eight):
+            day += datetime.timedelta(days=1)
+        while weekdays_only and day.weekday() >= 5:
+            day += datetime.timedelta(days=1)
+        return datetime.datetime.combine(day, eight)
+
+
+def _is_weekend(now: datetime.datetime | None = None) -> bool:
+    """True on Saturday/Sunday in UK time (unless SEND_WEEKENDS is on): no outreach goes out."""
+    from settings import get_send_weekends
+
+    if get_send_weekends():
+        return False
+    try:
+        import pytz
+        london = pytz.timezone("Europe/London")
+        local = now.astimezone(london) if now else datetime.datetime.now(london)
+    except Exception:
+        local = now or datetime.datetime.utcnow()
+    return local.weekday() >= 5
 
 
 def _run_pipeline_for_db_prospect(
@@ -2761,6 +2804,8 @@ def _send_scheduled_outreach() -> None:
     """
     import json as _json
     from sequence_dispatcher import record_email_step_sent
+    if _is_weekend():
+        return  # weekdays only: anything already due (e.g. held back by the cap) waits for Monday
     _db = database.DB_PATH
     due = database.get_pending_sends(db_path=_db)
     _paused: dict = {}

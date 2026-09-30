@@ -65,6 +65,9 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-30 - lead supply):**
 - Measured real lead yield (40 new companies from 3 rotating Maps searches): 50% have a usable contact (careers 6 / personal 3 / generic 11 of 20), only ~10% show any hiring signal, 2% a named analyst role. Found and fixed a critical bug where Maps page-2 fetches failed with INVALID_REQUEST (token not ready) and discarded the whole search, which would have made every autopilot discovery return 0 leads. Added `ats_jobs.py` (public ATS job-board JSON) and hiring-signal-first send ordering. Real "who is hiring analysts" supply needs Adzuna/Reed keys (not yet registered).
 
+**Session additions (2026-09-30 - weekdays only):**
+- Sending is weekdays-only (next 08:00 local Mon-Fri; send loop idle at weekends; `SEND_WEEKENDS` override). Found that `pytz`/`timezonefinder` were not installed here, so all send times had silently been 08:00 UTC; installed them and added a startup warning. Planning figure for 1,000 total messages from the one Yahoo inbox: ~2 months (about 9 weeks with a health-based cap, ~11-12 weeks flat 20/day). Pacing jitter and a health-based cap are offered but not built.
+
 **Completed modules:**
 (added since the pivot: `contact_finder.py`, `hunter_client.py`, `lead_discovery.py`, `ats_jobs.py`, `bounce_handler.py`, `start_gradreach.bat`)
 `database.py`, `scorer.py`, `importer.py`, `dashboard.py`, `outreach.py`, `reporter.py`, `mailer.py`, `sequencer.py`, `ai_engine.py`, `inbox_monitor.py`, `google_maps_finder.py`, `main.py`, `web_app.py`, `research_agent.py`, `pdf_generator.py`, `social_agent.py`, `sms_agent.py`, `sendgrid_mailer.py`, `sequence_engine.py`, `sequence_dispatcher.py`, `email_validator.py`, `deck_generator.py`, `settings.py`, `mailivery_client.py`

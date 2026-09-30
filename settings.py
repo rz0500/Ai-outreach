@@ -58,6 +58,11 @@ def get_candidate_portfolio() -> str:
     return (os.getenv("CANDIDATE_PORTFOLIO") or "https://harmonybooths.com").strip()
 
 
+def get_send_weekends() -> bool:
+    """True if outreach may go out on Saturday/Sunday (env SEND_WEEKENDS; default: weekdays only)."""
+    return os.getenv("SEND_WEEKENDS", "false").strip().lower() in ("1", "true", "yes")
+
+
 def get_active_sequence_name() -> str:
     """Return the follow-up sequence used for new prospects (env SEQUENCE_NAME)."""
     return (os.getenv("SEQUENCE_NAME") or "candidate_email").strip()
