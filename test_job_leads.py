@@ -96,6 +96,11 @@ class TestDiscover(unittest.TestCase):
         if os.path.exists(self.state):
             os.remove(self.state)
         db.initialize_database(TEST_DB)
+        # No real network or model calls: the free lookups are stubbed to "found nothing".
+        for target, value in (("job_leads.guess_website", ("", "")), ("company_size.screen_names", {})):
+            patcher = patch(target, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def tearDown(self):
         gc.collect()
@@ -192,6 +197,55 @@ class TestDiscover(unittest.TestCase):
         with patch.object(jl, "get_adzuna_credentials", return_value=("id", "key")), \
              patch.object(jl, "get_googlemaps_client", return_value=None):
             self.assertEqual(jl.discover_job_leads(5, db_path=TEST_DB), [])
+
+
+class TestFreeLookups(unittest.TestCase):
+    def _resp(self, url, text, status=200):
+        r = MagicMock()
+        r.status_code, r.url, r.text = status, url, text
+        return r
+
+    def test_guess_website_accepts_a_domain_whose_title_matches(self):
+        page = "<html><head><title>Vanrath | Technology recruitment</title></head></html>"
+        with patch.object(jl.requests, "get", return_value=self._resp("https://vanrath.com/", page)):
+            self.assertEqual(jl.guess_website("Vanrath Ltd"), ("Vanrath Ltd", "https://vanrath.com/"))
+
+    def test_guess_website_rejects_a_page_for_a_different_company(self):
+        page = "<html><head><title>Totally Different Co</title></head></html>"
+        with patch.object(jl.requests, "get", return_value=self._resp("https://vanrath.com/", page)):
+            self.assertEqual(jl.guess_website("Vanrath Ltd"), ("", ""))
+
+    def test_short_one_word_names_are_not_guessed(self):
+        page = "<html><head><title>CPS Systems</title></head></html>"
+        with patch.object(jl.requests, "get", return_value=self._resp("https://cps.com/", page)):
+            self.assertEqual(jl.guess_website("CPS Group Limited"), ("", ""))
+
+    def test_guess_website_gives_up_when_nothing_loads(self):
+        with patch.object(jl.requests, "get", side_effect=jl.requests.RequestException):
+            self.assertEqual(jl.guess_website("Vanrath"), ("", ""))
+
+
+class TestNameScreen(unittest.TestCase):
+    def setUp(self):
+        for f in (TEST_DB,):
+            if os.path.exists(f):
+                os.remove(f)
+        self.state = os.path.splitext(os.path.abspath(TEST_DB))[0] + "_job_state.json"
+        db.initialize_database(TEST_DB)
+
+    def tearDown(self):
+        gc.collect()
+        for f in (TEST_DB, self.state):
+            if os.path.exists(f):
+                os.remove(f)
+
+    def test_big_corporates_are_dropped_before_any_website_lookup(self):
+        jobs = [_job("Data Analyst", "Capital One"), _job("Data Analyst", "Small Data Co")]
+        maps = MagicMock()
+        with patch.object(jl, "get_adzuna_credentials", return_value=("id", "key")),              patch.object(jl, "get_googlemaps_client", return_value=maps),              patch("company_size.screen_names", return_value={"Capital One": "out"}),              patch.object(jl, "guess_website", return_value=("Small Data Co", "https://smalldata.io")),              patch.object(jl, "_fetch_page", side_effect=lambda *a: jobs if a[3] == 1 else []):
+            leads = jl.discover_job_leads(10, db_path=TEST_DB, max_searches=1)
+        self.assertEqual([l["company"] for l in leads], ["Small Data Co"])
+        maps.places.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -150,3 +150,46 @@ def check_company_size(website: str, company: str,
     except Exception as exc:
         logger.warning("[Size] check failed for %s: %s", company, exc)
         return unknown
+
+
+def screen_names(companies: list[tuple[str, str]],
+                 minimum: int = MIN_EMPLOYEES, maximum: int = MAX_EMPLOYEES) -> dict[str, str]:
+    """
+    Cheap pre-filter on names alone (one batched call, no website fetch): {name: 'out'} for
+    companies the model confidently knows are outside the band. Anything it does not recognise is
+    simply absent (kept), so this only ever removes obvious large corporates / tiny firms.
+    """
+    if not companies or not os.getenv("ANTHROPIC_API_KEY", "").strip():
+        return {}
+    try:
+        import anthropic
+
+        listing = "\n".join(f"{i}. {name} ({loc})" if loc else f"{i}. {name}"
+                            for i, (name, loc) in enumerate(companies, 1))
+        prompt = (
+            "For each company below, estimate its total employee count range ONLY if you genuinely "
+            'recognise it (well-known corporates, banks, listed firms, big consultancies, NHS/universities). '
+            "Skip companies you do not recognise.\n"
+            'Respond with ONLY JSON: {"results": [{"n": <number>, "low": int, "high": int, '
+            '"confidence": "high"|"medium"}]}\n\n' + listing
+        )
+        response = anthropic.Anthropic().messages.create(
+            model=_MODEL, max_tokens=1500, messages=[{"role": "user", "content": prompt}]
+        )
+        raw = "".join(getattr(b, "text", "") for b in response.content)
+        match = re.search(r"\{.*\}", raw, re.S)
+        items = json.loads(match.group(0)).get("results", []) if match else []
+    except Exception as exc:
+        logger.warning("[Size] name screen failed: %s", exc)
+        return {}
+    out: dict[str, str] = {}
+    for item in items:
+        try:
+            name = companies[int(item["n"]) - 1][0]
+            if str(item.get("confidence")) not in ("high", "medium"):
+                continue
+            if classify(int(item["low"]), int(item["high"]), "estimated", minimum, maximum) == "out":
+                out[name] = "out"
+        except (KeyError, ValueError, TypeError, IndexError):
+            continue
+    return out

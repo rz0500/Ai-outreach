@@ -149,6 +149,40 @@ def _fetch_page(app_id: str, app_key: str, search: dict, page: int) -> list[dict
         return []
 
 
+def guess_website(company: str) -> tuple[str, str]:
+    """
+    Free website lookup: try likely domains (acmedata.com, acme-data.co.uk, ...) and accept one whose
+    page title/site name matches the company. ('', '') when nothing verifies; the paid Maps lookup
+    is then the fallback.
+    """
+    tokens = [t for t in re.findall(r"[a-z0-9]+", (company or "").lower()) if t not in _LEGAL_WORDS]
+    if not tokens or len(tokens) > 4:
+        return "", ""
+    if len(tokens) == 1 and len(tokens[0]) < 6:
+        return "", ""       # short one-word names (e.g. "CPS") match the wrong site too easily
+    slugs = ["".join(tokens)] + (["-".join(tokens)] if len(tokens) > 1 else [])
+    for slug in slugs:
+        for tld in (".com", ".co.uk", ".io", ".ai", ".uk", ".co"):
+            url = f"https://{slug}{tld}"
+            try:
+                resp = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
+            except requests.RequestException:
+                continue
+            if resp.status_code != 200:
+                continue
+            domain = domain_of(resp.url)
+            if not domain or any(bad in domain for bad in _NOT_A_COMPANY_SITE):
+                continue
+            head = resp.text[:20000]
+            title = re.search(r"<title[^>]*>(.*?)</title>", head, re.I | re.S)
+            site_name = re.search(r"og:site_name[^>]*content=[\"']([^\"']+)", head, re.I)
+            heading = " ".join(m.group(1) for m in (title, site_name) if m)
+            # every significant word of the company name must appear in the page title / site name
+            if heading and set(tokens) <= name_tokens(heading):
+                return company, resp.url
+    return "", ""
+
+
 def find_website(client, company: str, location: str = "") -> tuple[str, str]:
     """(matched business name, website) via Google Maps, or ('', '') when no confident match."""
     try:
@@ -260,10 +294,26 @@ def discover_job_leads(
         next_page = start_page + pages_read
         state["pages"][str(index)] = next_page if next_page <= _MAX_PAGE else 1
 
+        # Free name-only screen: drop obvious big corporates before paying for a Maps lookup.
+        from settings import get_size_filter
+
+        too_big: dict = {}
+        cfg = get_size_filter()
+        if cfg["enabled"] and employers:
+            from company_size import screen_names
+
+            too_big = screen_names([(i["company"], i["location"]) for i in employers.values()],
+                                   cfg["min"], cfg["max"])
+
         for key, info in employers.items():
             if len(found) >= target:
                 break
-            matched_name, website = find_website(maps, info["company"], info["location"])
+            if info["company"] in too_big:
+                known_names.add(key)
+                continue
+            matched_name, website = guess_website(info["company"])
+            if not website:
+                matched_name, website = find_website(maps, info["company"], info["location"])
             domain = domain_of(website)
             if not website or domain in known_domains:
                 known_names.add(key)     # do not pay to look this employer up again this run

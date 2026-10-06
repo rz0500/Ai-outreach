@@ -38,6 +38,9 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Cutting Maps cost for free (2026-10-06)
+Live test of the funnel (55 real companies, copy DB): about 20% sendable under contact + 20-250 filters (Adzuna 12%, Maps 27%), est. ~$0.20 per sendable company, mostly Google Maps lookups. Ritish asked for a free way to cut it. Added (1) `company_size.screen_names` name-only batch screen of Adzuna employers (dropped 38 of 86 before any lookup) and (2) `job_leads.guess_website` free domain guessing (18 of 30 found free; Maps fallback for the rest), cutting Adzuna Maps lookups ~70%. Maps discovery for the Maps source itself still needs Place Details for each website. 372 tests pass.
+
 ### Volume goal 600-800 in 60 days (2026-10-06)
 Goal fixed at 600-800 first emails over 60 days (ramp gives ~730, weekdays only, no follow-ups). Because the contact and 20-250 size filters pass only a minority of discovered companies, `_run_daily_autopilot` now loops in batches of 15 until the queue holds ~2 days of emails, capped at `AUTOPILOT_MAX_CANDIDATES` (150) candidates per run to bound Maps/AI spend. Pass rate and cost per sendable company are still unmeasured. 368 tests pass.
 
