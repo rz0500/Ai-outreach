@@ -41,6 +41,7 @@ Usage:
 """
 
 import json
+import re
 
 import anthropic
 from dotenv import load_dotenv
@@ -275,6 +276,12 @@ def _build_enrichment_block(prospect: dict) -> str:
     return "\n".join(lines)
 
 
+def _humanise(text: str) -> str:
+    """Remove machine-written tells the model keeps producing: em/en dashes and a bare 'Hi,' greeting."""
+    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    return re.sub(r"^(Hi|Hello|Hey),(\s)", r"\1 there,\2", text)
+
+
 def generate_hyper_personalized_email(prospect: dict) -> dict:
     """
     Generate a hyper-specific, observation-driven cold outreach email.
@@ -367,8 +374,8 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
             if "subject" not in result or "body" not in result:
                 raise ValueError(f"AI response missing 'subject' or 'body' keys: {result}")
 
-            subject = str(result["subject"])
-            body = str(result["body"])
+            subject = _humanise(str(result["subject"]))
+            body = _humanise(str(result["body"]))
 
             # --- Output quality gate ---
             analysis = analyze_company(prospect)
