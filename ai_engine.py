@@ -96,7 +96,7 @@ Email structure — follow this exactly:
 Tone: plain and casual, like a friendly note from a real person. Short sentences. No gushing, no flattery, no "really impressed", "love what you're building" or similar. Just state what he saw.
 
 Paragraph 1 (The opening):
-Start with "Hi <name>," then one short sentence saying he saw their opening, for example "I saw the Graduate Data Analyst opening at [Company]." Only do this when the data has "Hiring signal: Advertising: <role>" AND it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). Otherwise skip this paragraph and begin with paragraph 2. Never ask about the vacancy itself.
+Start with "Hi <first name>," when the data has a real contact name, otherwise "Hi <Company> team," (never "Hi there"), then one short sentence saying he saw their opening, for example "I saw the Graduate Data Analyst opening at [Company]." Only do this when the data has "Hiring signal: Advertising: <role>" AND it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). Otherwise skip this paragraph and begin with paragraph 2. Never ask about the vacancy itself.
 
 Paragraph 2 (Something real about the company):
 One or two short sentences saying he also saw [a concrete recent thing], taken ONLY from the line "Recent things the company did" in the data, for example "I also saw [Company] just launched X." Never invent, embellish or guess. If that line is absent, say one plain, true thing about what the company does using only the data (its niche or product), without praise, and name [Company].
@@ -287,6 +287,17 @@ def _humanise(text: str) -> str:
     return re.sub(r"^(Hi|Hello|Hey),(\s)", r"\1 there,\2", text)
 
 
+def _fix_greeting(body: str, prospect: dict) -> str:
+    """Force the first line to 'Hi <FirstName>,' or 'Hi <Company> team,', whatever the model wrote."""
+    from outreach import greeting
+
+    lines = body.split("\n")
+    if lines and re.match(r"^(hi|hello|hey|dear)\b", lines[0].strip(), re.I) and len(lines[0]) < 60:
+        lines[0] = greeting(prospect)
+        return "\n".join(lines)
+    return greeting(prospect) + "\n\n" + body
+
+
 _SIGNOFF_MARK = "University of Westminster"
 
 
@@ -394,7 +405,7 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
                 raise ValueError(f"AI response missing 'subject' or 'body' keys: {result}")
 
             subject = _humanise(str(result["subject"]))
-            body = _ensure_signoff(_humanise(str(result["body"])))
+            body = _ensure_signoff(_fix_greeting(_humanise(str(result["body"])), prospect))
 
             # --- Output quality gate ---
             analysis = analyze_company(prospect)

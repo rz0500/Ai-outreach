@@ -21,7 +21,8 @@ class TestGreeting(unittest.TestCase):
 class TestCompanyDisplay(unittest.TestCase):
     def test_maps_noise_is_removed_from_email_and_subject(self):
         draft = outreach.generate_email({"name": "Owner/Manager", "company": "FintechOS HQ - London, UK"})
-        self.assertIn("Hi there,", draft["body"])
+        self.assertTrue(draft["body"].startswith("Hi FintechOS"), draft["body"][:40])
+        self.assertIn(" team,", draft["body"].split("\n")[0])
         self.assertNotIn("London, UK", draft["body"])
         self.assertNotIn("London, UK", draft["subject"])
         self.assertIn("FintechOS", draft["body"])

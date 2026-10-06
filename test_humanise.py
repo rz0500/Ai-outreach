@@ -20,3 +20,18 @@ class TestHumanise(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGreeting(unittest.TestCase):
+    def test_named_contact_is_greeted_by_first_name(self):
+        out = ai_engine._fix_greeting("Hello,\n\nBody", {"name": "Priya Shah", "company": "Ledgerly"})
+        self.assertEqual(out, "Hi Priya,\n\nBody")
+
+    def test_placeholder_name_gets_company_team(self):
+        out = ai_engine._fix_greeting("Hi there,\n\nBody", {"name": "Owner/Manager", "company": "Monzo Bank Ltd"})
+        self.assertTrue(out.startswith("Hi Monzo"), out)
+        self.assertIn(" team,", out.split("\n")[0])
+
+    def test_missing_greeting_is_added(self):
+        out = ai_engine._fix_greeting("I saw the opening.", {"name": "Sam Lee", "company": "Acme"})
+        self.assertEqual(out, "Hi Sam,\n\nI saw the opening.")

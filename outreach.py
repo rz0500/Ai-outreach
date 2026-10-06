@@ -94,6 +94,15 @@ def _first_name(full_name: str) -> str:
     return raw.split()[0]
 
 
+def greeting(prospect: dict) -> str:
+    """"Hi Priya," for a named contact, else "Hi Acme team," (never a bare "Hi there,")."""
+    first = _first_name(prospect.get("name", ""))
+    if first != "there":
+        return f"Hi {first},"
+    company = _display_company(prospect.get("company", ""))
+    return f"Hi {company} team," if company else "Hi there,"
+
+
 def _display_company(company: str) -> str:
     """Brand name without Maps noise like '(LDC)' or ' - London, UK'."""
     return _company_core_name(company or "") or (company or "")
@@ -453,7 +462,7 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
 
     subject = _coffee_chat_subject(company, first)
     body = (
-        f"Hi {first},\n\n"
+        f"{greeting(prospect)}\n\n"
         f"Noticed {company}'s work and wanted to ask you something directly.\n\n"
         f"I'm Ritish, a recent FinTech and data analytics grad who's been getting hands-on "
         f"with data in my own small business.\n\n"
@@ -480,7 +489,7 @@ def _build_data_driven_email(
     headline = _clean(analysis.get("company_positioning")) or f"{company}'s work"
 
     body = (
-        f"Hi {first},\n\n"
+        f"{greeting(prospect)}\n\n"
         f"Noticed how {company} is positioned around {headline} and wanted to ask you something directly.\n\n"
         f"I'm Ritish, a recent FinTech and data analytics grad who's been getting hands-on "
         f"with data in my own small business.\n\n"
