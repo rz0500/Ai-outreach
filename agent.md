@@ -38,6 +38,9 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Warmer emails with real recent facts (2026-10-06)
+Ritish asked for a more open-ended, warmer coffee-chat email that says he likes the company and mentions a couple of recent things they did. `company_news.find_recent_facts` reads the company's news/blog/press pages, asks Claude Haiku for up to two facts each with a verbatim quote, and keeps only facts whose quote is found in the fetched text (anti-hallucination). Stored in `prospects.recent_facts`, shown to the email writer; with no facts the email makes no recent claim. Live check: GoCardless (Recurring Pay by Bank launch) and Monzo (FCA AI Live Testing) got real facts; Peak AI got none and fell back to a general warm note. About 5-9s and ~1p per company. 352 tests pass.
+
 ### No follow-ups (2026-10-06)
 Ritish does not want follow-up emails. `sequence_engine.get_sequence_definition` returns only step 1 of `candidate_email` unless `FOLLOWUPS_ENABLED=true` (`settings.get_followups_enabled`). The daily cap now goes entirely to new companies: ~730 first emails in 60 days (weekdays, 5/10/15/20 ramp), needing ~12 new contactable companies/day, still inside measured lead supply (~1,600 contactable in the Maps pool plus Adzuna). 340 tests pass.
 

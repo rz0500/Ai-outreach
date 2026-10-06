@@ -437,9 +437,9 @@ def _signature() -> str:
 
 
 _COFFEE_CHAT_ASK = (
-    "I'm looking to build a career in analytics and would value 15 minutes to hear "
-    "how your team uses data and what makes an early-career analyst stand out. "
-    "Would a coffee chat or short call in the next couple of weeks suit you?"
+    "I'm looking to build a career in analytics and would love a coffee chat, or a "
+    "quick call if that's easier, to hear how your team uses data and how you got "
+    "into the field. Would you be up for that sometime, whenever suits you?"
 )
 
 

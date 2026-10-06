@@ -210,6 +210,7 @@ def initialize_database(db_path: str = DB_PATH) -> None:
             ("website_headline",    "TEXT"),   # Hero copy / H1 from their homepage
             ("competitors",         "TEXT"),   # Real named competitors (comma-separated)
             ("hiring_signal",       "TEXT"),   # e.g. "Hiring SDR on LinkedIn Apr 2024"
+            ("recent_facts",        "TEXT"),   # Verified recent things the company did (company_news.py)
             ("linkedin_activity",   "TEXT"),   # Summary of their most recent post
             ("ad_status",           "TEXT"),   # "running_ads" | "no_ads" | "unknown"
             ("outbound_status",     "TEXT"),   # "active_outbound" | "no_outbound" | "unknown"
@@ -842,7 +843,7 @@ def update_enrichment_fields(
     ALLOWED = {
         "niche", "icp", "website_headline", "competitors", "hiring_signal",
         "linkedin_activity", "ad_status", "outbound_status",
-        "notable_result", "product_feature",
+        "notable_result", "product_feature", "recent_facts",
     }
     to_update = {k: v for k, v in fields.items() if k in ALLOWED and v}
     if not to_update:

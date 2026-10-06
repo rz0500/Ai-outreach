@@ -79,7 +79,7 @@ Ritish's profile:
 - Target Roles: Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst, Junior Strategy/Ops Analyst
 - Never mention his current employer.
 
-Your goal is a 90-130 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
+Your goal is a 100-135 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
 
 Internal workflow:
 1. COMPANY ANALYSIS
@@ -93,16 +93,16 @@ Every sentence must be traceable to provided company data or a clear logical inf
 
 Email structure — follow this exactly:
 
-Paragraph 1 (Observation Opener):
-Open with a specific, grounded observation about the target company's product, tech stack, data platform, or recent growth/hiring signal.
-Example: "Noticed how [Company] is scaling [Product/Feature] and expanding your analytics team." or "Saw that [Company] relies heavily on real-time data pipelines for your [Niche/ICP] customers."
+Paragraph 1 (Warm opener with real, recent facts):
+Say, in a natural human way, that Ritish genuinely likes what [Company] is doing, then mention one or two concrete recent things taken ONLY from the line "Recent things the company did" in the data (for example a launch, funding round, partnership or new office). Use them naturally, not as a list, and never invent, embellish or guess a fact. If that line is absent, do not claim anything recent: just say what you like about their product or niche, using only what the data says, and mention an early-career advertised role once if allowed above.
+Example: "I've been following what [Company] is up to and really like it. Congrats on [real recent thing from the data], and [second real thing]."
 
 Paragraph 2 (Who Ritish is, with one proof point):
 One or two sentences: his degree from Westminster and the single most relevant proof point above, tied to what the company does.
 Example: "I recently finished my BSc in FinTech & Data Analytics at Westminster. Alongside that I run the data side of my own business, where A/B testing with Python and SQL took booking conversion from 5% to 20%."
 
 Paragraph 3 (The coffee-chat ask):
-Say he is looking to build a career in analytics and would value a short conversation about how their team uses data and what makes an early-career analyst stand out. Ask if they would be open to a coffee chat or short call in the next couple of weeks. Keep it a question, not a request for a job.
+Keep it open-ended and easygoing. Say he would love a coffee chat (or a quick call, whichever is easier for them, on their schedule) to hear how their team uses data and how they got into the field, and that he is looking to build a career in analytics. End with a friendly question like whether they would be up for that sometime. Keep it a question, not a request for a job.
 
 Sign-off:
 Thanks,
@@ -111,7 +111,7 @@ BSc FinTech & Data Analytics | University of Westminster
 {{LINKEDIN_LINE}}
 
 Rules:
-- Total body: 90-130 words
+- Total body: 100-135 words
 - No generic openers ("I hope this email finds you well", "I am writing to express my interest in a role")
 - No desperate language ("Please give me a chance", "I am looking for any entry-level job")
 - No buzzwords ("passionate", "synergy", "hardworking self-starter")
@@ -256,6 +256,8 @@ def _build_enrichment_block(prospect: dict) -> str:
         lines.append(f"Product feature / angle: {prospect['product_feature']}")
     if prospect.get("hiring_signal"):
         lines.append(f"Hiring signal: {prospect['hiring_signal']}")
+    if prospect.get("recent_facts"):
+        lines.append(f"Recent things the company did (verified from their own site): {prospect['recent_facts']}")
     if prospect.get("linkedin_activity"):
         lines.append(f"Recent LinkedIn activity: {prospect['linkedin_activity']}")
     if prospect.get("ad_status"):
@@ -280,6 +282,20 @@ def _humanise(text: str) -> str:
     """Remove machine-written tells the model keeps producing: em/en dashes and a bare 'Hi,' greeting."""
     text = re.sub(r"\s*[—–]\s*", ", ", text)
     return re.sub(r"^(Hi|Hello|Hey),(\s)", r"\1 there,\2", text)
+
+
+_SIGNOFF_MARK = "University of Westminster"
+
+
+def _ensure_signoff(body: str) -> str:
+    """Append the standard sign-off when the model dropped it."""
+    if _SIGNOFF_MARK in body[-250:]:
+        return body
+    linkedin = get_candidate_linkedin()
+    lines = ["Thanks,", "Ritish", "BSc FinTech & Data Analytics | University of Westminster"]
+    if linkedin:
+        lines.append(f"LinkedIn: {linkedin}")
+    return body.rstrip() + "\n\n" + "\n".join(lines)
 
 
 def generate_hyper_personalized_email(prospect: dict) -> dict:
@@ -375,7 +391,7 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
                 raise ValueError(f"AI response missing 'subject' or 'body' keys: {result}")
 
             subject = _humanise(str(result["subject"]))
-            body = _humanise(str(result["body"]))
+            body = _ensure_signoff(_humanise(str(result["body"])))
 
             # --- Output quality gate ---
             analysis = analyze_company(prospect)
@@ -403,7 +419,7 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
                     "role": "user",
                     "content": (
                         f"That draft was rejected: {exc}\n"
-                        f"Rewrite it and fix exactly that. Hard limits: 90-130 words in the body, "
+                        f"Rewrite it and fix exactly that. Hard limits: 100-135 words in the body, "
                         f"name the company as \"{display_name}\" in the body, no em dashes, "
                         f"keep the coffee-chat ask. Respond with the JSON object only."
                     ),

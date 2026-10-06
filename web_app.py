@@ -1714,6 +1714,21 @@ def _run_pipeline_for_db_prospect(
         result["stage_statuses"]["send"] = "skipped"
         return result
 
+    # Recent, verified facts from the company's own news/blog pages (warm opener; ''= none found)
+    if website and not enriched.get("recent_facts"):
+        try:
+            from company_news import find_recent_facts
+
+            facts = find_recent_facts(website, company)
+            if facts:
+                database.update_enrichment_fields(
+                    prospect_id, {"recent_facts": facts}, db_path=database.DB_PATH
+                )
+                enriched = dict(enriched)
+                enriched["recent_facts"] = facts
+        except Exception as exc:
+            print(f"[Pipeline] recent facts failed for '{company}': {exc}")
+
     # Step 2 — Email
     has_api_key = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
     if stage_hook:
