@@ -71,6 +71,8 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-30 - supply test):**
 - Real supply test: 16 rotation searches gave 250 new companies (~15.6/search, no saturation), 51% with a usable contact, ~8% with a hiring signal; estimated pool ~3,000 companies (~1,600 contactable) with the current 12 queries x 17 cities. Enough for 1,000 total messages (~350 companies) easily; 1,000 companies would use ~60% of the pool. Sending capacity, not leads, is the limit.
 
+**Session additions (2026-10-06 - no follow-ups):** follow-ups switched off by default (`FOLLOWUPS_ENABLED`); one email per company; 60-day volume ~730 emails/companies on the flat ramp.
+
 **Session additions (2026-09-30 - Adzuna):**
 - Adzuna key added (in `.env` only). `job_leads.py` finds companies advertising analyst roles (UK: ~1,100 entry-level analyst openings a month), resolves their websites via Maps, and feeds the autopilot ahead of plain Maps discovery; early-career openings are emailed first and named once in the email; senior roles are not named. Live test: 30 companies in 24s, 74% website match, 43% usable contact.
 

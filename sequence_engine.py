@@ -11,7 +11,7 @@ import re
 from database import DB_PATH, get_active_sequence_enrollments, get_communication_events
 from email_validator import _company_core_name
 from outreach import generate_email
-from settings import get_candidate_linkedin, get_sender_name
+from settings import get_candidate_linkedin, get_followups_enabled, get_sender_name
 
 DEFAULT_SEQUENCE_NAME = "default_multichannel"
 # Email-only sequence used for personal outreach: LinkedIn/Instagram/SMS steps
@@ -52,7 +52,9 @@ def _first_name(name: str | None) -> str:
 def get_sequence_definition(sequence_name: str = DEFAULT_SEQUENCE_NAME) -> list:
     """Return the touchpoint plan for a named sequence."""
     if sequence_name == CANDIDATE_EMAIL_SEQUENCE_NAME:
-        return [dict(step) for step in CANDIDATE_EMAIL_SEQUENCE]
+        steps = [dict(step) for step in CANDIDATE_EMAIL_SEQUENCE]
+        # Follow-ups are opt-in (FOLLOWUPS_ENABLED=true); by default each company gets one email.
+        return steps if get_followups_enabled() else steps[:1]
     if sequence_name != DEFAULT_SEQUENCE_NAME:
         raise ValueError(f"Unknown sequence '{sequence_name}'")
     return [dict(step) for step in DEFAULT_MULTI_CHANNEL_SEQUENCE]

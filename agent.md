@@ -38,6 +38,9 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### No follow-ups (2026-10-06)
+Ritish does not want follow-up emails. `sequence_engine.get_sequence_definition` returns only step 1 of `candidate_email` unless `FOLLOWUPS_ENABLED=true` (`settings.get_followups_enabled`). The daily cap now goes entirely to new companies: ~730 first emails in 60 days (weekdays, 5/10/15/20 ramp), needing ~12 new contactable companies/day, still inside measured lead supply (~1,600 contactable in the Maps pool plus Adzuna). 340 tests pass.
+
 ### Adzuna job-board leads (2026-09-30)
 Ritish registered a free Adzuna API key (kept only in the gitignored `.env` as `ADZUNA_APP_ID` / `ADZUNA_APP_KEY`; plan shows "Trial Access"; free tier is roughly 250 calls/day). Built `job_leads.py`, the best lead source so far: companies advertising a relevant analyst role RIGHT NOW.
 - **Supply (UK, last 30 days, measured live)**: ~1,063 "data analyst", ~1,657 "business analyst", ~1,142 entry-level analyst titles (`title_only=analyst` + `what_or=graduate junior entry associate trainee apprentice`). Note Adzuna's `what` is AND-matching (a "graduate data analyst" query returns 0), so searches use `title_only`/`what_or`.

@@ -68,6 +68,11 @@ def get_send_weekends() -> bool:
     return os.getenv("SEND_WEEKENDS", "false").strip().lower() in ("1", "true", "yes")
 
 
+def get_followups_enabled() -> bool:
+    """Follow-up emails (day 5 / 12) are off unless FOLLOWUPS_ENABLED=true."""
+    return os.getenv("FOLLOWUPS_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+
+
 def get_active_sequence_name() -> str:
     """Return the follow-up sequence used for new prospects (env SEQUENCE_NAME)."""
     return (os.getenv("SEQUENCE_NAME") or "candidate_email").strip()

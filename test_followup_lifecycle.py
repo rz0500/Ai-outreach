@@ -39,6 +39,10 @@ class TestFollowupLifecycle(unittest.TestCase):
         )
         no_send.start()
         self.addCleanup(no_send.stop)
+        # Follow-ups are off by default; the chain tests below opt in.
+        flag = patch.dict(os.environ, {"FOLLOWUPS_ENABLED": "true"})
+        flag.start()
+        self.addCleanup(flag.stop)
         self.pid = db.add_prospect(
             name="Sam Lee", company="Acme Data", email="sam@example.com",
             status="qualified", db_path=TEST_DB,
@@ -98,6 +102,13 @@ class TestFollowupLifecycle(unittest.TestCase):
         self._send_row(rows[2])
         self._run(40)                               # sequence finished
         self.assertEqual(len(_rows(self.pid)), 3)
+
+    def test_no_follow_ups_by_default(self):
+        with patch.dict(os.environ, {"FOLLOWUPS_ENABLED": "false"}):
+            self._send_row(_rows(self.pid)[0])
+            for day in (5, 12, 40):
+                self._run(day)
+            self.assertEqual(len(_rows(self.pid)), 1)
 
     def test_reply_stops_follow_ups(self):
         self._send_row(_rows(self.pid)[0])
