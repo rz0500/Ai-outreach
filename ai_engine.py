@@ -79,7 +79,7 @@ Ritish's profile:
 - Target Roles: Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst, Junior Strategy/Ops Analyst
 - Never mention his current employer.
 
-Your goal is a 80-115 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
+Your goal is a 70-110 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
 
 Internal workflow:
 1. COMPANY ANALYSIS
@@ -93,15 +93,19 @@ Every sentence must be traceable to provided company data or a clear logical inf
 
 Email structure — follow this exactly:
 
-Paragraph 1 (Warm opener with real, recent facts):
-Say, in a natural human way, that Ritish genuinely likes what [Company] is doing, then mention one or two concrete recent things taken ONLY from the line "Recent things the company did" in the data (for example a launch, funding round, partnership or new office). Use them naturally, not as a list, and never invent, embellish or guess a fact. If that line is absent, do not claim anything recent: just say what you like about their product or niche, using only what the data says, and mention an early-career advertised role once if allowed above.
-Example: "I've been following what [Company] is up to and really like it. Congrats on [real recent thing from the data], and [second real thing]."
+Tone: plain and casual, like a friendly note from a real person. Short sentences. No gushing, no flattery, no "really impressed", "love what you're building" or similar. Just state what he saw.
 
-Paragraph 2 (Who Ritish is, one casual line):
-One short, human sentence, no stats and no tool list, for example "I'm Ritish, a recent FinTech and data analytics grad who's been getting my hands dirty with data in my own small business." Optionally add a few words tying it to what the company does. Do not repeat his degree details or results; his CV and signature cover that.
+Paragraph 1 (The opening):
+Start with "Hi <name>," then one short sentence saying he saw their opening, for example "I saw the Graduate Data Analyst opening at [Company]." Only do this when the data has "Hiring signal: Advertising: <role>" AND it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). Otherwise skip this paragraph and begin with paragraph 2. Never ask about the vacancy itself.
 
-Paragraph 3 (The coffee-chat ask):
-Keep it open-ended and easygoing. Say he would love a coffee chat (or a quick call, whichever is easier for them, on their schedule) to hear how their team uses data and how they got into the field, and that he is looking to build a career in analytics. End with a friendly question like whether they would be up for that sometime. Keep it a question, not a request for a job.
+Paragraph 2 (Something real about the company):
+One or two short sentences saying he also saw [a concrete recent thing], taken ONLY from the line "Recent things the company did" in the data, for example "I also saw [Company] just launched X." Never invent, embellish or guess. If that line is absent, say one plain, true thing about what the company does using only the data (its niche or product), without praise, and name [Company].
+
+Paragraph 3 (About Ritish, one casual line):
+One short sentence, no stats and no tool list, for example "I'm Ritish, a recent FinTech and data analytics grad who's been working with data in my own small business." Do not repeat his degree details or results; his CV and signature cover that.
+
+Paragraph 4 (The coffee-chat ask):
+Open-ended and easygoing: would he be able to grab a coffee chat or a quick call, whenever suits them, to hear how their team uses data and how they got into the field. Say he is looking to start a career in analytics. End with a simple question. Name [Company].
 
 Sign-off:
 Thanks,
@@ -110,12 +114,12 @@ BSc FinTech & Data Analytics | University of Westminster
 {{LINKEDIN_LINE}}
 
 Rules:
-- Total body: 80-115 words
+- Total body: 70-110 words
 - No generic openers ("I hope this email finds you well", "I am writing to express my interest in a role")
 - No desperate language ("Please give me a chance", "I am looking for any entry-level job")
 - No buzzwords ("passionate", "synergy", "hardworking self-starter")
 - Do not use these phrases: "quick 15 minutes", "happy to share", "if helpful", "would love to connect", "I'd love to learn more", "worth a quick chat", "touch base", "circle back"
-- Must name the target company in paragraph 1 & 3
+- Must name the target company at least twice in the body
 - The ask must be a question
 
 Subject line: short (3-6 words), plain, human, e.g. "[Company] analytics team", "Question about [Company]'s data work", "Coffee chat about [Company]?".
@@ -418,7 +422,7 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
                     "role": "user",
                     "content": (
                         f"That draft was rejected: {exc}\n"
-                        f"Rewrite it and fix exactly that. Hard limits: 80-115 words in the body, "
+                        f"Rewrite it and fix exactly that. Hard limits: 70-110 words in the body, "
                         f"name the company as \"{display_name}\" in the body, no em dashes, "
                         f"keep the coffee-chat ask. Respond with the JSON object only."
                     ),
