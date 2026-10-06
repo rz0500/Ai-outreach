@@ -98,7 +98,8 @@ class TestEmailReasoning(unittest.TestCase):
         self.assertEqual(lines[0], "Hi Jane,")
         self.assertTrue(lines[1].startswith("Noticed"))
         self.assertIn("Acme Corp", body)
-        self.assertIn("BSc in FinTech & Data Analytics", body)
+        self.assertIn("FinTech and data analytics grad", body)
+        self.assertNotIn("5% to 20%", body)    # stats live in the CV, not the email body
         self.assertGreaterEqual(len(lines), 5)
         self.assertLessEqual(len(body.split()), 140)
 
@@ -107,8 +108,8 @@ class TestEmailReasoning(unittest.TestCase):
         body = debug["email"]["body"].lower()
 
         self.assertIn("harbor studio", body)
-        self.assertIn("bsc in fintech & data analytics", body)
-        self.assertIn("harmony booths", body)
+        self.assertIn("fintech and data analytics grad", body)
+        self.assertNotIn("harmony booths", body)
         self.assertNotIn("i only have a limited read", body)
         self.assertNotIn("if there is", body)
 

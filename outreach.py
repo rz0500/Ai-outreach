@@ -455,9 +455,8 @@ def _weak_data_email(prospect: dict, analysis: dict) -> dict:
     body = (
         f"Hi {first},\n\n"
         f"Noticed {company}'s work and wanted to ask you something directly.\n\n"
-        f"I recently completed my BSc in FinTech & Data Analytics at the University of Westminster. "
-        f"Alongside my degree I've run the data and automation side of my own business, "
-        f"Harmony Booths, using Python, SQL, Power BI and n8n.\n\n"
+        f"I'm Ritish, a recent FinTech and data analytics grad who's been getting hands-on "
+        f"with data in my own small business.\n\n"
         f"{_COFFEE_CHAT_ASK}\n\n"
         f"{_signature()}"
     )
@@ -483,9 +482,8 @@ def _build_data_driven_email(
     body = (
         f"Hi {first},\n\n"
         f"Noticed how {company} is positioned around {headline} and wanted to ask you something directly.\n\n"
-        f"I recently finished my BSc in FinTech & Data Analytics at Westminster. "
-        f"I've also run the data and automation side of my own business, Harmony Booths, "
-        f"where A/B testing with Python, SQL and Power BI took booking conversion from 5% to 20%.\n\n"
+        f"I'm Ritish, a recent FinTech and data analytics grad who's been getting hands-on "
+        f"with data in my own small business.\n\n"
         f"{_COFFEE_CHAT_ASK}\n\n"
         f"{_signature()}"
     )

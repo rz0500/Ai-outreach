@@ -71,7 +71,7 @@ You represent Ritish — a BSc FinTech & Data Analytics graduate from the Univer
 Ritish's profile:
 - Degree: BSc FinTech & Data Analytics (University of Westminster)
 - Technical Stack: Python, SQL, Power BI, Excel, data analysis, n8n workflow automation, Twilio & Stripe APIs
-- Proof points (use the ONE most relevant to the company, never all of them):
+- Background facts (context only. Do NOT quote numbers, percentages, tools or business names in the email; the CV already covers them):
   - Runs the data and automation side of his own business, Harmony Booths: A/B tests on landing pages and pricing took booking conversion from 5% to 20%; dashboards tracking CPL, ROAS and conversion cut ad spend by 30%
   - Built an automated lead-to-booking pipeline (n8n, Twilio, Stripe, NocoDB) handling 400+ monthly enquiries and cutting manual work by 80%
   - AI-personalised outbound sequences lifted cold-email reply rates from about 2% to 12%
@@ -79,7 +79,7 @@ Ritish's profile:
 - Target Roles: Graduate Data Analyst, Business Analyst, Product Analyst, RevOps Analyst, Commercial Analyst, FinTech Analyst, Junior Strategy/Ops Analyst
 - Never mention his current employer.
 
-Your goal is a 100-135 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
+Your goal is a 80-115 word email to a recruiter, hiring manager, or analytics/operations leader at a target company. This is NOT a job application. The ask is a low-pressure coffee chat or short call to hear how their team uses data and what they look for in early-career analysts. Never say Ritish is "applying", never ask about a specific vacancy, and never attach or link a CV (if they ask, Ritish will send it). If the company data says "Hiring signal: Advertising: <role>", you may mention that opening once, briefly, as the reason for writing (for example "I saw the Graduate Data Analyst opening"), but ONLY when it is an early-career role (graduate, junior, trainee, associate, apprentice, intern). For a senior or mid-level role, do not name it: just say the team looks to be growing. Either way the ask is a coffee chat about how the team uses data, not about that job.
 
 Internal workflow:
 1. COMPANY ANALYSIS
@@ -97,9 +97,8 @@ Paragraph 1 (Warm opener with real, recent facts):
 Say, in a natural human way, that Ritish genuinely likes what [Company] is doing, then mention one or two concrete recent things taken ONLY from the line "Recent things the company did" in the data (for example a launch, funding round, partnership or new office). Use them naturally, not as a list, and never invent, embellish or guess a fact. If that line is absent, do not claim anything recent: just say what you like about their product or niche, using only what the data says, and mention an early-career advertised role once if allowed above.
 Example: "I've been following what [Company] is up to and really like it. Congrats on [real recent thing from the data], and [second real thing]."
 
-Paragraph 2 (Who Ritish is, with one proof point):
-One or two sentences: his degree from Westminster and the single most relevant proof point above, tied to what the company does.
-Example: "I recently finished my BSc in FinTech & Data Analytics at Westminster. Alongside that I run the data side of my own business, where A/B testing with Python and SQL took booking conversion from 5% to 20%."
+Paragraph 2 (Who Ritish is, one casual line):
+One short, human sentence, no stats and no tool list, for example "I'm Ritish, a recent FinTech and data analytics grad who's been getting my hands dirty with data in my own small business." Optionally add a few words tying it to what the company does. Do not repeat his degree details or results; his CV and signature cover that.
 
 Paragraph 3 (The coffee-chat ask):
 Keep it open-ended and easygoing. Say he would love a coffee chat (or a quick call, whichever is easier for them, on their schedule) to hear how their team uses data and how they got into the field, and that he is looking to build a career in analytics. End with a friendly question like whether they would be up for that sometime. Keep it a question, not a request for a job.
@@ -111,7 +110,7 @@ BSc FinTech & Data Analytics | University of Westminster
 {{LINKEDIN_LINE}}
 
 Rules:
-- Total body: 100-135 words
+- Total body: 80-115 words
 - No generic openers ("I hope this email finds you well", "I am writing to express my interest in a role")
 - No desperate language ("Please give me a chance", "I am looking for any entry-level job")
 - No buzzwords ("passionate", "synergy", "hardworking self-starter")
@@ -419,7 +418,7 @@ def generate_hyper_personalized_email(prospect: dict) -> dict:
                     "role": "user",
                     "content": (
                         f"That draft was rejected: {exc}\n"
-                        f"Rewrite it and fix exactly that. Hard limits: 100-135 words in the body, "
+                        f"Rewrite it and fix exactly that. Hard limits: 80-115 words in the body, "
                         f"name the company as \"{display_name}\" in the body, no em dashes, "
                         f"keep the coffee-chat ask. Respond with the JSON object only."
                     ),
