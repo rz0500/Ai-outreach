@@ -38,6 +38,9 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Company size filter 20-250 (2026-10-06)
+Ritish wants only companies with 20-250 employees. No source we use gives headcount, so `company_size.py` reads the company's about/team/careers pages: explicit statements (verbatim quote verified) are used first; otherwise Claude gives an estimated range (decided on its midpoint, low confidence = unknown). On a 20-company test of known UK fintech/data firms: 3 stated a headcount on their site, ~16 got a verdict with estimates, all 'out' calls were right, one 'in' was wrong (Faculty) because estimates are rough at the edge. Unknown is skipped by default. Effects: fewer eligible leads (large corporates and sub-20 firms drop out); the in-band rate on live discovery was not measured (Ritish declined the ~$2 live test). 365 tests pass.
+
 ### Warmer emails with real recent facts (2026-10-06)
 Ritish asked for a more open-ended, warmer coffee-chat email that says he likes the company and mentions a couple of recent things they did. `company_news.find_recent_facts` reads the company's news/blog/press pages, asks Claude Haiku for up to two facts each with a verbatim quote, and keeps only facts whose quote is found in the fetched text (anti-hallucination). Stored in `prospects.recent_facts`, shown to the email writer; with no facts the email makes no recent claim. Live check: GoCardless (Recurring Pay by Bank launch) and Monzo (FCA AI Live Testing) got real facts; Peak AI got none and fell back to a general warm note. About 5-9s and ~1p per company. 352 tests pass.
 

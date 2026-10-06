@@ -1714,6 +1714,32 @@ def _run_pipeline_for_db_prospect(
         result["stage_statuses"]["send"] = "skipped"
         return result
 
+    # Target company size (default 20-250 employees): checked only for contactable companies
+    from settings import get_size_filter
+
+    size_cfg = get_size_filter()
+    if size_cfg["enabled"] and website and enriched.get("status") not in ("contacted", "replied", "booked"):
+        from company_size import check_company_size
+
+        size = check_company_size(website, company, size_cfg["min"], size_cfg["max"])
+        note = (
+            f"{size['verdict']}: {size['low']}-{size['high']} ({size['basis']})"
+            if size["basis"] != "none" else size["verdict"]
+        )
+        database.update_enrichment_fields(
+            prospect_id, {"employee_estimate": note}, db_path=database.DB_PATH
+        )
+        skip = size["verdict"] == "out" or (
+            size["verdict"] == "unknown" and size_cfg["unknown_policy"] == "skip"
+        )
+        if skip:
+            database.update_status(prospect_id, "skipped_size", db_path=database.DB_PATH)
+            result["status"] = "skipped_size"
+            result["size_note"] = note
+            for stage in ("email", "pdf", "send"):
+                result["stage_statuses"][stage] = "skipped"
+            return result
+
     # Recent, verified facts from the company's own news/blog pages (warm opener; ''= none found)
     if website and not enriched.get("recent_facts"):
         try:

@@ -68,6 +68,26 @@ def get_send_weekends() -> bool:
     return os.getenv("SEND_WEEKENDS", "false").strip().lower() in ("1", "true", "yes")
 
 
+def get_size_filter() -> dict:
+    """Target company size band (TARGET_MIN_EMPLOYEES / TARGET_MAX_EMPLOYEES, default 20-250).
+
+    SIZE_UNKNOWN_POLICY: "skip" (default, strict) drops companies whose size cannot be
+    determined; "allow" keeps them. SIZE_FILTER=false turns the filter off entirely.
+    """
+    def _int(name: str, default: int) -> int:
+        try:
+            return int(os.getenv(name, "").strip() or default)
+        except ValueError:
+            return default
+
+    return {
+        "enabled": os.getenv("SIZE_FILTER", "true").strip().lower() not in ("0", "false", "no", "off"),
+        "min": _int("TARGET_MIN_EMPLOYEES", 20),
+        "max": _int("TARGET_MAX_EMPLOYEES", 250),
+        "unknown_policy": (os.getenv("SIZE_UNKNOWN_POLICY") or "skip").strip().lower(),
+    }
+
+
 def get_followups_enabled() -> bool:
     """Follow-up emails (day 5 / 12) are off unless FOLLOWUPS_ENABLED=true."""
     return os.getenv("FOLLOWUPS_ENABLED", "false").strip().lower() in ("1", "true", "yes")
