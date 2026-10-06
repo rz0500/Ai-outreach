@@ -38,6 +38,9 @@ Ran the actual pipeline against two real target companies via `POST /api/find-an
 - Also confirmed: `pdf_generator`'s CTA box can overflow onto its own near-empty second page when the contact line is long (cosmetic, not fixed — low priority)
 - Full suite still 215/215 after both fixes; live DB kept the real "London Data Consulting (LDC)" lead discovered during testing (user's call, not a throwaway)
 
+### Volume goal 600-800 in 60 days (2026-10-06)
+Goal fixed at 600-800 first emails over 60 days (ramp gives ~730, weekdays only, no follow-ups). Because the contact and 20-250 size filters pass only a minority of discovered companies, `_run_daily_autopilot` now loops in batches of 15 until the queue holds ~2 days of emails, capped at `AUTOPILOT_MAX_CANDIDATES` (150) candidates per run to bound Maps/AI spend. Pass rate and cost per sendable company are still unmeasured. 368 tests pass.
+
 ### Company size filter 20-250 (2026-10-06)
 Ritish wants only companies with 20-250 employees. No source we use gives headcount, so `company_size.py` reads the company's about/team/careers pages: explicit statements (verbatim quote verified) are used first; otherwise Claude gives an estimated range (decided on its midpoint, low confidence = unknown). On a 20-company test of known UK fintech/data firms: 3 stated a headcount on their site, ~16 got a verdict with estimates, all 'out' calls were right, one 'in' was wrong (Faculty) because estimates are rough at the edge. Unknown is skipped by default. Effects: fewer eligible leads (large corporates and sub-20 firms drop out); the in-band rate on live discovery was not measured (Ritish declined the ~$2 live test). 365 tests pass.
 

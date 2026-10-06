@@ -88,6 +88,14 @@ def get_size_filter() -> dict:
     }
 
 
+def get_autopilot_max_candidates() -> int:
+    """Max companies the daily autopilot will look at per run (AUTOPILOT_MAX_CANDIDATES, default 150)."""
+    try:
+        return max(1, int(os.getenv("AUTOPILOT_MAX_CANDIDATES", "").strip() or 150))
+    except ValueError:
+        return 150
+
+
 def get_followups_enabled() -> bool:
     """Follow-up emails (day 5 / 12) are off unless FOLLOWUPS_ENABLED=true."""
     return os.getenv("FOLLOWUPS_ENABLED", "false").strip().lower() in ("1", "true", "yes")

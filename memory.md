@@ -71,6 +71,8 @@ This file is the long-term memory for the repo. Update it when significant archi
 **Session additions (2026-09-30 - supply test):**
 - Real supply test: 16 rotation searches gave 250 new companies (~15.6/search, no saturation), 51% with a usable contact, ~8% with a hiring signal; estimated pool ~3,000 companies (~1,600 contactable) with the current 12 queries x 17 cities. Enough for 1,000 total messages (~350 companies) easily; 1,000 companies would use ~60% of the pool. Sending capacity, not leads, is the limit.
 
+**Session additions (2026-10-06 - volume goal):** goal 600-800 emails in 60 days; autopilot loops until queue full, budget `AUTOPILOT_MAX_CANDIDATES`=150/day.
+
 **Session additions (2026-10-06 - size filter):** only companies with 20-250 employees (`company_size.py`, verdicts in `prospects.employee_estimate`, status `skipped_size`); unknown size skipped by default; supply impact unmeasured.
 
 **Session additions (2026-10-06 - warmer emails):** emails now like the company and cite 1-2 verified recent facts (`company_news.py`, `prospects.recent_facts`); ask is open-ended coffee chat; em dashes stripped; signature guaranteed.

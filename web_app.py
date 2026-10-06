@@ -2819,12 +2819,16 @@ def _run_daily_autopilot() -> int:
     cap = int(house.get("daily_send_limit") or 0) or warmup_engine.get_daily_limit() or 20
     queue_target = cap * 2
     processed = 0
-    for _ in range(3):
+    # Only a minority of companies survive (contact email, 20-250 size), so keep looking in
+    # batches until the queue is full, bounded by a daily candidate budget (limits Maps/AI spend).
+    from settings import get_autopilot_max_candidates
+
+    budget = get_autopilot_max_candidates()
+    while processed < budget:
         backlog = _queued_initial_sends(_db)
         if backlog >= queue_target:
             break
-        # roughly half of companies yield a contact email, so look at twice as many
-        wanted = min(15, (queue_target - backlog) * 2)
+        wanted = min(15, budget - processed)
         # Companies advertising an analyst role come first; Google Maps tops up the rest.
         leads = discover_job_leads(target=wanted, client_id=1, db_path=_db)
         if len(leads) < wanted:
